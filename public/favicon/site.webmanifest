@@ -1,0 +1,21 @@
+{
+  "name": "Dizi Urdu - Turkish Dramas & Movies",
+  "short_name": "Dizi Urdu",
+  "description": "Discover Cast, Official Trailers, and Urdu Dubbed Turkish Dramas on Dizi Urdu (diziurdu.com)",
+  "icons": [
+    {
+      "src": "/favicon/android-chrome-192x192.png",
+      "sizes": "192x192",
+      "type": "image/png"
+    },
+    {
+      "src": "/favicon/android-chrome-512x512.png",
+      "sizes": "512x512",
+      "type": "image/png"
+    }
+  ],
+  "theme_color": "#e50914",
+  "background_color": "#0b0e0c",
+  "display": "standalone",
+  "start_url": "/"
+}

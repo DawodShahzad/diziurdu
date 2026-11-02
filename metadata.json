@@ -1,0 +1,6 @@
+{
+  "name": "Dizi Urdu",
+  "description": "Discover Cast, Official Trailers, and Urdu Dubbed Turkish Dramas on Dizi Urdu (diziurdu.com).",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
