@@ -1,5 +1,5 @@
 {
-  "exported_at": "2026-11-02T20:35:02.255Z",
+  "exported_at": "2026-11-03T11:45:55.444Z",
   "app": "Dizi Urdu",
   "version": "2.0",
   "shows": [
@@ -499,8 +499,8 @@
         "HDR10",
         "Dolby Atmos"
       ],
-      "points": 1217,
-      "all_time_score": 1217,
+      "points": 1218,
+      "all_time_score": 1218,
       "play_events": [
         {
           "timestamp": 1792667322711
@@ -552,6 +552,9 @@
         },
         {
           "timestamp": 1792691948474
+        },
+        {
+          "timestamp": 1793705684320
         }
       ],
       "whereToWatchEnabled": false,
@@ -2702,7 +2705,9 @@
         ]
       },
       "embedBackdropUrl": "https://www.formulatv.com/images/articulos/128000/128536_c31gtNF7vqceB02sJ6WRU8aokim9PLxzH-h2.webp",
-      "embedBackdropDarkness": 84
+      "embedBackdropDarkness": 84,
+      "poster9x16Url": "https://upload.wikimedia.org/wikipedia/en/3/3d/BraveandBeautiful.png?utm_source=en.wikipedia.org&utm_campaign=imageinfo&utm_content=thumbnail_unscaled",
+      "poster1x2Url": "https://upload.wikimedia.org/wikipedia/en/3/3d/BraveandBeautiful.png?utm_source=en.wikipedia.org&utm_campaign=imageinfo&utm_content=thumbnail_unscaled"
     },
     {
       "id": "series-1791667832759",
@@ -7075,1240 +7080,6 @@
         "Historical Epics",
         "Action & Combat"
       ]
-    },
-    {
-      "id": "aile",
-      "title": "Aile",
-      "turkishTitle": "The Family",
-      "type": "series",
-      "backdropUrl": "https://images.unsplash.com/photo-1514565131-fce0801e5785?auto=format&fit=crop&w=1920&q=80",
-      "posterLandscapeUrl": "https://images.unsplash.com/photo-1519501025264-65ba15a82390?auto=format&fit=crop&w=1280&q=80",
-      "logoText": "AİLE",
-      "logoSubtext": "THE FAMILY",
-      "synopsis": "When Aslan Soykan, the charismatic yet haunted leader of Istanbul’s most secretive crime syndicate, crosses paths on an airplane with Devin Akın, a brilliant independent psychologist, their magnetic attraction ignites a tempestuous romance. As their lives intertwine, both must navigate dysfunctional family trauma, underworld retribution, and the fragile line between healing and madness.",
-      "shortDescription": "A dangerous crime boss and an introspective psychologist fall into an obsessive love tested by toxic family dynasties and criminal chaos.",
-      "ambientColor": "#dc2626",
-      "ambientGlowRgb": "220, 38, 38",
-      "trailerUrl": "https://vjs.zencdn.net/v/oceans.mp4",
-      "releaseYear": "2023 - 2024",
-      "maturityRating": "18+",
-      "maturityDetails": "violence, substance use, suicide, language, psychological peril, domestic trauma",
-      "matchScore": 97,
-      "imdbRating": 8.8,
-      "durationOrSeasons": "2 Seasons",
-      "genres": [
-        "Romantic Series",
-        "Bingey Thriller",
-        "Crime Drama",
-        "Psychological"
-      ],
-      "thisSeriesIs": [
-        "Scandalous",
-        "Thought-provoking",
-        "Steamy",
-        "Intense"
-      ],
-      "qualityBadges": [
-        "4K Ultra HD"
-      ],
-      "points": 4421,
-      "trailersAndMore": [
-        {
-          "id": "aile-trailer-s1",
-          "title": "Official Season 1 4K Trailer: Aile",
-          "thumbnailUrl": "https://images.unsplash.com/photo-1517457373958-b7bdd4587205?auto=format&fit=crop&w=640&q=80",
-          "videoUrl": "https://vjs.zencdn.net/v/oceans.mp4",
-          "duration": "1m 52s"
-        },
-        {
-          "id": "aile-trailer-s2",
-          "title": "Season 2 Teaser: The Soykan Reckoning",
-          "thumbnailUrl": "https://images.unsplash.com/photo-1509198397868-475647b2a1e5?auto=format&fit=crop&w=640&q=80",
-          "videoUrl": "https://vjs.zencdn.net/v/oceans.mp4",
-          "duration": "2m 10s"
-        }
-      ],
-      "cast": [
-        {
-          "id": "cast-1078769",
-          "name": "Kıvanç Tatlıtuğ",
-          "character": "Aslan Soykan",
-          "profileUrl": "https://image.tmdb.org/t/p/w300/rs7Z3PKa82UhKGQLrBNAy0JAWV5.jpg",
-          "order": 0,
-          "tmdbId": 1078769,
-          "biography": "One of Turkey’s most renowned and versatile leading men, Kıvanç Tatlıtuğ delivers a powerhouse, multi-award-winning performance as Aslan Soykan in Aile and Muzaffer in The Butterfly’s Dream."
-        },
-        {
-          "id": "cast-1258305",
-          "name": "Serenay Sarıkaya",
-          "character": "Devin Akın Soykan",
-          "profileUrl": "https://image.tmdb.org/t/p/w300/1SJAapOz81mn34WTmlx0SoPIVm.jpg",
-          "order": 1,
-          "tmdbId": 1258305,
-          "biography": "Acclaimed Turkish actress and model playing psychologist Devin, bringing electric intensity and profound vulnerability to the screen."
-        },
-        {
-          "id": "cast-142781",
-          "name": "Nur Sürer",
-          "character": "Hülya Soykan",
-          "profileUrl": "https://image.tmdb.org/t/p/w300/dHTgCwwmGyvJK5LyCpFtzYpap2d.jpg",
-          "order": 2,
-          "tmdbId": 142781,
-          "biography": "Legendary Turkish character actress portraying the formidable, controlling matriarch Hülya Soykan who reigns with an iron fist over the family estate."
-        },
-        {
-          "id": "cast-98834",
-          "name": "Nejat İşler",
-          "character": "Cihan Soykan",
-          "profileUrl": "https://image.tmdb.org/t/p/w300/xFhmBekB2odhRY335lJ6rWiIdyw.jpg",
-          "order": 3,
-          "tmdbId": 98834,
-          "biography": "Critically acclaimed Turkish actor portraying Aslan’s estranged, deeply troubled older brother Cihan Soykan."
-        },
-        {
-          "id": "cast-1254543",
-          "name": "Canan Ergüder",
-          "character": "Leyla Soykan Sayıcı",
-          "profileUrl": "https://image.tmdb.org/t/p/w300/8CCShaweDW2bdvb0dqkf1DIsfvu.jpg",
-          "order": 4,
-          "tmdbId": 1254543,
-          "biography": "Known for Acting"
-        },
-        {
-          "id": "cast-1252057",
-          "name": "Yüsra Geyik",
-          "character": "Yağmur Akın",
-          "profileUrl": "https://image.tmdb.org/t/p/w300/eT9Uhy61Svh90kn2OdYEUXJKqWq.jpg",
-          "order": 5,
-          "tmdbId": 1252057,
-          "biography": "Known for Acting"
-        },
-        {
-          "id": "cast-3293299",
-          "name": "Umutcan Ütebay",
-          "character": "Eko",
-          "profileUrl": "https://image.tmdb.org/t/p/w300/3RwqXEmnf4c6S2WCUFRPpMDrr65.jpg",
-          "order": 6,
-          "tmdbId": 3293299,
-          "biography": "Known for Acting"
-        },
-        {
-          "id": "cast-2060217",
-          "name": "Emel Göksu",
-          "character": "Seher Soykan",
-          "profileUrl": "https://image.tmdb.org/t/p/w300/6jXTmbT2qCtNzFJE9etlYfHkLNj.jpg",
-          "order": 7,
-          "tmdbId": 2060217,
-          "biography": "Known for Acting"
-        },
-        {
-          "id": "cast-1976006",
-          "name": "Abdurrahman Yunusoğlu",
-          "character": "Turgut",
-          "profileUrl": "https://image.tmdb.org/t/p/w300/eirVZNGg0D6vdq78gfW1HjzFnXf.jpg",
-          "order": 8,
-          "tmdbId": 1976006,
-          "biography": "Known for Acting"
-        },
-        {
-          "id": "cast-4521193",
-          "name": "Defne Piriçci",
-          "character": "Zeynep",
-          "profileUrl": "https://image.tmdb.org/t/p/w300/dqL9QT0467tgkgApTSK7K31ofxY.jpg",
-          "order": 9,
-          "tmdbId": 4521193,
-          "biography": "Known for Acting"
-        },
-        {
-          "id": "cast-1252188",
-          "name": "Levent Ülgen",
-          "character": "İbrahim Soykan",
-          "profileUrl": "https://image.tmdb.org/t/p/w300/lNOELcWVaUNSg2FOuVpsRdNwCBY.jpg",
-          "order": 10,
-          "tmdbId": 1252188,
-          "biography": "Known for Acting"
-        },
-        {
-          "id": "cast-145427",
-          "name": "Musa Uzunlar",
-          "character": "İlyas Koruzade",
-          "profileUrl": "https://image.tmdb.org/t/p/w300/2HduNZGj1oo1blldSAVLQGs4irt.jpg",
-          "order": 11,
-          "tmdbId": 145427,
-          "biography": "Known for Acting"
-        },
-        {
-          "id": "cast-3461502",
-          "name": "Ali Savaşçı",
-          "character": "İskoç",
-          "profileUrl": "https://image.tmdb.org/t/p/w300/xJjHfTbqc7jGYJXbdQ89TpBtf6H.jpg",
-          "order": 12,
-          "tmdbId": 3461502,
-          "biography": "Known for Acting"
-        },
-        {
-          "id": "cast-3761361",
-          "name": "Ali Buğra Bıyıkçı",
-          "character": "Kaya",
-          "profileUrl": "https://image.tmdb.org/t/p/w300/oBD8OyQsSqOQfNg30ksZIVcG7m2.jpg",
-          "order": 13,
-          "tmdbId": 3761361,
-          "biography": "Known for Acting"
-        },
-        {
-          "id": "cast-1052799",
-          "name": "Rüçhan Çalışkur",
-          "character": "Kiymet",
-          "profileUrl": "https://image.tmdb.org/t/p/w300/2DR51lZukHm2b8BRg9k6AIyZHyK.jpg",
-          "order": 14,
-          "tmdbId": 1052799,
-          "biography": "Known for Acting"
-        },
-        {
-          "id": "cast-1252930",
-          "name": "İpek Tenolcay",
-          "character": "Nese",
-          "profileUrl": "https://image.tmdb.org/t/p/w300/eoDIoI0uhNibVEH8jW0PLheH45o.jpg",
-          "order": 15,
-          "tmdbId": 1252930,
-          "biography": "Known for Acting"
-        },
-        {
-          "id": "cast-588716",
-          "name": "Selin Şekerci",
-          "character": "Serap",
-          "profileUrl": "https://image.tmdb.org/t/p/w300/nVf6xKPEwsauxlddqGHUbiTmQmg.jpg",
-          "order": 16,
-          "tmdbId": 588716,
-          "biography": "Known for Acting"
-        },
-        {
-          "id": "cast-225188",
-          "name": "Ayda Aksel",
-          "character": "Nedret Soykan",
-          "profileUrl": "https://image.tmdb.org/t/p/w300/x0WilrNHAl1Vwcrde82GIsca4Lc.jpg",
-          "order": 17,
-          "tmdbId": 225188,
-          "biography": "Known for Acting"
-        },
-        {
-          "id": "cast-2840756",
-          "name": "Alper Çankaya",
-          "character": "Bedri",
-          "profileUrl": "https://image.tmdb.org/t/p/w300/xzdImGqRZvt9tYXCQAn4Y71HFPJ.jpg",
-          "order": 18,
-          "tmdbId": 2840756,
-          "biography": "Known for Acting"
-        },
-        {
-          "id": "cast-1975604",
-          "name": "Mert Denizmen",
-          "character": "Tolga Sayıcı",
-          "profileUrl": "https://image.tmdb.org/t/p/w300/w6IxMxbZxTghtM1hUUVolynckE4.jpg",
-          "order": 19,
-          "tmdbId": 1975604,
-          "biography": "Known for Acting"
-        },
-        {
-          "id": "cast-2679744",
-          "name": "İpek Çiçek",
-          "character": "Ceylan Soykan",
-          "profileUrl": "https://image.tmdb.org/t/p/w300/7pggyJuTo2z72hdJZIjwRULA62I.jpg",
-          "order": 20,
-          "tmdbId": 2679744,
-          "biography": "Known for Acting"
-        },
-        {
-          "id": "cast-3386033",
-          "name": "Ecem Simge Yurdatapan",
-          "character": "Aysel",
-          "profileUrl": "https://image.tmdb.org/t/p/w300/bSdGV76WIpiMvF1tqAt9CFrYVWZ.jpg",
-          "order": 21,
-          "tmdbId": 3386033,
-          "biography": "Known for Acting"
-        },
-        {
-          "id": "cast-1110446",
-          "name": "Ushan Çakır",
-          "character": "Ati",
-          "profileUrl": "https://image.tmdb.org/t/p/w300/vT9KZvNGeu39NEv4jDnRl8sFRpB.jpg",
-          "order": 22,
-          "tmdbId": 1110446,
-          "biography": "Known for Acting"
-        },
-        {
-          "id": "cast-3882631",
-          "name": "Nil Sude Albayrak",
-          "character": "Cemre",
-          "profileUrl": "https://image.tmdb.org/t/p/w300/zBlJYvTtLaqp4K7bAFNpxBWCeen.jpg",
-          "order": 23,
-          "tmdbId": 3882631,
-          "biography": "Known for Acting"
-        },
-        {
-          "id": "cast-4606124",
-          "name": "Esma Yeşim Gül",
-          "character": "Ezgi",
-          "profileUrl": "https://image.tmdb.org/t/p/w300/dvROYBQ3HfM7xytrCzyZAFVxFX3.jpg",
-          "order": 24,
-          "tmdbId": 4606124,
-          "biography": "Known for Acting"
-        },
-        {
-          "id": "cast-2786245",
-          "name": "Şirin Saldamlı",
-          "character": "Esma",
-          "profileUrl": "https://image.tmdb.org/t/p/w300/fHCuvVh6SGBW2VMh5gTMCUsIbxL.jpg",
-          "order": 25,
-          "tmdbId": 2786245,
-          "biography": "Known for Acting"
-        },
-        {
-          "id": "cast-133819",
-          "name": "Tamer Yiğit",
-          "character": "Yusuf Soykan",
-          "profileUrl": "https://image.tmdb.org/t/p/w300/5f8Guql80VAk3O9ZoECka9XtxDA.jpg",
-          "order": 26,
-          "tmdbId": 133819,
-          "biography": "Known for Acting"
-        },
-        {
-          "id": "cast-1729255",
-          "name": "Anıl İlter",
-          "character": "Serhat Koruzade",
-          "profileUrl": "https://image.tmdb.org/t/p/w300/l5AIU6iU92CqBDQl3QSlrXa2xAv.jpg",
-          "order": 27,
-          "tmdbId": 1729255,
-          "biography": "Known for Acting"
-        },
-        {
-          "id": "cast-1916010",
-          "name": "Tülay Bekret",
-          "character": "Cast",
-          "profileUrl": "https://image.tmdb.org/t/p/w300/8RHnJH3GeHqv5DH4QGAI7eoYwTi.jpg",
-          "order": 28,
-          "tmdbId": 1916010,
-          "biography": "Known for Acting"
-        },
-        {
-          "id": "cast-3358351",
-          "name": "Baran Ayhan",
-          "character": "Cast",
-          "profileUrl": "https://image.tmdb.org/t/p/w300/jTax3cuhjft1cDh0nSOz2LLO2Wr.jpg",
-          "order": 29,
-          "tmdbId": 3358351,
-          "biography": "Known for Acting"
-        },
-        {
-          "id": "cast-2882766",
-          "name": "Safak Kilit",
-          "character": "Ridvan",
-          "profileUrl": "https://image.tmdb.org/t/p/w300/bSoQr1UVwDi6mq0xs0eEfJs4wO8.jpg",
-          "order": 30,
-          "tmdbId": 2882766,
-          "biography": "Known for Acting"
-        },
-        {
-          "id": "cast-4769533",
-          "name": "İlker Kayhan",
-          "character": "Cast",
-          "profileUrl": "https://image.tmdb.org/t/p/w300/dKgsZk2CYpYHsK7Xn5W9WXIePmw.jpg",
-          "order": 31,
-          "tmdbId": 4769533,
-          "biography": "Known for Acting"
-        },
-        {
-          "id": "cast-4997090",
-          "name": "Caner Öztürk",
-          "character": "Payidar",
-          "profileUrl": "https://image.tmdb.org/t/p/w300/ldcvou1S4S2KvKrlORMXmExIb9a.jpg",
-          "order": 32,
-          "tmdbId": 4997090,
-          "biography": "Known for Acting"
-        }
-      ],
-      "seasons": [
-        {
-          "seasonNumber": 1,
-          "title": "Season 1: Blood and Therapy",
-          "episodes": [
-            {
-              "id": "aile-s1-e1",
-              "seasonNumber": 1,
-              "episodeNumber": 1,
-              "title": "Episode 1: The Flight to Izmir",
-              "duration": "50m",
-              "thumbnailUrl": "https://images.unsplash.com/photo-1519501025264-65ba15a82390?auto=format&fit=crop&w=640&q=80",
-              "synopsis": "A serendipitous encounter on a commercial flight connects Aslan and Devin. Neither anticipates that their wounded pasts mirror each other’s deepest secrets.",
-              "videoUrl": "https://vjs.zencdn.net/v/oceans.mp4",
-              "releaseDate": "Mar 7, 2023"
-            },
-            {
-              "id": "aile-s1-e2",
-              "seasonNumber": 1,
-              "episodeNumber": 2,
-              "title": "Episode 2: Dinner at the Soykan Villa",
-              "duration": "53m",
-              "thumbnailUrl": "https://images.unsplash.com/photo-1514565131-fce0801e5785?auto=format&fit=crop&w=640&q=80",
-              "synopsis": "Devin attends Sunday family dinner at the imposing Soykan mansion, quickly discovering the suffocating psychological rules imposed by matriarch Hülya.",
-              "videoUrl": "https://vjs.zencdn.net/v/oceans.mp4",
-              "releaseDate": "Mar 14, 2023"
-            },
-            {
-              "id": "aile-s1-e3",
-              "seasonNumber": 1,
-              "episodeNumber": 3,
-              "title": "Episode 3: The Night Club Ambush",
-              "duration": "47m",
-              "thumbnailUrl": "https://images.unsplash.com/photo-1517841905240-472988babdf9?auto=format&fit=crop&w=640&q=80",
-              "synopsis": "An illegal nightclub deal spirals out of control. Aslan risks his life and reputation to shield Devin from underworld retaliations.",
-              "videoUrl": "https://vjs.zencdn.net/v/oceans.mp4",
-              "releaseDate": "Mar 21, 2023"
-            }
-          ]
-        },
-        {
-          "seasonNumber": 2,
-          "title": "Season 2: Dynasty in Flames",
-          "episodes": [
-            {
-              "id": "aile-s2-e1",
-              "seasonNumber": 2,
-              "episodeNumber": 1,
-              "title": "Episode 1: The Breaking Point",
-              "duration": "54m",
-              "thumbnailUrl": "https://images.unsplash.com/photo-1509198397868-475647b2a1e5?auto=format&fit=crop&w=640&q=80",
-              "synopsis": "Following a devastating gunshot betrayal at the wedding ceremony, Devin must choose between her psychological oath and her devotion to Aslan.",
-              "videoUrl": "https://vjs.zencdn.net/v/oceans.mp4",
-              "releaseDate": "Oct 3, 2023"
-            }
-          ]
-        }
-      ],
-      "whereToWatch": [
-        {
-          "provider": "youtube",
-          "name": "Watch on YouTube",
-          "url": "https://www.youtube.com/results?search_query=aile+dizisi+show+tv",
-          "iconType": "youtube",
-          "freeOrSub": "Official Channel"
-        },
-        {
-          "provider": "netflix",
-          "name": "Watch on Netflix",
-          "url": "https://www.netflix.com",
-          "iconType": "netflix",
-          "freeOrSub": "Subscription"
-        }
-      ],
-      "blog": {
-        "heading": "Psychological Noir Meets Istanbul Romance: The Brilliance of Aile",
-        "publishedDate": "January 2026",
-        "author": "CineFlix Drama Critic",
-        "readTime": "4 min read",
-        "heroImage": "https://images.unsplash.com/photo-1519501025264-65ba15a82390?auto=format&fit=crop&w=1200&q=80",
-        "sections": [
-          {
-            "title": "The Sopranos Reimagined on the Bosphorus",
-            "content": "Written by Hakan Bonomo and directed by Ahmet Katıksız, Aile deconstructs the classic mafia crime trope through clinical psychoanalysis. Aslan Soykan is not merely a suited underworld heir; he is a man trapped inside generations of ancestral guilt, emotional neglect, and an omnipotent mother who demands total submission.",
-            "quote": "“The real family is the one you survive, not the one you are born into.”"
-          },
-          {
-            "title": "Electrifying Screen Chemistry",
-            "content": "Kıvanç Tatlıtuğ and Serenay Sarıkaya generate rare, palpable screen chemistry. Their verbal duels in Devin’s therapy clinic crackle with tension as professional boundaries melt under raw attraction. The series redefines Turkish primetime drama with cinematic color grading, moody jazz cues, and razor-sharp pacing."
-          }
-        ],
-        "trivia": [
-          "Kıvanç Tatlıtuğ collaborated with clinical therapists to realistically portray panic attacks on camera.",
-          "The lavish seaside mansion used as the Soykan Estate is a historical villa in Reşadiye, Istanbul."
-        ]
-      },
-      "tmdbId": 219446,
-      "categories": [
-        "Thrillers & Crime",
-        "Romantic Dramas",
-        "Family Sagas"
-      ],
-      "supportingTitles": [
-        "The Family",
-        "Aslan Soykan",
-        "Devin Akin",
-        "Turkish Mafia"
-      ],
-      "all_time_score": 4421,
-      "play_events": [
-        {
-          "timestamp": 1792860022615
-        },
-        {
-          "timestamp": 1792860024626
-        },
-        {
-          "timestamp": 1792954054232
-        },
-        {
-          "timestamp": 1793012414583
-        },
-        {
-          "timestamp": 1793012416637
-        },
-        {
-          "timestamp": 1793012420450
-        },
-        {
-          "timestamp": 1793012424785
-        },
-        {
-          "timestamp": 1793016947594
-        },
-        {
-          "timestamp": 1793016960205
-        },
-        {
-          "timestamp": 1793016975069
-        },
-        {
-          "timestamp": 1793079910674
-        }
-      ]
-    },
-    {
-      "id": "kelebegin-ruyasi",
-      "title": "The Butterfly's Dream",
-      "turkishTitle": "Kelebeğin Rüyası",
-      "type": "movie",
-      "backdropUrl": "https://images.unsplash.com/photo-1489599849927-2ee91cede3ba?auto=format&fit=crop&w=1920&q=80",
-      "posterLandscapeUrl": "https://images.unsplash.com/photo-1451187580459-43490279c0fa?auto=format&fit=crop&w=1280&q=80",
-      "logoText": "KELEBEĞİN",
-      "logoSubtext": "RÜYASI",
-      "synopsis": "Set in 1941 against the coal-dust backdrop of wartime Zonguldak, two young, impoverished poets — Rüştü Onur and Muzaffer Tayyip Uslu — struggle with tuberculosis while passionately writing verses for a beautiful bourgeois high school girl. Directed by Yılmaz Erdoğan, this Oscar-submitted masterpiece is an ode to love, literature, and the fleeting beauty of youth.",
-      "shortDescription": "In a 1940s mining town, two terminally ill poets find solace in verse and enter a lyrical bet for the heart of a charming girl.",
-      "ambientColor": "#7c3aed",
-      "ambientGlowRgb": "124, 58, 237",
-      "trailerUrl": "https://www.w3schools.com/html/mov_bbb.mp4",
-      "releaseYear": "2013",
-      "maturityRating": "13+",
-      "maturityDetails": "illness, tragedy, emotional heartbreak, smoking, mild language",
-      "matchScore": 95,
-      "imdbRating": 8.9,
-      "durationOrSeasons": "2h 18m",
-      "genres": [
-        "Romantic Series",
-        "Poetic Drama",
-        "Historical",
-        "Award Winner"
-      ],
-      "thisSeriesIs": [
-        "Poetic",
-        "Emotional",
-        "Bittersweet",
-        "Masterpiece"
-      ],
-      "qualityBadges": [
-        "4K Ultra HD",
-        "Award Winner"
-      ],
-      "points": 3821,
-      "trailersAndMore": [
-        {
-          "id": "butterfly-trailer-main",
-          "title": "Oscar Submission 4K Trailer: Kelebeğin Rüyası",
-          "thumbnailUrl": "https://images.unsplash.com/photo-1489599849927-2ee91cede3ba?auto=format&fit=crop&w=640&q=80",
-          "videoUrl": "https://www.w3schools.com/html/mov_bbb.mp4",
-          "duration": "2m 20s"
-        },
-        {
-          "id": "butterfly-featurette",
-          "title": "The Poetry of Zonguldak: Behind-the-Scenes",
-          "thumbnailUrl": "https://images.unsplash.com/photo-1534447677768-be436bb09401?auto=format&fit=crop&w=640&q=80",
-          "videoUrl": "https://www.w3schools.com/html/mov_bbb.mp4",
-          "duration": "4m 12s"
-        }
-      ],
-      "cast": [
-        {
-          "id": "cast-1078769",
-          "name": "Kıvanç Tatlıtuğ",
-          "character": "Muzaffer Tayyip Uslu",
-          "profileUrl": "https://image.tmdb.org/t/p/w300/rs7Z3PKa82UhKGQLrBNAy0JAWV5.jpg",
-          "order": 0,
-          "tmdbId": 1078769,
-          "biography": "Kıvanç Tatlıtuğ underwent a dramatic 15kg weight loss for this career-defining role as the tragic young poet Muzaffer Tayyip Uslu, winning immense critical acclaim."
-        },
-        {
-          "id": "cast-238939",
-          "name": "Mert Fırat",
-          "character": "Rüştü Onur",
-          "profileUrl": "https://image.tmdb.org/t/p/w300/kjQdD8sgyjrxlkdNFirScxx2AEb.jpg",
-          "order": 1,
-          "tmdbId": 238939,
-          "biography": "Celebrated Turkish film actor co-starring as Rüştü Onur, whose radiant optimism and poetic soul illuminate the darkest corners of the sanitarium."
-        },
-        {
-          "id": "cast-225186",
-          "name": "Belçim Bilgin",
-          "character": "Suzan Özsoy",
-          "profileUrl": "https://image.tmdb.org/t/p/w300/43eIKc24pCAt47uTVcTlh51ak0x.jpg",
-          "order": 2,
-          "tmdbId": 225186,
-          "biography": "Plays Suzan, the mayor’s radiant daughter whose love sparks the immortal poetry contest between the two young writers."
-        },
-        {
-          "id": "cast-1153569",
-          "name": "Farah Zeynep Abdullah",
-          "character": "Mediha Sessiz",
-          "profileUrl": "https://image.tmdb.org/t/p/w300/KaX0QkNwxZMidrEZSGUHOlsbt1.jpg",
-          "order": 3,
-          "tmdbId": 1153569,
-          "biography": "Acclaimed actress playing Mediha Sessiz, Rüştü’s courageous soulmate who shares his journey through the sanitarium."
-        },
-        {
-          "id": "cast-99314",
-          "name": "Yılmaz Erdoğan",
-          "character": "Behçet Necatigil",
-          "profileUrl": "https://image.tmdb.org/t/p/w300/nl7WulHPoP6bw4phMwp0VuuJgyL.jpg",
-          "order": 4,
-          "tmdbId": 99314,
-          "biography": "Known for Acting"
-        },
-        {
-          "id": "cast-230759",
-          "name": "Ahmet Mümtaz Taylan",
-          "character": "Zikri Özsoy",
-          "profileUrl": "https://image.tmdb.org/t/p/w300/7BcirImyPmuD8PxMVKPx6xefunW.jpg",
-          "order": 5,
-          "tmdbId": 230759,
-          "biography": "Known for Acting"
-        },
-        {
-          "id": "cast-46065",
-          "name": "Taner Birsel",
-          "character": "İsmail Uslu",
-          "profileUrl": "https://image.tmdb.org/t/p/w300/zq4uEMEezi9Nwev5KdVyO5juQ9e.jpg",
-          "order": 6,
-          "tmdbId": 46065,
-          "biography": "Known for Acting"
-        },
-        {
-          "id": "cast-1576308",
-          "name": "İpek Bilgin",
-          "character": "Muzaffer's Mother",
-          "profileUrl": "https://image.tmdb.org/t/p/w300/cmFNIqTHgVzZG7wFjES9HMQs1fn.jpg",
-          "order": 7,
-          "tmdbId": 1576308,
-          "biography": "Known for Acting"
-        },
-        {
-          "id": "cast-1452408",
-          "name": "Devrim Yakut",
-          "character": "Rüştü'nün Annesi",
-          "profileUrl": "https://image.tmdb.org/t/p/w300/i7WGKyvlDluHkXx4Tkqn3WsILZi.jpg",
-          "order": 8,
-          "tmdbId": 1452408,
-          "biography": "Known for Acting"
-        },
-        {
-          "id": "cast-1955124",
-          "name": "Aksel Bonfil",
-          "character": "Kürşat",
-          "profileUrl": "https://image.tmdb.org/t/p/w300/9IhyB0yhowwVufWQREZCn0gx5yo.jpg",
-          "order": 9,
-          "tmdbId": 1955124,
-          "biography": "Known for Acting"
-        },
-        {
-          "id": "cast-1504614",
-          "name": "Servet Pandur",
-          "character": "Suzan'ın Annesi",
-          "profileUrl": "https://image.tmdb.org/t/p/w300/vot4ZpecauV0GgfTXJf1AdR34oF.jpg",
-          "order": 10,
-          "tmdbId": 1504614,
-          "biography": "Known for Acting"
-        },
-        {
-          "id": "cast-1058955",
-          "name": "Ayten Soykök",
-          "character": "Mediha'nın Annesi",
-          "profileUrl": "https://image.tmdb.org/t/p/w300/eSbKltjr2tOs4T8aul3xwR2mr8l.jpg",
-          "order": 11,
-          "tmdbId": 1058955,
-          "biography": "Known for Acting"
-        },
-        {
-          "id": "cast-1045516",
-          "name": "Emin Gürsoy",
-          "character": "Mediha'nın Babası",
-          "profileUrl": "https://image.tmdb.org/t/p/w300/eADpb5zeP2TXDfX28ic2aEiFXUv.jpg",
-          "order": 12,
-          "tmdbId": 1045516,
-          "biography": "Known for Acting"
-        },
-        {
-          "id": "cast-1575039",
-          "name": "Celalettin Demirel",
-          "character": "Rüştü'nün Babası",
-          "profileUrl": "https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=300&q=80",
-          "order": 13,
-          "tmdbId": 1575039,
-          "biography": "Known for Acting"
-        },
-        {
-          "id": "cast-150278",
-          "name": "Engin Şenkan",
-          "character": "Başhekim",
-          "profileUrl": "https://image.tmdb.org/t/p/w300/o5sfViYnDDYLt9OKSFM824SugtU.jpg",
-          "order": 14,
-          "tmdbId": 150278,
-          "biography": "Known for Acting"
-        },
-        {
-          "id": "cast-145344",
-          "name": "Salih Kalyon",
-          "character": "Battal",
-          "profileUrl": "https://image.tmdb.org/t/p/w300/2yIjjrK8Vnk0Z6moNQnuD242DN8.jpg",
-          "order": 15,
-          "tmdbId": 145344,
-          "biography": "Known for Acting"
-        },
-        {
-          "id": "cast-1995559",
-          "name": "Funda Şirinkal",
-          "character": "Nurcan",
-          "profileUrl": "https://image.tmdb.org/t/p/w300/9q3qCP1qMJ6LzWmOwDDcgX5Hjey.jpg",
-          "order": 16,
-          "tmdbId": 1995559,
-          "biography": "Known for Acting"
-        },
-        {
-          "id": "cast-4722325",
-          "name": "Deniz Erdoğan",
-          "character": "Köylü",
-          "profileUrl": "https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=300&q=80",
-          "order": 17,
-          "tmdbId": 4722325,
-          "biography": "Known for Acting"
-        },
-        {
-          "id": "cast-3580117",
-          "name": "Serap Oğan Eren",
-          "character": "Kürşat'ın Annesi",
-          "profileUrl": "https://image.tmdb.org/t/p/w300/xeDVZE7ZeDZnd5nvssV9g6p6P7H.jpg",
-          "order": 18,
-          "tmdbId": 3580117,
-          "biography": "Known for Acting"
-        },
-        {
-          "id": "cast-3404555",
-          "name": "Oğuz Okul",
-          "character": "Kürşat'ın Babası",
-          "profileUrl": "https://image.tmdb.org/t/p/w300/vwO0Anktvdanyg9rk6y2d3jW6tX.jpg",
-          "order": 19,
-          "tmdbId": 3404555,
-          "biography": "Known for Acting"
-        },
-        {
-          "id": "cast-3115555",
-          "name": "Şirincan Çakıroğlu",
-          "character": "Ayşegül",
-          "profileUrl": "https://image.tmdb.org/t/p/w300/5tkUj7rRBjdUHkQFNrxf64uWtDx.jpg",
-          "order": 20,
-          "tmdbId": 3115555,
-          "biography": "Known for Acting"
-        },
-        {
-          "id": "cast-3685201",
-          "name": "İrem Şentürk",
-          "character": "Suzan'ın Arkadaşı",
-          "profileUrl": "https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=300&q=80",
-          "order": 21,
-          "tmdbId": 3685201,
-          "biography": "Known for Acting"
-        },
-        {
-          "id": "cast-4722326",
-          "name": "Begüm Ertuğrul",
-          "character": "Suzan'ın Arkadaşı",
-          "profileUrl": "https://image.tmdb.org/t/p/w300/cNJOOy9ipUAoeqdcc06Q8aUyz55.jpg",
-          "order": 22,
-          "tmdbId": 4722326,
-          "biography": "Known for Acting"
-        },
-        {
-          "id": "cast-3775603",
-          "name": "Sedef İnanç",
-          "character": "Öğrenci",
-          "profileUrl": "https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=300&q=80",
-          "order": 23,
-          "tmdbId": 3775603,
-          "biography": "Known for Editing"
-        },
-        {
-          "id": "cast-4722328",
-          "name": "Kasım Bektaş",
-          "character": "Öğrenci",
-          "profileUrl": "https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=300&q=80",
-          "order": 24,
-          "tmdbId": 4722328,
-          "biography": "Known for Acting"
-        },
-        {
-          "id": "cast-1596090",
-          "name": "Ozan Uygun",
-          "character": "Rüştü'nün Kardeşi",
-          "profileUrl": "https://image.tmdb.org/t/p/w300/tUVl4XeDyw0rEplR3zRp7EvRpyM.jpg",
-          "order": 25,
-          "tmdbId": 1596090,
-          "biography": "Known for Acting"
-        },
-        {
-          "id": "cast-4518107",
-          "name": "Ömer Rulinduz",
-          "character": "Mediha'nın Ağabeyi",
-          "profileUrl": "https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=300&q=80",
-          "order": 26,
-          "tmdbId": 4518107,
-          "biography": "Known for Acting"
-        },
-        {
-          "id": "cast-1522705",
-          "name": "Miray Akay",
-          "character": "Mediha'nın Kardeşi",
-          "profileUrl": "https://image.tmdb.org/t/p/w300/bfTA0XIk8IN2HrX7EeuUgjGItPi.jpg",
-          "order": 27,
-          "tmdbId": 1522705,
-          "biography": "Known for Acting"
-        },
-        {
-          "id": "cast-3642968",
-          "name": "İlayda Hoşgör",
-          "character": "Kürşat'ın Kardeşi",
-          "profileUrl": "https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=300&q=80",
-          "order": 28,
-          "tmdbId": 3642968,
-          "biography": "Known for Acting"
-        },
-        {
-          "id": "cast-1458867",
-          "name": "Deniz Özerman",
-          "character": "Başhemşire",
-          "profileUrl": "https://image.tmdb.org/t/p/w300/2bzbVzX3DmRjVuYENvKC2sWyj3M.jpg",
-          "order": 29,
-          "tmdbId": 1458867,
-          "biography": "Known for Acting"
-        },
-        {
-          "id": "cast-4722330",
-          "name": "Şebnem Özberk",
-          "character": "Başhemşire",
-          "profileUrl": "https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=300&q=80",
-          "order": 30,
-          "tmdbId": 4722330,
-          "biography": "Known for Acting"
-        },
-        {
-          "id": "cast-1814054",
-          "name": "Barış Çakmak",
-          "character": "Oktay Rıfat",
-          "profileUrl": "https://image.tmdb.org/t/p/w300/nZJ1zsztjxtuyn8EXE67qR3Gstc.jpg",
-          "order": 31,
-          "tmdbId": 1814054,
-          "biography": "Known for Acting"
-        }
-      ],
-      "whereToWatch": [
-        {
-          "provider": "netflix",
-          "name": "Watch on Netflix",
-          "url": "https://www.netflix.com",
-          "iconType": "netflix",
-          "freeOrSub": "Subscription"
-        },
-        {
-          "provider": "youtube",
-          "name": "Watch on YouTube Movies",
-          "url": "https://www.youtube.com/results?search_query=kelebegin+ruyasi+film",
-          "iconType": "youtube",
-          "freeOrSub": "Official Channel"
-        }
-      ],
-      "blog": {
-        "heading": "A Cinematic Masterpiece of Verse: The Poetic Heart of Kelebeğin Rüyası",
-        "publishedDate": "November 2026",
-        "author": "CineFlix Cinema Guild",
-        "readTime": "5 min read",
-        "heroImage": "https://images.unsplash.com/photo-1489599849927-2ee91cede3ba?auto=format&fit=crop&w=1200&q=80",
-        "sections": [
-          {
-            "title": "Resurrecting Turkey’s Lost Generation of Poets",
-            "content": "Before director Yılmaz Erdoğan embarked on The Butterfly’s Dream, the true stories of Muzaffer Tayyip Uslu and Rüştü Onur were largely forgotten footnotes in mid-century literature. Through sweeping tracking shots of 1940s coal mines, period streetcars, and steam trains, the film pays sublime tribute to young souls whose lives were brief as butterflies yet immortalized in ink.",
-            "quote": "“Love is like a poem; some write it with ink, some with blood, and some with tears.”"
-          },
-          {
-            "title": "Kıvanç Tatlıtuğ’s Physical Transformation",
-            "content": "To authentically represent a young poet succumbing to consumption, Kıvanç Tatlıtuğ lost over 30 pounds and spent months studying breathing techniques and 1940s Turkish phonetics. His performance alongside Mert Fırat earned standing ovations across international film festivals and was officially submitted to the 86th Academy Awards for Best Foreign Language Film."
-          }
-        ],
-        "trivia": [
-          "The film was selected as Turkey’s official entry for the 86th Academy Awards (Oscars).",
-          "Composer Rahman Altın won the World Soundtrack Award for the evocative piano score."
-        ]
-      },
-      "tmdbId": 171160,
-      "categories": [
-        "Romantic Dramas",
-        "Family Sagas"
-      ],
-      "supportingTitles": [
-        "The Butterfly's Dream",
-        "Kelebegin Ruyasi",
-        "Poets of Zonguldak"
-      ],
-      "all_time_score": 3821,
-      "play_events": [
-        {
-          "timestamp": 1793019386813
-        }
-      ]
-    },
-    {
-      "id": "mucize-yedinci-kogus",
-      "title": "Miracle in Cell No. 7",
-      "turkishTitle": "7. Koğuştaki Mucize",
-      "type": "movie",
-      "backdropUrl": "https://images.unsplash.com/photo-1478760329108-5c3ed9d495a0?auto=format&fit=crop&w=1920&q=80",
-      "posterLandscapeUrl": "https://images.unsplash.com/photo-1536440136628-849c177e76a1?auto=format&fit=crop&w=1280&q=80",
-      "logoText": "7. KOĞUŞTAKİ",
-      "logoSubtext": "MUCİZE",
-      "synopsis": "Separated from his beloved daughter Ova, Memo—a loving, intellectually disabled shepherd—is unjustly framed for the tragic death of a military commander’s daughter in 1983 Aegean Turkey. Sentenced to death, Memo touches the hardened hearts of his cynical fellow inmates in Cell 7, who unite in an extraordinary scheme to reunite father and daughter before the gallows.",
-      "shortDescription": "A wrongfully convicted father with an intellectual disability relies on his fellow inmates to see his darling daughter again before his execution.",
-      "ambientColor": "#d97706",
-      "ambientGlowRgb": "217, 119, 6",
-      "trailerUrl": "https://vjs.zencdn.net/v/oceans.mp4",
-      "releaseYear": "2019",
-      "maturityRating": "13+",
-      "maturityDetails": "emotional distress, wrongful imprisonment, thematic drama, mild violence",
-      "matchScore": 99,
-      "imdbRating": 8.2,
-      "durationOrSeasons": "2h 12m",
-      "genres": [
-        "Emotional Drama",
-        "Family Tragedy",
-        "Tearjerker",
-        "Inspiring"
-      ],
-      "thisSeriesIs": [
-        "Emotional",
-        "Heartbreaking",
-        "Inspiring",
-        "Uplifting"
-      ],
-      "qualityBadges": [
-        "4K Ultra HD",
-        "HDR",
-        "Dolby Atmos"
-      ],
-      "points": 4625,
-      "announcementPill": "Global Sensation • #1 Box Office Hit",
-      "is_recommended": true,
-      "trailersAndMore": [
-        {
-          "id": "mucize-trailer-1",
-          "title": "Official International 4K Trailer: Miracle in Cell No. 7",
-          "thumbnailUrl": "https://images.unsplash.com/photo-1536440136628-849c177e76a1?auto=format&fit=crop&w=640&q=80",
-          "videoUrl": "https://vjs.zencdn.net/v/oceans.mp4",
-          "duration": "2m 24s"
-        }
-      ],
-      "cast": [
-        {
-          "id": "cast-1163030",
-          "name": "Aras Bulut İynemli",
-          "character": "Memo",
-          "profileUrl": "https://image.tmdb.org/t/p/w300/bAWgmcF26tPZv4gcwc9jmaNB9py.jpg",
-          "order": 0,
-          "tmdbId": 1163030,
-          "biography": "Acclaimed Turkish actor celebrated for portraying complex, deeply emotional roles."
-        },
-        {
-          "id": "cast-1985311",
-          "name": "Nisa Sofiya Aksongur",
-          "character": "Ova",
-          "profileUrl": "https://image.tmdb.org/t/p/w300/rGdkhirqwprZAJDlPTZiQgFY5rk.jpg",
-          "order": 1,
-          "tmdbId": 1985311,
-          "biography": "Prodigious young talent who captured hearts worldwide as Memo’s daughter."
-        },
-        {
-          "id": "cast-556113",
-          "name": "İlker Aksum",
-          "character": "Askorozlu",
-          "profileUrl": "https://image.tmdb.org/t/p/w300/xb77wBCVcLJCmytM031xzXS7KWt.jpg",
-          "order": 2,
-          "tmdbId": 556113,
-          "biography": "Known for Acting"
-        },
-        {
-          "id": "cast-935344",
-          "name": "Mesut Akusta",
-          "character": "Yusuf",
-          "profileUrl": "https://image.tmdb.org/t/p/w300/xkBCl5aFvff43KHDNzhFbh4aGCG.jpg",
-          "order": 3,
-          "tmdbId": 935344,
-          "biography": "Known for Acting"
-        },
-        {
-          "id": "cast-1948853",
-          "name": "Yıldıray Şahinler",
-          "character": "Hafız",
-          "profileUrl": "https://image.tmdb.org/t/p/w300/4RVOox9vz1q9y0n6Cevw7klkH5t.jpg",
-          "order": 4,
-          "tmdbId": 1948853,
-          "biography": "Known for Acting"
-        },
-        {
-          "id": "cast-1258255",
-          "name": "Yurdaer Okur",
-          "character": "Yarbay Aydın",
-          "profileUrl": "https://image.tmdb.org/t/p/w300/4s8EXgAqEvboSiE942bc4RpmjyT.jpg",
-          "order": 5,
-          "tmdbId": 1258255,
-          "biography": "Known for Acting"
-        },
-        {
-          "id": "cast-1251887",
-          "name": "Sarp Akkaya",
-          "character": "Müdür Nail",
-          "profileUrl": "https://image.tmdb.org/t/p/w300/hCsdUZWtoGXdgRJD40klqDWrY7U.jpg",
-          "order": 6,
-          "tmdbId": 1251887,
-          "biography": "Known for Acting"
-        },
-        {
-          "id": "cast-1619852",
-          "name": "Deniz Baysal",
-          "character": "Öğretmen Mine",
-          "profileUrl": "https://image.tmdb.org/t/p/w300/aJNuyuNr7EkVPf3tmAI7GDGqGgV.jpg",
-          "order": 7,
-          "tmdbId": 1619852,
-          "biography": "Known for Acting"
-        },
-        {
-          "id": "cast-1300135",
-          "name": "Deniz Celiloğlu",
-          "character": "Yüzbaşı Faruk",
-          "profileUrl": "https://image.tmdb.org/t/p/w300/dZ7HWUapsnEO6ucbjb4i3rB3Xad.jpg",
-          "order": 8,
-          "tmdbId": 1300135,
-          "biography": "Known for Acting"
-        },
-        {
-          "id": "cast-1053819",
-          "name": "Ferit Kaya",
-          "character": "Ali",
-          "profileUrl": "https://image.tmdb.org/t/p/w300/5ctUbRlRLWRd8yZyfzUSRKq1qbh.jpg",
-          "order": 9,
-          "tmdbId": 1053819,
-          "biography": "Known for Acting"
-        },
-        {
-          "id": "cast-2139428",
-          "name": "Doğukan Polat",
-          "character": "Tevfik",
-          "profileUrl": "https://image.tmdb.org/t/p/w300/t4yj8yQjn0ygqZaIglmhT4OTgmJ.jpg",
-          "order": 10,
-          "tmdbId": 2139428,
-          "biography": "Known for Acting"
-        },
-        {
-          "id": "cast-108009",
-          "name": "Emre Yetim",
-          "character": "Ayna",
-          "profileUrl": "https://image.tmdb.org/t/p/w300/1RW1MNI4eF6vg7OaOxofh2MEpMB.jpg",
-          "order": 11,
-          "tmdbId": 108009,
-          "biography": "Known for Acting"
-        },
-        {
-          "id": "cast-1987801",
-          "name": "Serhan Onat",
-          "character": "Meydancı Selim",
-          "profileUrl": "https://image.tmdb.org/t/p/w300/q8KEnZnsVCDcDccItIoflkV88R9.jpg",
-          "order": 12,
-          "tmdbId": 1987801,
-          "biography": "Known for Acting"
-        },
-        {
-          "id": "cast-2443401",
-          "name": "Gülçin Kültür Şahin",
-          "character": "Hatice",
-          "profileUrl": "https://image.tmdb.org/t/p/w300/aHDAUVp0I4l2UluLTnD7VBqRxaD.jpg",
-          "order": 13,
-          "tmdbId": 2443401,
-          "biography": "Known for Acting"
-        },
-        {
-          "id": "cast-3046751",
-          "name": "Serdar Akülker",
-          "character": "Cengiz",
-          "profileUrl": "https://image.tmdb.org/t/p/w300/ijLluQSm00Rt4poU9mdwb3hdov4.jpg",
-          "order": 14,
-          "tmdbId": 3046751,
-          "biography": "Known for Acting"
-        },
-        {
-          "id": "cast-1948855",
-          "name": "Hayal Köseoğlu",
-          "character": "Ova",
-          "profileUrl": "https://image.tmdb.org/t/p/w300/6u07z4vdDb8WNlwRfD0G8y2UKpG.jpg",
-          "order": 15,
-          "tmdbId": 1948855,
-          "biography": "Known for Acting"
-        },
-        {
-          "id": "cast-2482439",
-          "name": "Nadi Güler",
-          "character": "Baş Gardiyan Şeref",
-          "profileUrl": "https://image.tmdb.org/t/p/w300/g3buvQceAdeYBF7HX1sLczs652y.jpg",
-          "order": 16,
-          "tmdbId": 2482439,
-          "biography": "Known for Acting"
-        },
-        {
-          "id": "cast-2852272",
-          "name": "Özgür Dereli",
-          "character": "Gardiyan Ahmet",
-          "profileUrl": "https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=300&q=80",
-          "order": 17,
-          "tmdbId": 2852272,
-          "biography": "Known for Acting"
-        },
-        {
-          "id": "cast-2068347",
-          "name": "Cankat Aydos",
-          "character": "Kaçak Asker",
-          "profileUrl": "https://image.tmdb.org/t/p/w300/z3dJadVdTRAh4vwkZ3Brl1RQysb.jpg",
-          "order": 18,
-          "tmdbId": 2068347,
-          "biography": "Known for Acting"
-        },
-        {
-          "id": "cast-3046776",
-          "name": "Serhat Üstündağ",
-          "character": "Kösük",
-          "profileUrl": "https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=300&q=80",
-          "order": 19,
-          "tmdbId": 3046776,
-          "biography": "Known for Acting"
-        },
-        {
-          "id": "cast-1380279",
-          "name": "Basri Albayrak",
-          "character": "Erol",
-          "profileUrl": "https://image.tmdb.org/t/p/w300/hmQ4VMYOalPZPx3UQXXVg95K6QA.jpg",
-          "order": 20,
-          "tmdbId": 1380279,
-          "biography": "Known for Acting"
-        },
-        {
-          "id": "cast-3046784",
-          "name": "Özgür Avşar",
-          "character": "Sefer",
-          "profileUrl": "https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=300&q=80",
-          "order": 21,
-          "tmdbId": 3046784,
-          "biography": "Known for Acting"
-        },
-        {
-          "id": "cast-3046786",
-          "name": "Mert Zaim",
-          "character": "Ilyas",
-          "profileUrl": "https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=300&q=80",
-          "order": 22,
-          "tmdbId": 3046786,
-          "biography": "Known for Acting"
-        },
-        {
-          "id": "cast-1914127",
-          "name": "Celile Toyon",
-          "character": "Fatma",
-          "profileUrl": "https://image.tmdb.org/t/p/w300/g0qeCoDAtcUtCZrznCgPiq93rM9.jpg",
-          "order": 23,
-          "tmdbId": 1914127,
-          "biography": "Known for Acting"
-        },
-        {
-          "id": "cast-2452163",
-          "name": "Mustafa Dok",
-          "character": "Metin",
-          "profileUrl": "https://image.tmdb.org/t/p/w300/tN0nrqJVqBW6HcJQqCHqJBgFCPd.jpg",
-          "order": 24,
-          "tmdbId": 2452163,
-          "biography": "Known for Acting"
-        },
-        {
-          "id": "cast-3193261",
-          "name": "Botan Aslan",
-          "character": "Boran",
-          "profileUrl": "https://image.tmdb.org/t/p/w300/cYdv4tRI13S28ePxKHKS9zodFr8.jpg",
-          "order": 25,
-          "tmdbId": 3193261,
-          "biography": "Known for Acting"
-        }
-      ],
-      "whereToWatch": [
-        {
-          "provider": "netflix",
-          "name": "Watch on Netflix",
-          "url": "https://www.netflix.com",
-          "iconType": "netflix",
-          "freeOrSub": "Subscription"
-        }
-      ],
-      "blog": {
-        "heading": "The Global Phenomenon of 7. Koğuştaki Mucize: Love Across Bars",
-        "publishedDate": "December 2026",
-        "author": "CineFlix Film Review",
-        "readTime": "4 min read",
-        "heroImage": "https://images.unsplash.com/photo-1478760329108-5c3ed9d495a0?auto=format&fit=crop&w=1200&q=80",
-        "sections": [
-          {
-            "title": "The Emotional Heart of the Story",
-            "content": "Few films in modern cinema history have prompted such universal catharsis as Mehmet Ada Öztekin’s masterpiece. Aras Bulut İynemli’s performance as Memo remains a crowning achievement in Mediterranean filmmaking."
-          }
-        ],
-        "trivia": [
-          "The film became the highest-grossing Turkish film of 2019, drawing over 5.3 million admissions in theaters.",
-          "It was selected as Turkey’s official submission for Best International Feature Film at the 93rd Academy Awards."
-        ]
-      },
-      "tmdbId": 637920,
-      "categories": [
-        "Family Sagas",
-        "Romantic Dramas"
-      ],
-      "supportingTitles": [
-        "7. Kogustaki Mucize",
-        "Miracle in Cell 7",
-        "Memo and Ova"
-      ],
-      "all_time_score": 4625,
-      "play_events": [
-        {
-          "timestamp": 1792695760369
-        },
-        {
-          "timestamp": 1792849618396
-        },
-        {
-          "timestamp": 1793011038378
-        },
-        {
-          "timestamp": 1793017489490
-        },
-        {
-          "timestamp": 1793017489491
-        }
-      ]
     }
   ],
   "feeds": [
@@ -8468,28 +7239,34 @@
     },
     {
       "id": "feed-1792858142234",
-      "title": "new streached feed",
-      "subtitle": "hello",
+      "title": "The Epics You Love",
       "categoryKey": "custom",
       "showRankNumbers": false,
       "enabled": true,
       "isCuratedByAdmin": true,
-      "sourceType1": "categories",
+      "sourceType1": "custom",
       "selectedGenres1": [],
       "selectedCategories1": [
-        "Romantic Dramas",
-        "Thrillers & Crime",
-        "Historical Epics",
-        "Family Sagas",
-        "Action & Combat",
         "Ottoman & Historical Sagas"
       ],
-      "selectedShowIds1": [],
+      "selectedShowIds1": [
+        "series-1792521481375",
+        "dirilis-ertugrul",
+        "barbaroslar",
+        "show-1791644500391",
+        "series-1791669283849"
+      ],
       "hasSecondSource": false,
       "isSpecialFeed": false,
       "isStretchableFeed": true,
       "specialExploreText": "Explore All",
-      "showIds": []
+      "showIds": [
+        "series-1792521481375",
+        "dirilis-ertugrul",
+        "barbaroslar",
+        "show-1791644500391",
+        "series-1791669283849"
+      ]
     }
   ],
   "adminSettings": {
@@ -8499,6 +7276,22 @@
     "ambientGlowIntensity": "high",
     "dailymotionScriptUrl": "https://geo.dailymotion.com/libs/player/x1o1xe.js",
     "profilePictureGroups": [
+      {
+        "id": "group-1793705870581",
+        "title": "Classical",
+        "showTitle": "Classical",
+        "sourceType": "custom",
+        "type": "custom",
+        "images": [
+          "https://m.media-amazon.com/images/G/02/CerberusPrimeVideo-FN38FSBD/adult-1.png",
+          "https://m.media-amazon.com/images/G/02/CerberusPrimeVideo-FN38FSBD/adult-2.png",
+          "https://m.media-amazon.com/images/G/02/CerberusPrimeVideo-FN38FSBD/adult-3.png",
+          "https://m.media-amazon.com/images/G/02/CerberusPrimeVideo-FN38FSBD/adult-5.png",
+          "https://m.media-amazon.com/images/G/02/CerberusPrimeVideo-FN38FSBD/adult-7.png"
+        ],
+        "enabled": true,
+        "displayOrder": 2
+      },
       {
         "id": "group-1",
         "showId": "dirilis-ertugrul",
@@ -8523,27 +7316,20 @@
           "https://www.ayyapim.com/media/images/oyuncular/nehir-erdogan-aylin560938625be36.jpg?v=1792683183",
           "https://www.ayyapim.com/media/images/oyuncular/yigit-ozsener-selim560938188d777.jpg?v=1792683183"
         ]
-      },
-      {
-        "id": "group-2",
-        "showId": "kurulus-osman",
-        "showTitle": "Kuruluş: Osman",
-        "type": "series",
-        "images": [
-          "https://images.unsplash.com/photo-1506794778202-cad84cf45f1d?auto=format&fit=crop&w=240&q=80",
-          "https://images.unsplash.com/photo-1522075469751-3a6694fb2f61?auto=format&fit=crop&w=240&q=80",
-          "https://images.unsplash.com/photo-1544005313-94ddf0286df2?auto=format&fit=crop&w=240&q=80"
-        ]
       }
     ],
     "useCustomLogo": true,
-    "customLogoUrl": "https://res.cloudinary.com/hxk2tqpu/image/upload/v1792642595/new-Photoroom.png"
+    "customLogoUrl": "https://res.cloudinary.com/hxk2tqpu/image/upload/v1792642595/new-Photoroom.png",
+    "showTop10Badges": false,
+    "mobileNavbarStyle": "bottom_fixed",
+    "mobileNavbarShowLabels": false,
+    "mobileRecommendationStyle": "portrait"
   },
   "categoriesList": [
     {
       "id": "cat-1",
       "name": "Ottoman Era",
-      "imageUrl": "https://images.unsplash.com/photo-1579783902614-a3fb3927b675?auto=format&fit=crop&w=600&q=80",
+      "imageUrl": "https://www.prensario.net/Multimedios/imgs/39708_750.jpg?v=3",
       "description": "Legendary historical sagas from the Ottoman Empire"
     },
     {
@@ -8579,6 +7365,22 @@
   ],
   "profilePictureGroups": [
     {
+      "id": "group-1793705870581",
+      "title": "Classical",
+      "showTitle": "Classical",
+      "sourceType": "custom",
+      "type": "custom",
+      "images": [
+        "https://m.media-amazon.com/images/G/02/CerberusPrimeVideo-FN38FSBD/adult-1.png",
+        "https://m.media-amazon.com/images/G/02/CerberusPrimeVideo-FN38FSBD/adult-2.png",
+        "https://m.media-amazon.com/images/G/02/CerberusPrimeVideo-FN38FSBD/adult-3.png",
+        "https://m.media-amazon.com/images/G/02/CerberusPrimeVideo-FN38FSBD/adult-5.png",
+        "https://m.media-amazon.com/images/G/02/CerberusPrimeVideo-FN38FSBD/adult-7.png"
+      ],
+      "enabled": true,
+      "displayOrder": 2
+    },
+    {
       "id": "group-1",
       "showId": "dirilis-ertugrul",
       "showTitle": "Diriliş: Ertuğrul",
@@ -8601,17 +7403,6 @@
         "https://www.ayyapim.com/media/images/oyuncular/erkan-can-ali-guntan5609389f0f8e1.jpg?v=1792683183",
         "https://www.ayyapim.com/media/images/oyuncular/nehir-erdogan-aylin560938625be36.jpg?v=1792683183",
         "https://www.ayyapim.com/media/images/oyuncular/yigit-ozsener-selim560938188d777.jpg?v=1792683183"
-      ]
-    },
-    {
-      "id": "group-2",
-      "showId": "kurulus-osman",
-      "showTitle": "Kuruluş: Osman",
-      "type": "series",
-      "images": [
-        "https://images.unsplash.com/photo-1506794778202-cad84cf45f1d?auto=format&fit=crop&w=240&q=80",
-        "https://images.unsplash.com/photo-1522075469751-3a6694fb2f61?auto=format&fit=crop&w=240&q=80",
-        "https://images.unsplash.com/photo-1544005313-94ddf0286df2?auto=format&fit=crop&w=240&q=80"
       ]
     }
   ],

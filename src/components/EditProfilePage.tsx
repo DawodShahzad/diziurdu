@@ -10,6 +10,9 @@ import {
   ArrowLeft
 } from 'lucide-react';
 import { DiziLogo } from './DiziLogo';
+import fullBackupData from '../full_backup.json';
+
+const INITIAL_PROFILE_PICTURE_GROUPS = ((fullBackupData as any)?.profilePictureGroups) || [];
 
 export interface AvatarCategory {
   id: string;
@@ -21,158 +24,7 @@ export interface AvatarCategory {
   }[];
 }
 
-export const CHOOSE_AVATARS_DATA: AvatarCategory[] = [
-  {
-    id: 'history',
-    title: 'History',
-    avatars: [
-      {
-        id: 'warhorse',
-        name: 'Warhorse',
-        url: 'https://images.unsplash.com/photo-1553284965-83fd3e82fa5a?auto=format&fit=crop&w=320&q=80'
-      },
-      {
-        id: 'yellow-chicken',
-        name: 'Feathered Friend',
-        url: 'data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 120 120"><rect width="120" height="120" fill="%23f59e0b"/><polygon points="60,8 50,24 70,24" fill="%23dc2626"/><polygon points="46,12 40,24 52,24" fill="%23ef4444"/><polygon points="74,12 68,24 80,24" fill="%23ef4444"/><rect x="22" y="44" width="34" height="20" rx="4" fill="%23ffffff"/><circle cx="44" cy="54" r="4.5" fill="%2318181b"/><rect x="64" y="44" width="34" height="20" rx="4" fill="%23ffffff"/><circle cx="76" cy="54" r="4.5" fill="%2318181b"/><polygon points="60,62 53,74 67,74" fill="%233b82f6"/><circle cx="60" cy="80" r="5" fill="%23ef4444"/><circle cx="60" cy="85" r="4" fill="%23dc2626"/></svg>'
-      },
-      {
-        id: 'cyberpunk-hero',
-        name: 'Cyber Hero',
-        url: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=320&q=80'
-      },
-      {
-        id: 'red-furry',
-        name: 'Red Sprite',
-        url: 'data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 120 120"><rect width="120" height="120" fill="%23dc2626"/><circle cx="44" cy="62" r="5.5" fill="%2309090b"/><circle cx="46" cy="60" r="1.8" fill="%23ffffff"/><circle cx="34" cy="56" r="1.8" fill="%23ffffff"/><circle cx="32" cy="62" r="1.8" fill="%23ffffff"/><circle cx="38" cy="67" r="1.8" fill="%23ffffff"/><circle cx="76" cy="62" r="5.5" fill="%2309090b"/><circle cx="78" cy="60" r="1.8" fill="%23ffffff"/><circle cx="86" cy="56" r="1.8" fill="%23ffffff"/><circle cx="88" cy="62" r="1.8" fill="%23ffffff"/><circle cx="82" cy="67" r="1.8" fill="%23ffffff"/><path d="M 52 75 Q 60 83 68 75" stroke="%2309090b" stroke-width="3.5" fill="none" stroke-linecap="round"/></svg>'
-      },
-      {
-        id: 'cyan-furry',
-        name: 'Cyan Sprite',
-        url: 'data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 120 120"><rect width="120" height="120" fill="%2306b6d4"/><circle cx="44" cy="62" r="5.5" fill="%2309090b"/><circle cx="46" cy="60" r="1.8" fill="%23ffffff"/><circle cx="34" cy="56" r="1.8" fill="%23ffffff"/><circle cx="32" cy="62" r="1.8" fill="%23ffffff"/><circle cx="38" cy="67" r="1.8" fill="%23ffffff"/><circle cx="76" cy="62" r="5.5" fill="%2309090b"/><circle cx="78" cy="60" r="1.8" fill="%23ffffff"/><circle cx="86" cy="56" r="1.8" fill="%23ffffff"/><circle cx="88" cy="62" r="1.8" fill="%23ffffff"/><circle cx="82" cy="67" r="1.8" fill="%23ffffff"/><path d="M 52 75 Q 60 83 68 75" stroke="%2309090b" stroke-width="3.5" fill="none" stroke-linecap="round"/></svg>'
-      }
-    ]
-  },
-  {
-    id: 'classics',
-    title: 'The Classics',
-    avatars: [
-      {
-        id: 'classic-red',
-        name: 'Ruby Monster',
-        url: 'data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 120 120"><rect width="120" height="120" fill="%23dc2626"/><circle cx="44" cy="62" r="5.5" fill="%2309090b"/><circle cx="46" cy="60" r="1.8" fill="%23ffffff"/><circle cx="34" cy="56" r="1.8" fill="%23ffffff"/><circle cx="32" cy="62" r="1.8" fill="%23ffffff"/><circle cx="38" cy="67" r="1.8" fill="%23ffffff"/><circle cx="76" cy="62" r="5.5" fill="%2309090b"/><circle cx="78" cy="60" r="1.8" fill="%23ffffff"/><circle cx="86" cy="56" r="1.8" fill="%23ffffff"/><circle cx="88" cy="62" r="1.8" fill="%23ffffff"/><circle cx="82" cy="67" r="1.8" fill="%23ffffff"/><path d="M 52 75 Q 60 83 68 75" stroke="%2309090b" stroke-width="3.5" fill="none" stroke-linecap="round"/></svg>'
-      },
-      {
-        id: 'classic-orange',
-        name: 'Amber Sprite',
-        url: 'data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 120 120"><rect width="120" height="120" fill="%23f97316"/><circle cx="44" cy="62" r="5.5" fill="%2309090b"/><circle cx="46" cy="60" r="1.8" fill="%23ffffff"/><circle cx="34" cy="56" r="1.8" fill="%23ffffff"/><circle cx="32" cy="62" r="1.8" fill="%23ffffff"/><circle cx="38" cy="67" r="1.8" fill="%23ffffff"/><circle cx="76" cy="62" r="5.5" fill="%2309090b"/><circle cx="78" cy="60" r="1.8" fill="%23ffffff"/><circle cx="86" cy="56" r="1.8" fill="%23ffffff"/><circle cx="88" cy="62" r="1.8" fill="%23ffffff"/><circle cx="82" cy="67" r="1.8" fill="%23ffffff"/><path d="M 52 75 Q 60 83 68 75" stroke="%2309090b" stroke-width="3.5" fill="none" stroke-linecap="round"/></svg>'
-      },
-      {
-        id: 'classic-cyan',
-        name: 'Cyan Sprite',
-        url: 'data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 120 120"><rect width="120" height="120" fill="%2306b6d4"/><circle cx="44" cy="62" r="5.5" fill="%2309090b"/><circle cx="46" cy="60" r="1.8" fill="%23ffffff"/><circle cx="34" cy="56" r="1.8" fill="%23ffffff"/><circle cx="32" cy="62" r="1.8" fill="%23ffffff"/><circle cx="38" cy="67" r="1.8" fill="%23ffffff"/><circle cx="76" cy="62" r="5.5" fill="%2309090b"/><circle cx="78" cy="60" r="1.8" fill="%23ffffff"/><circle cx="86" cy="56" r="1.8" fill="%23ffffff"/><circle cx="88" cy="62" r="1.8" fill="%23ffffff"/><circle cx="82" cy="67" r="1.8" fill="%23ffffff"/><path d="M 52 75 Q 60 83 68 75" stroke="%2309090b" stroke-width="3.5" fill="none" stroke-linecap="round"/></svg>'
-      },
-      {
-        id: 'classic-gray',
-        name: 'Slate Sprite',
-        url: 'data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 120 120"><rect width="120" height="120" fill="%2364748b"/><circle cx="44" cy="62" r="5.5" fill="%2309090b"/><circle cx="46" cy="60" r="1.8" fill="%23ffffff"/><circle cx="34" cy="56" r="1.8" fill="%23ffffff"/><circle cx="32" cy="62" r="1.8" fill="%23ffffff"/><circle cx="38" cy="67" r="1.8" fill="%23ffffff"/><circle cx="76" cy="62" r="5.5" fill="%2309090b"/><circle cx="78" cy="60" r="1.8" fill="%23ffffff"/><circle cx="86" cy="56" r="1.8" fill="%23ffffff"/><circle cx="88" cy="62" r="1.8" fill="%23ffffff"/><circle cx="82" cy="67" r="1.8" fill="%23ffffff"/><path d="M 52 75 Q 60 83 68 75" stroke="%2309090b" stroke-width="3.5" fill="none" stroke-linecap="round"/></svg>'
-      },
-      {
-        id: 'purple-mask',
-        name: 'Shadow Lady',
-        url: 'data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 120 120"><rect width="120" height="120" fill="%237e22ce"/><path d="M 25 35 Q 60 10 95 35 Q 100 80 85 105 Q 60 115 35 105 Z" fill="%23581c87"/><path d="M 32 50 C 40 46, 52 50, 60 55 C 68 50, 80 46, 88 50 C 92 65, 85 75, 60 70 C 35 75, 28 65, 32 50 Z" fill="%231e1b4b"/><ellipse cx="46" cy="58" rx="7" ry="4" fill="%23ffffff"/><ellipse cx="74" cy="58" rx="7" ry="4" fill="%23ffffff"/><path d="M 52 88 Q 60 95 68 88" stroke="%23ef4444" stroke-width="4.5" fill="none" stroke-linecap="round"/></svg>'
-      },
-      {
-        id: 'sunglasses-mustache',
-        name: 'The Maverick',
-        url: 'data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 120 120"><rect width="120" height="120" fill="%230e7490"/><rect x="25" y="44" width="32" height="22" rx="4" fill="%23facc15" stroke="%23eab308" stroke-width="2"/><rect x="63" y="44" width="32" height="22" rx="4" fill="%23facc15" stroke="%23eab308" stroke-width="2"/><line x1="57" y1="52" x2="63" y2="52" stroke="%23eab308" stroke-width="3"/><path d="M 38 78 Q 60 72 82 78 Q 74 88 60 82 Q 46 88 38 78 Z" fill="%230f172a"/></svg>'
-      },
-      {
-        id: 'bandit-raccoon',
-        name: 'Night Bandit',
-        url: 'data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 120 120"><rect width="120" height="120" fill="%23f1f5f9"/><path d="M 22 55 Q 60 40 98 55 Q 105 78 85 82 Q 60 72 35 82 Q 15 78 22 55 Z" fill="%2318181b"/><circle cx="44" cy="66" r="6" fill="%23ffffff"/><circle cx="76" cy="66" r="6" fill="%23ffffff"/><circle cx="60" cy="85" r="4.5" fill="%2318181b"/><circle cx="53" cy="94" r="2.5" fill="%2318181b"/><circle cx="67" cy="94" r="2.5" fill="%2318181b"/></svg>'
-      },
-      {
-        id: 'red-mask-hero',
-        name: 'Crimson Mask',
-        url: 'data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 120 120"><rect width="120" height="120" fill="%23b91c1c"/><path d="M 30 55 L 56 64 L 64 64 L 90 55 L 85 75 L 35 75 Z" fill="%23facc15"/><line x1="30" y1="50" x2="56" y2="60" stroke="%237f1d1d" stroke-width="4"/><line x1="90" y1="50" x2="64" y2="60" stroke="%237f1d1d" stroke-width="4"/><line x1="45" y1="92" x2="75" y2="92" stroke="%237f1d1d" stroke-width="3.5" stroke-linecap="round"/></svg>'
-      }
-    ]
-  },
-  {
-    id: 'outer-banks',
-    title: 'Outer Banks',
-    avatars: [
-      {
-        id: 'obx-johnb',
-        name: 'John B',
-        url: 'https://images.unsplash.com/photo-1506794778202-cad84cf45f1d?auto=format&fit=crop&w=320&q=80'
-      },
-      {
-        id: 'obx-sarah',
-        name: 'Sarah',
-        url: 'https://images.unsplash.com/photo-1517841905240-472988babdf9?auto=format&fit=crop&w=320&q=80'
-      },
-      {
-        id: 'obx-jj',
-        name: 'JJ',
-        url: 'https://images.unsplash.com/photo-1500648767791-00dcc994a43e?auto=format&fit=crop&w=320&q=80'
-      },
-      {
-        id: 'obx-kiara',
-        name: 'Kiara',
-        url: 'https://images.unsplash.com/photo-1531746020798-e6953c6e8e04?auto=format&fit=crop&w=320&q=80'
-      },
-      {
-        id: 'obx-pope',
-        name: 'Pope',
-        url: 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?auto=format&fit=crop&w=320&q=80'
-      },
-      {
-        id: 'obx-cleo',
-        name: 'Cleo',
-        url: 'https://images.unsplash.com/photo-1524504388940-b1c1722653e1?auto=format&fit=crop&w=320&q=80'
-      },
-      {
-        id: 'obx-rafe',
-        name: 'Rafe',
-        url: 'https://images.unsplash.com/photo-1492562080023-ab3db95bfbce?auto=format&fit=crop&w=320&q=80'
-      }
-    ]
-  },
-  {
-    id: 'the-gentlemen',
-    title: 'The Gentlemen & Ottoman Masters',
-    avatars: [
-      {
-        id: 'ertugrul-bey',
-        name: 'Ertuğrul Gazi',
-        url: 'https://images.unsplash.com/photo-1539571696357-5a69c17a67c6?auto=format&fit=crop&w=320&q=80'
-      },
-      {
-        id: 'halime-sultan',
-        name: 'Halime Sultan',
-        url: 'https://images.unsplash.com/photo-1544005313-94ddf0286df2?auto=format&fit=crop&w=320&q=80'
-      },
-      {
-        id: 'turgut-alp',
-        name: 'Turgut Alp',
-        url: 'https://images.unsplash.com/photo-1519085360753-af0119f7cbe7?auto=format&fit=crop&w=320&q=80'
-      },
-      {
-        id: 'osman-bey',
-        name: 'Osman Bey',
-        url: 'https://images.unsplash.com/photo-1560250097-0b93528c311a?auto=format&fit=crop&w=320&q=80'
-      },
-      {
-        id: 'oruc-reis',
-        name: 'Oruç Reis',
-        url: 'https://images.unsplash.com/photo-1472099645785-5658abf4ff4e?auto=format&fit=crop&w=320&q=80'
-      }
-    ]
-  }
-];
-
+export const CHOOSE_AVATARS_DATA: AvatarCategory[] = [];
 
 interface EditProfilePageProps {
   isOpen: boolean;
@@ -231,9 +83,12 @@ export const EditProfilePage: React.FC<EditProfilePageProps> = ({
   const [adminGroups, setAdminGroups] = useState<any[]>(() => {
     try {
       const saved = localStorage.getItem('cineflix_profile_picture_groups');
-      if (saved) return JSON.parse(saved);
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+      }
     } catch {}
-    return [];
+    return INITIAL_PROFILE_PICTURE_GROUPS || [];
   });
 
   useEffect(() => {
@@ -471,62 +326,19 @@ export const EditProfilePage: React.FC<EditProfilePageProps> = ({
                     );
                   })}
                 </div>
-              </div>
-            ))}
 
-            {CHOOSE_AVATARS_DATA.map((category) => (
-              <div key={category.id} className="relative group/category">
-                {/* Category Title */}
-                <h2 className="text-lg sm:text-xl font-bold text-black tracking-tight mb-3 font-sans">
-                  {category.title}
-                </h2>
-
-                {/* Horizontal Scrollable Icons Row */}
-                <div
-                  id={`avatar-row-${category.id}`}
-                  className="flex items-center gap-3 sm:gap-4 overflow-x-auto no-scrollbar scroll-smooth py-1"
-                >
-                  {category.avatars.map((item) => {
-                    const isSelected = avatar === item.url;
-                    return (
-                      <div
-                        key={item.id}
-                        onClick={() => handleSelectIcon(item.url)}
-                        className={`relative w-24 h-24 sm:w-28 sm:h-28 md:w-32 md:h-32 shrink-0 rounded-md overflow-hidden aspect-square cursor-pointer transition-transform hover:scale-105 shadow-sm border-2 ${
-                          isSelected
-                            ? 'border-black ring-2 ring-black/30'
-                            : 'border-transparent hover:border-black'
-                        }`}
-                        title={item.name}
-                      >
-                        <img
-                          src={item.url}
-                          alt={item.name}
-                          referrerPolicy="no-referrer"
-                          className="w-full h-full object-cover"
-                        />
-                        {isSelected && (
-                          <div className="absolute top-1.5 right-1.5 w-5 h-5 rounded-full bg-black text-white flex items-center justify-center shadow">
-                            <Check className="w-3.5 h-3.5 stroke-[3]" />
-                          </div>
-                        )}
-                      </div>
-                    );
-                  })}
+                  {/* Right Scroll Arrow Button (Visible on hover if items overflow) */}
+                  {group.images && group.images.length > 5 && (
+                    <button
+                      onClick={() => scrollCategoryRow(group.id, 'right')}
+                      className="absolute right-0 top-1/2 -translate-y-1/2 w-8 h-12 bg-black/60 hover:bg-black/80 text-white flex items-center justify-center rounded-l shadow-lg opacity-0 group-hover/category:opacity-100 transition-opacity cursor-pointer z-10"
+                      aria-label="Scroll right"
+                    >
+                      <ChevronRight className="w-5 h-5" />
+                    </button>
+                  )}
                 </div>
-
-                {/* Right Scroll Arrow Button (Visible on hover as in screenshot) */}
-                {category.avatars.length > 5 && (
-                  <button
-                    onClick={() => scrollCategoryRow(category.id, 'right')}
-                    className="absolute right-0 top-1/2 -translate-y-1/2 w-8 h-12 bg-black/60 hover:bg-black/80 text-white flex items-center justify-center rounded-l shadow-lg opacity-0 group-hover/category:opacity-100 transition-opacity cursor-pointer z-10"
-                    aria-label="Scroll right"
-                  >
-                    <ChevronRight className="w-5 h-5" />
-                  </button>
-                )}
-              </div>
-            ))}
+              ))}
           </div>
         </main>
       ) : (

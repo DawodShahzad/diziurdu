@@ -41,8 +41,8 @@ export const HeroRecommendation: React.FC<HeroRecommendationProps> = ({
   const [localMuted, setLocalMuted] = useState<boolean>(false);
   const isMuted = onToggleGlobalMute ? isGlobalMuted : localMuted;
 
-  const activeArtwork = getActiveArtwork(show);
-  const activeBackdrop = activeArtwork.backdropUrl || show.backdropUrl || show.posterLandscapeUrl || '';
+  const activeArtwork = show ? getActiveArtwork(show) : ({} as any);
+  const activeBackdrop = activeArtwork?.backdropUrl || show?.backdropUrl || show?.posterLandscapeUrl || '';
 
   const [isTitleShrunk, setIsTitleShrunk] = useState<boolean>(false);
   const [backdropSrc, setBackdropSrc] = useState<string>(activeBackdrop);
@@ -424,12 +424,12 @@ export const HeroRecommendation: React.FC<HeroRecommendationProps> = ({
   };
 
   const getTagline = (s: Show) => {
+    if (!s) return '';
     if (s.announcementPill && s.announcementPill.trim()) return s.announcementPill.trim();
-    if (s.id === 'dirilis-ertugrul') return "Justice Cannot Be Silenced: Watch Now";
-    if (s.id === 'barbaroslar') return "Conquer the Waves: Watch Now";
-    if (s.id === 'aile') return "Family Secrets Never Die: Watch Now";
-    return "Love Written in Poetry: Watch Now";
+    return s.shortDescription || 'Watch Now';
   };
+
+  if (!show) return null;
 
   const ambientColor = show.recommendationBackdropColor || show.ambientColor || '#b45309';
 

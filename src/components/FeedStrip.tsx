@@ -837,6 +837,7 @@ export const FeedStrip: React.FC<FeedStripProps> = ({
   // - Explore All button has exact CSS style of Play button
   // - Pinned left column (large logo, tagline, subtitle, explore button), cards scroll to the right
   if (feed.isSpecialFeed) {
+    if (!filteredShows || filteredShows.length === 0) return null;
     const bgPicture = feed.specialBgImageUrl || (filteredShows[0]?.backdropUrl || filteredShows[0]?.posterLandscapeUrl || 'https://images.unsplash.com/photo-1509248961158-e54f6934749c?auto=format&fit=crop&w=1920&q=80');
     // Only apply darkness if configured by admin, do not add darkness ourselves
     const darknessPercent = typeof feed.specialBgDarkness === 'number' ? feed.specialBgDarkness : 0;
@@ -1170,6 +1171,8 @@ export const FeedStrip: React.FC<FeedStripProps> = ({
       </div>
     );
   }
+
+  if (!filteredShows || filteredShows.length === 0) return null;
 
   return (
     <div

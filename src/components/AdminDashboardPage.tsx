@@ -61,6 +61,10 @@ import {
   Bell
 } from 'lucide-react';
 import { DiziLogo } from './DiziLogo';
+import fullBackupData from '../full_backup.json';
+
+const INITIAL_CATEGORIES = ((fullBackupData as any)?.categoriesList as CategoryItem[]) || [];
+const INITIAL_PROFILE_PICTURE_GROUPS = ((fullBackupData as any)?.profilePictureGroups as ProfilePictureGroup[]) || [];
 
 interface AdminDashboardPageProps {
   shows: Show[];
@@ -224,16 +228,12 @@ export const AdminDashboardPage: React.FC<AdminDashboardPageProps> = ({
   const [categoriesList, setCategoriesList] = useState<CategoryItem[]>(() => {
     try {
       const saved = localStorage.getItem('cineflix_custom_categories');
-      if (saved) return JSON.parse(saved);
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+      }
     } catch {}
-    return [
-      { id: 'cat-1', name: 'Ottoman & Historical Sagas', imageUrl: 'https://images.unsplash.com/photo-1579783902614-a3fb3927b675?auto=format&fit=crop&w=600&q=80', description: 'Legendary historical sagas from the Ottoman Empire' },
-      { id: 'cat-2', name: 'Action & Combat', imageUrl: 'https://images.unsplash.com/photo-1518837695005-2083093ee35b?auto=format&fit=crop&w=600&q=80', description: 'Intense battles, martial arts, and high-octane warrior drama' },
-      { id: 'cat-3', name: 'Romantic Dramas', imageUrl: 'https://images.unsplash.com/photo-1519501025264-65ba15a82390?auto=format&fit=crop&w=600&q=80', description: 'Heartfelt love stories, emotional bonds, and modern romance' },
-      { id: 'cat-4', name: 'Thrillers & Crime', imageUrl: 'https://images.unsplash.com/photo-1509198397868-475647b2a1e5?auto=format&fit=crop&w=600&q=80', description: 'Underworld crime families, police investigations, and betrayal' },
-      { id: 'cat-5', name: 'Historical Epics', imageUrl: 'https://images.unsplash.com/photo-1461360370896-922624d12aa1?auto=format&fit=crop&w=600&q=80', description: 'Grand historical reenactments of ancient dynasties and sultans' },
-      { id: 'cat-6', name: 'Family Sagas', imageUrl: 'https://images.unsplash.com/photo-1511895426328-dc8714191300?auto=format&fit=crop&w=600&q=80', description: 'Multi-generational dynasty conflicts and family honor' }
-    ];
+    return INITIAL_CATEGORIES || [];
   });
 
   const [newCatName, setNewCatName] = useState('');
@@ -298,13 +298,13 @@ export const AdminDashboardPage: React.FC<AdminDashboardPageProps> = ({
         id: 'prof-1',
         name: 'Member Profile',
         avatarUrl: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=150&q=80',
-        assignedShowIds: ['dirilis-ertugrul', 'kurulus-osman']
+        assignedShowIds: []
       },
       {
         id: 'prof-2',
         name: 'Cinema VIP',
         avatarUrl: 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?auto=format&fit=crop&w=150&q=80',
-        assignedShowIds: ['aile', 'barbaroslar']
+        assignedShowIds: []
       }
     ];
   });
@@ -324,32 +324,12 @@ export const AdminDashboardPage: React.FC<AdminDashboardPageProps> = ({
     }
     try {
       const saved = localStorage.getItem('cineflix_profile_picture_groups');
-      if (saved) return JSON.parse(saved);
-    } catch {}
-    return [
-      {
-        id: 'group-1',
-        showId: 'dirilis-ertugrul',
-        showTitle: 'Diriliş: Ertuğrul',
-        type: 'series',
-        images: [
-          'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?auto=format&fit=crop&w=240&q=80',
-          'https://images.unsplash.com/photo-1500648767791-00dcc994a43e?auto=format&fit=crop&w=240&q=80',
-          'https://images.unsplash.com/photo-1519085360753-af0119f7cbe7?auto=format&fit=crop&w=240&q=80'
-        ]
-      },
-      {
-        id: 'group-2',
-        showId: 'kurulus-osman',
-        showTitle: 'Kuruluş: Osman',
-        type: 'series',
-        images: [
-          'https://images.unsplash.com/photo-1506794778202-cad84cf45f1d?auto=format&fit=crop&w=240&q=80',
-          'https://images.unsplash.com/photo-1522075469751-3a6694fb2f61?auto=format&fit=crop&w=240&q=80',
-          'https://images.unsplash.com/photo-1544005313-94ddf0286df2?auto=format&fit=crop&w=240&q=80'
-        ]
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        if (Array.isArray(parsed) && parsed.length > 0) return parsed;
       }
-    ];
+    } catch {}
+    return INITIAL_PROFILE_PICTURE_GROUPS || [];
   });
 
   const [isAddingGroup, setIsAddingGroup] = useState<boolean>(false);
@@ -379,6 +359,8 @@ export const AdminDashboardPage: React.FC<AdminDashboardPageProps> = ({
 
   // Localhost Direct Disk Write helper
   const isInitialMount = useRef(true);
+  const lastSavedHashRef = useRef<string>('');
+
   const saveToDiskDirectly = async (overrideData?: {
     shows?: Show[];
     feeds?: FeedConfig[];
@@ -403,6 +385,21 @@ export const AdminDashboardPage: React.FC<AdminDashboardPageProps> = ({
         notifications: overrideData?.notifications ?? notifications
       };
 
+      const serialized = JSON.stringify({
+        s: payload.shows,
+        f: payload.feeds,
+        a: payload.adminSettings,
+        c: payload.categoriesList,
+        p: payload.profilePictureGroups,
+        n: payload.notifications
+      });
+
+      // Avoid unnecessary duplicate disk saves
+      if (lastSavedHashRef.current === serialized) {
+        return;
+      }
+      lastSavedHashRef.current = serialized;
+
       await fetch('/api/save-database', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -416,11 +413,21 @@ export const AdminDashboardPage: React.FC<AdminDashboardPageProps> = ({
   useEffect(() => {
     if (isInitialMount.current) {
       isInitialMount.current = false;
+      try {
+        lastSavedHashRef.current = JSON.stringify({
+          s: shows,
+          f: feeds,
+          a: { ...adminSettings, profilePictureGroups },
+          c: categoriesList,
+          p: profilePictureGroups,
+          n: notifications
+        });
+      } catch {}
       return;
     }
     const timer = setTimeout(() => {
       saveToDiskDirectly();
-    }, 350);
+    }, 1200);
     return () => clearTimeout(timer);
   }, [shows, feeds, adminSettings, categoriesList, profilePictureGroups, notifications]);
 
@@ -4916,7 +4923,7 @@ export const AdminDashboardPage: React.FC<AdminDashboardPageProps> = ({
                     type="button"
                     onClick={() => {
                       saveToDiskDirectly();
-                      notify('Saved directly to disk: src/data/dramas.json & src/data/full_backup.json');
+                      notify('Saved directly to disk: src/full_backup.json');
                     }}
                     className="px-3.5 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold transition-colors cursor-pointer flex items-center gap-1.5 self-start sm:self-auto shadow-sm"
                   >
@@ -4925,7 +4932,7 @@ export const AdminDashboardPage: React.FC<AdminDashboardPageProps> = ({
                   </button>
                 </div>
                 <p className="text-zinc-400 text-[11.5px]">
-                  When running on localhost, adding, editing, or deleting any title, episode, feed, category, or avatar feed directly writes to <code className="font-mono text-emerald-400">src/data/dramas.json</code> and <code className="font-mono text-cyan-400">src/data/full_backup.json</code> on your disk in real time.
+                  When running on localhost, adding, editing, or deleting any title, episode, feed, category, or avatar feed directly writes to <code className="font-mono text-cyan-400">src/full_backup.json</code> on your disk in real time.
                 </p>
               </div>
 

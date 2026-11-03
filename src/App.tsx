@@ -1,11 +1,45 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
-import {
-  INITIAL_SHOWS,
-  INITIAL_FEEDS,
-  INITIAL_ADMIN_SETTINGS,
-  INITIAL_NOTIFICATIONS
-} from './data/mockData';
-import { Show, FeedConfig, AdminSettings, CastMember, VideoSourceType, NotificationItem, Episode, TrailerItem } from './types';
+import fullBackupData from './full_backup.json';
+import { Show, FeedConfig, AdminSettings, CastMember, VideoSourceType, NotificationItem, Episode, TrailerItem, CategoryItem, ProfilePictureGroup } from './types';
+
+// Extract full database contents directly from full_backup.json
+const DB_SHOWS: Show[] = (fullBackupData && Array.isArray((fullBackupData as any).shows))
+  ? ((fullBackupData as any).shows as Show[])
+  : [];
+
+const DB_FEEDS: FeedConfig[] = (fullBackupData && Array.isArray((fullBackupData as any).feeds))
+  ? ((fullBackupData as any).feeds as FeedConfig[])
+  : [];
+
+const DB_SETTINGS: AdminSettings = (fullBackupData && (fullBackupData as any).adminSettings)
+  ? ((fullBackupData as any).adminSettings as AdminSettings)
+  : {
+      platformName: 'Dizi Urdu',
+      enableWhereToWatch: true,
+      enableHorizontalEpisodes: true,
+      autoplayHoverTrailers: true,
+      ambientGlowIntensity: 'high',
+      dailymotionScriptUrl: 'https://geo.dailymotion.com/libs/player/x1o1xe.js',
+      mobileNavbarStyle: 'floating',
+      mobileNavbarShowLabels: true,
+      mobileRecommendationStyle: 'portrait',
+      backdropDarkness: 35,
+      enableStretchableCards: true,
+      showTop10Badges: true
+    };
+
+const DB_CATEGORIES: CategoryItem[] = (fullBackupData && Array.isArray((fullBackupData as any).categoriesList))
+  ? ((fullBackupData as any).categoriesList as CategoryItem[])
+  : [];
+
+const DB_PROFILE_GROUPS: ProfilePictureGroup[] = (fullBackupData && Array.isArray((fullBackupData as any).profilePictureGroups))
+  ? ((fullBackupData as any).profilePictureGroups as ProfilePictureGroup[])
+  : [];
+
+const DB_NOTIFICATIONS: NotificationItem[] = (fullBackupData && Array.isArray((fullBackupData as any).notifications))
+  ? ((fullBackupData as any).notifications as NotificationItem[])
+  : [];
+
 import { generateDailyFeeds } from './utils/feedEngine';
 import { Navbar } from './components/Navbar';
 import { HeroRecommendation } from './components/HeroRecommendation';
@@ -21,7 +55,7 @@ import { RequestContentModal } from './components/RequestContentModal';
 import { CustomPlayer } from './components/CustomPlayer';
 import { EmbedPlayerModal, isEmbedVideo } from './components/EmbedPlayerModal';
 import { Footer } from './components/Footer';
-import { CategoriesView, CategoryItem, CATEGORIES_DATA } from './components/CategoriesView';
+import { CategoriesView, CATEGORIES_DATA } from './components/CategoriesView';
 import { ShowCard } from './components/ShowCard';
 import { SpecialFeedPage } from './components/SpecialFeedPage';
 import { GlobalTooltip } from './components/GlobalTooltip';
@@ -56,47 +90,52 @@ function getNextRotatingRecommendation(pool: Show[], storageKey: string): Show |
 }
 
 export default function App() {
+  const currentBackupExportTime = (fullBackupData as any)?.exported_at || '';
+
+  // Synchronize state directly from full_backup.json on first load with zero mock data
   const [shows, setShows] = useState<Show[]>(() => {
-    const saved = localStorage.getItem('cineflix_shows');
-    if (!saved) return INITIAL_SHOWS;
     try {
-      const parsed: Show[] = JSON.parse(saved);
-      // Merge in any newly added initial shows if missing from user cache
-      const existingIds = new Set(parsed.map((s) => s.id));
-      const missingInitial = INITIAL_SHOWS.filter((init) => !existingIds.has(init.id));
-      const combined = [...parsed, ...missingInitial];
-      // Migrate and guarantee valid backdropUrl & reliable media URLs across any cached items
-      return combined.map((s) => {
-        const initialMatch = INITIAL_SHOWS.find((init) => init.id === s.id);
-        const backdropUrl = s.backdropUrl || initialMatch?.backdropUrl || s.posterLandscapeUrl;
-        const trailerUrl =
-          s.trailerUrl && s.trailerUrl.includes('commondatastorage.googleapis.com')
-            ? initialMatch?.trailerUrl || 'https://vjs.zencdn.net/v/oceans.mp4'
-            : s.trailerUrl || initialMatch?.trailerUrl || 'https://vjs.zencdn.net/v/oceans.mp4';
-        const cast =
-          initialMatch && initialMatch.cast && initialMatch.cast.length > (s.cast?.length || 0)
-            ? initialMatch.cast
-            : s.cast;
-        return {
-          ...s,
-          backdropUrl,
-          trailerUrl,
-          cast
-        };
-      });
-    } catch {
-      return INITIAL_SHOWS;
-    }
+      const saved = localStorage.getItem('cineflix_shows');
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        if (Array.isArray(parsed) && parsed.length > 0) {
+          // Reject any legacy mock data (e.g., old mock IDs)
+          const hasLegacyMock = parsed.some((s: any) => s.id === 'kurulus-osman' || s.id === 'teskilat' || s.id === 'alparslan' || s.id === 'cukurova');
+          if (!hasLegacyMock) {
+            return parsed;
+          }
+        }
+      }
+    } catch {}
+    return DB_SHOWS;
   });
 
   const [feeds, setFeeds] = useState<FeedConfig[]>(() => {
-    const saved = localStorage.getItem('cineflix_feeds_v2');
-    return saved ? JSON.parse(saved) : INITIAL_FEEDS;
+    try {
+      const saved = localStorage.getItem('cineflix_feeds_v2');
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+      }
+    } catch {}
+    try {
+      localStorage.setItem('cineflix_feeds_v2', JSON.stringify(DB_FEEDS));
+    } catch {}
+    return DB_FEEDS;
   });
 
   const [adminSettings, setAdminSettings] = useState<AdminSettings>(() => {
-    const saved = localStorage.getItem('cineflix_settings');
-    return saved ? JSON.parse(saved) : INITIAL_ADMIN_SETTINGS;
+    try {
+      const saved = localStorage.getItem('cineflix_settings');
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        if (parsed && typeof parsed === 'object') return parsed;
+      }
+    } catch {}
+    try {
+      localStorage.setItem('cineflix_settings', JSON.stringify(DB_SETTINGS));
+    } catch {}
+    return DB_SETTINGS;
   });
 
   const platformName = adminSettings.platformName?.trim() || 'Dizi Urdu';
@@ -125,13 +164,15 @@ export default function App() {
   }, []);
 
   const [notifications, setNotifications] = useState<NotificationItem[]>(() => {
-    const saved = localStorage.getItem('cineflix_notifications');
-    if (!saved) return INITIAL_NOTIFICATIONS;
     try {
-      return JSON.parse(saved);
-    } catch {
-      return INITIAL_NOTIFICATIONS;
-    }
+      const cachedTime = localStorage.getItem('diziurdu_db_exported_at');
+      if (!cachedTime || cachedTime !== currentBackupExportTime) {
+        return DB_NOTIFICATIONS;
+      }
+      const saved = localStorage.getItem('cineflix_notifications');
+      if (saved) return JSON.parse(saved);
+    } catch {}
+    return DB_NOTIFICATIONS;
   });
 
   // 30-minute feed and row rotation clock
@@ -155,10 +196,10 @@ export default function App() {
 
   const [watchlist, setWatchlist] = useState<string[]>(() => {
     const saved = localStorage.getItem('cineflix_watchlist');
-    return saved ? JSON.parse(saved) : ['dirilis-ertugrul'];
+    return saved ? JSON.parse(saved) : [];
   });
 
-  const [heroShow, setHeroShow] = useState<Show>(shows[0]);
+  const [heroShow, setHeroShow] = useState<Show | null>(shows[0] || null);
   const [selectedCategoryFilter, setSelectedCategoryFilter] = useState<CategoryItem | null>(null);
   const [categoryRandomHeroShow, setCategoryRandomHeroShow] = useState<Show | null>(null);
   const [selectedShowForDetail, setSelectedShowForDetail] = useState<Show | null>(null);
@@ -172,17 +213,47 @@ export default function App() {
   const [categoriesList, setCategoriesList] = useState<CategoryItem[]>(() => {
     try {
       const saved = localStorage.getItem('cineflix_custom_categories');
-      if (saved) return JSON.parse(saved);
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+      }
     } catch {}
-    return [
-      { id: 'cat-1', name: 'Ottoman & Historical Sagas', imageUrl: 'https://images.unsplash.com/photo-1579783902614-a3fb3927b675?auto=format&fit=crop&w=600&q=80', description: 'Legendary historical sagas from the Ottoman Empire' },
-      { id: 'cat-2', name: 'Action & Combat', imageUrl: 'https://images.unsplash.com/photo-1518837695005-2083093ee35b?auto=format&fit=crop&w=600&q=80', description: 'Intense battles, martial arts, and high-octane warrior drama' },
-      { id: 'cat-3', name: 'Romantic Dramas', imageUrl: 'https://images.unsplash.com/photo-1519501025264-65ba15a82390?auto=format&fit=crop&w=600&q=80', description: 'Heartfelt love stories, emotional bonds, and modern romance' },
-      { id: 'cat-4', name: 'Thrillers & Crime', imageUrl: 'https://images.unsplash.com/photo-1509198397868-475647b2a1e5?auto=format&fit=crop&w=600&q=80', description: 'Underworld crime families, police investigations, and betrayal' },
-      { id: 'cat-5', name: 'Historical Epics', imageUrl: 'https://images.unsplash.com/photo-1461360370896-922624d12aa1?auto=format&fit=crop&w=600&q=80', description: 'Grand historical reenactments of ancient dynasties and sultans' },
-      { id: 'cat-6', name: 'Family Sagas', imageUrl: 'https://images.unsplash.com/photo-1511895426328-dc8714191300?auto=format&fit=crop&w=600&q=80', description: 'Multi-generational dynasty conflicts and family honor' }
-    ];
+    try {
+      localStorage.setItem('cineflix_custom_categories', JSON.stringify(DB_CATEGORIES));
+    } catch {}
+    return DB_CATEGORIES;
   });
+
+  // On localhost, automatically query the disk database on page load so any changes to full_backup.json take effect immediately
+  useEffect(() => {
+    fetch('/api/database')
+      .then((res) => {
+        if (!res.ok) throw new Error('Not found');
+        return res.json();
+      })
+      .then((data) => {
+        if (data && Array.isArray(data.shows) && data.shows.length > 0) {
+          setShows(data.shows);
+          if (Array.isArray(data.feeds)) setFeeds(data.feeds);
+          if (data.adminSettings) setAdminSettings(data.adminSettings);
+          if (Array.isArray(data.categoriesList)) setCategoriesList(data.categoriesList);
+          if (Array.isArray(data.notifications)) setNotifications(data.notifications);
+          if (data.exported_at) {
+            try {
+              localStorage.setItem('diziurdu_db_exported_at', data.exported_at);
+            } catch {}
+          }
+          try {
+            localStorage.setItem('cineflix_shows', JSON.stringify(data.shows));
+            if (Array.isArray(data.feeds)) localStorage.setItem('cineflix_feeds_v2', JSON.stringify(data.feeds));
+            if (data.adminSettings) localStorage.setItem('cineflix_settings', JSON.stringify(data.adminSettings));
+            if (Array.isArray(data.categoriesList)) localStorage.setItem('cineflix_custom_categories', JSON.stringify(data.categoriesList));
+            if (Array.isArray(data.notifications)) localStorage.setItem('cineflix_notifications', JSON.stringify(data.notifications));
+          } catch {}
+        }
+      })
+      .catch(() => {});
+  }, []);
 
   useEffect(() => {
     const handleStorageChange = (e: StorageEvent) => {
@@ -209,20 +280,20 @@ export default function App() {
     series: Show | null;
     movies: Show | null;
   }>(() => {
-    const initialPool = shows.length > 0 ? shows : INITIAL_SHOWS;
-    const eligibleAll = initialPool.filter((s) => s.is_recommended !== false);
+    const initialPool: Show[] = shows.length > 0 ? shows : DB_SHOWS;
+    const eligibleAll = initialPool.filter((s: Show) => s.is_recommended !== false);
     const poolAll = eligibleAll.length > 0 ? eligibleAll : initialPool;
 
-    const eligibleSeries = initialPool.filter((s) => s.type === 'series' && s.is_recommended !== false);
-    const poolSeries = eligibleSeries.length > 0 ? eligibleSeries : initialPool.filter((s) => s.type === 'series');
+    const eligibleSeries = initialPool.filter((s: Show) => s.type === 'series' && s.is_recommended !== false);
+    const poolSeries = eligibleSeries.length > 0 ? eligibleSeries : initialPool.filter((s: Show) => s.type === 'series');
 
-    const eligibleMovies = initialPool.filter((s) => s.type === 'movie' && s.is_recommended !== false);
-    const poolMovies = eligibleMovies.length > 0 ? eligibleMovies : initialPool.filter((s) => s.type === 'movie');
+    const eligibleMovies = initialPool.filter((s: Show) => s.type === 'movie' && s.is_recommended !== false);
+    const poolMovies = eligibleMovies.length > 0 ? eligibleMovies : initialPool.filter((s: Show) => s.type === 'movie');
 
     return {
-      all: getNextRotatingRecommendation(poolAll, 'cineflix_last_rec_all') || poolAll[0],
-      series: getNextRotatingRecommendation(poolSeries, 'cineflix_last_rec_series') || poolSeries[0] || poolAll[0],
-      movies: getNextRotatingRecommendation(poolMovies, 'cineflix_last_rec_movies') || poolMovies[0] || poolAll[0],
+      all: getNextRotatingRecommendation(poolAll, 'cineflix_last_rec_all') || poolAll[0] || null,
+      series: getNextRotatingRecommendation(poolSeries, 'cineflix_last_rec_series') || poolSeries[0] || poolAll[0] || null,
+      movies: getNextRotatingRecommendation(poolMovies, 'cineflix_last_rec_movies') || poolMovies[0] || poolAll[0] || null,
     };
   });
 
@@ -239,9 +310,9 @@ export default function App() {
       const poolMovies = eligibleMovies.length > 0 ? eligibleMovies : shows.filter((s) => s.type === 'movie');
 
       return {
-        all: (prev.all && poolAll.find((s) => s.id === prev.all?.id)) || getNextRotatingRecommendation(poolAll, 'cineflix_last_rec_all') || poolAll[0],
-        series: (prev.series && poolSeries.find((s) => s.id === prev.series?.id)) || getNextRotatingRecommendation(poolSeries, 'cineflix_last_rec_series') || poolSeries[0] || poolAll[0],
-        movies: (prev.movies && poolMovies.find((s) => s.id === prev.movies?.id)) || getNextRotatingRecommendation(poolMovies, 'cineflix_last_rec_movies') || poolMovies[0] || poolAll[0],
+        all: (prev.all && poolAll.find((s) => s.id === prev.all?.id)) || getNextRotatingRecommendation(poolAll, 'cineflix_last_rec_all') || poolAll[0] || null,
+        series: (prev.series && poolSeries.find((s) => s.id === prev.series?.id)) || getNextRotatingRecommendation(poolSeries, 'cineflix_last_rec_series') || poolSeries[0] || poolAll[0] || null,
+        movies: (prev.movies && poolMovies.find((s) => s.id === prev.movies?.id)) || getNextRotatingRecommendation(poolMovies, 'cineflix_last_rec_movies') || poolMovies[0] || poolAll[0] || null,
       };
     });
   }, [shows]);
@@ -963,9 +1034,18 @@ export default function App() {
 
       window.history.pushState({ showId: show.id, slug }, '', currentUrl.toString());
 
-      const poster = show.posterLandscapeUrl || show.backdropUrl || '';
-      const desc = show.shortDescription || show.synopsis || `Discover cast, trailers and Urdu dubbed episodes for ${show.title} on ${platformName}`;
-      setMetaTags(`${show.title} – Watch on ${platformName}`, desc, poster, currentUrl.toString());
+      const backdrop = show.backdropUrl || show.posterLandscapeUrl || '';
+      const maturity = show.maturityRating || '16+';
+      const genreList = Array.isArray(show.genres) && show.genres.length > 0 ? show.genres.join(', ') : 'Drama';
+      const year = show.releaseYear || '2025';
+      const durationOrSeasons =
+        show.type === 'series'
+          ? (show.durationOrSeasons || (show.seasons && show.seasons.length > 0 ? `${show.seasons.length} Season${show.seasons.length > 1 ? 's' : ''}` : '1 Season'))
+          : (show.durationOrSeasons || 'Feature Film');
+      const details = show.synopsis || show.shortDescription || '';
+      const desc = `${maturity} • ${genreList} • ${year} • ${durationOrSeasons}${details ? ` • ${details}` : ''}`;
+      const canonicalShareUrl = `https://diziurdu.com/watch/${slug}`;
+      setMetaTags(`${show.title} - Dizi Urdu`, desc, backdrop, canonicalShareUrl);
     } catch {}
   };
 
@@ -1043,11 +1123,22 @@ export default function App() {
           currentUrl.toString()
         );
       } else {
+        const backdrop = selectedShowForDetail.backdropUrl || selectedShowForDetail.posterLandscapeUrl || '';
+        const maturity = selectedShowForDetail.maturityRating || '16+';
+        const genreList = Array.isArray(selectedShowForDetail.genres) && selectedShowForDetail.genres.length > 0 ? selectedShowForDetail.genres.join(', ') : 'Drama';
+        const year = selectedShowForDetail.releaseYear || '2025';
+        const durationOrSeasons =
+          selectedShowForDetail.type === 'series'
+            ? (selectedShowForDetail.durationOrSeasons || (selectedShowForDetail.seasons && selectedShowForDetail.seasons.length > 0 ? `${selectedShowForDetail.seasons.length} Season${selectedShowForDetail.seasons.length > 1 ? 's' : ''}` : '1 Season'))
+            : (selectedShowForDetail.durationOrSeasons || 'Feature Film');
+        const details = selectedShowForDetail.synopsis || selectedShowForDetail.shortDescription || '';
+        const desc = `${maturity} • ${genreList} • ${year} • ${durationOrSeasons}${details ? ` • ${details}` : ''}`;
+        const canonicalShareUrl = `https://diziurdu.com/watch/${slug}`;
         setMetaTags(
-          `${selectedShowForDetail.title} – Watch on ${platformName}`,
-          selectedShowForDetail.shortDescription || selectedShowForDetail.synopsis,
-          selectedShowForDetail.posterLandscapeUrl,
-          currentUrl.toString()
+          `${selectedShowForDetail.title} - Dizi Urdu`,
+          desc,
+          backdrop,
+          canonicalShareUrl
         );
       }
       window.history.pushState(null, '', currentUrl.toString());
@@ -1140,6 +1231,19 @@ export default function App() {
             } else {
               setDetailVideoMode('trailer');
             }
+
+            const backdrop = matched.backdropUrl || matched.posterLandscapeUrl || '';
+            const maturity = matched.maturityRating || '16+';
+            const genreList = Array.isArray(matched.genres) && matched.genres.length > 0 ? matched.genres.join(', ') : 'Drama';
+            const year = matched.releaseYear || '2025';
+            const durationOrSeasons =
+              matched.type === 'series'
+                ? (matched.durationOrSeasons || (matched.seasons && matched.seasons.length > 0 ? `${matched.seasons.length} Season${matched.seasons.length > 1 ? 's' : ''}` : '1 Season'))
+                : (matched.durationOrSeasons || 'Feature Film');
+            const details = matched.synopsis || matched.shortDescription || '';
+            const desc = `${maturity} • ${genreList} • ${year} • ${durationOrSeasons}${details ? ` • ${details}` : ''}`;
+            const canonicalShareUrl = `https://diziurdu.com/watch/${matched.slug || matched.id}`;
+            setMetaTags(`${matched.title} - Dizi Urdu`, desc, backdrop, canonicalShareUrl);
           }
         } else {
           setSelectedShowForDetail((prev) => (prev ? null : prev));
@@ -1576,7 +1680,9 @@ export default function App() {
   }, [selectedCategoryFilter, categoryMatchingShows]);
 
   // Recommendation per page (respects is_recommended eligibility flag and rotates on reload):
-  const currentHeroShow = useMemo(() => {
+  const currentHeroShow = useMemo<Show | null>(() => {
+    if (!shows || shows.length === 0) return null;
+
     if (selectedCategoryFilter) {
       if (categoryRandomHeroShow && categoryMatchingShows.some((s) => s.id === categoryRandomHeroShow.id)) {
         return categoryRandomHeroShow;
@@ -1593,14 +1699,15 @@ export default function App() {
     // Only items with is_recommended !== false can appear as hero recommendation
     const eligibleShows = shows.filter((s) => s.is_recommended !== false);
     const pool = eligibleShows.length > 0 ? eligibleShows : shows;
+    if (pool.length === 0) return null;
 
     if (activeFilter === 'movies') {
-      return pageRecommendations.movies || pool.find((s) => s.type === 'movie') || pool[0];
+      return pageRecommendations.movies || pool.find((s) => s.type === 'movie') || pool[0] || null;
     }
     if (activeFilter === 'series') {
-      return pageRecommendations.series || pool.find((s) => s.type === 'series') || pool[0];
+      return pageRecommendations.series || pool.find((s) => s.type === 'series') || pool[0] || null;
     }
-    return pageRecommendations.all || (heroShow.is_recommended !== false ? heroShow : pool[0]);
+    return pageRecommendations.all || (heroShow && heroShow.is_recommended !== false ? heroShow : pool[0]) || null;
   }, [activeFilter, selectedCategoryFilter, categoryMatchingShows, shows, pageRecommendations, heroShow, customHeroShow]);
 
   // Watchlist shows list
@@ -1960,34 +2067,52 @@ export default function App() {
             </div>
 
             {/* 2. Hero Recommendation with Ambient Glow (Placed below the filter strip) */}
-            <HeroRecommendation
-              show={currentHeroShow}
-              isInWatchlist={watchlist.includes(currentHeroShow.id)}
-              onToggleWatchlist={handleToggleWatchlist}
-              onOpenDetails={(s) => handleOpenDetails(s, 'trailer')}
-              onPlay={handlePlayShow}
-              isPausedByFeedHover={isFeedCardHovered}
-              isPausedByModal={
-                Boolean(selectedShowForDetail) ||
-                Boolean(playingMedia) ||
-                Boolean(selectedSpecialFeed) ||
-                Boolean(selectedActorForPool) ||
-                isMobileSearchOpen ||
-                isMobileProfileOpen ||
-                isAccountModalOpen ||
-                isAppSettingsModalOpen ||
-                isRequestContentModalOpen ||
-                isDownloadModalOpen ||
-                isWatchlistModalOpen ||
-                activeFilter !== 'all' ||
-                searchQuery.trim().length > 0 ||
-                isRecommendationPaused
-              }
-              isGlobalMuted={isGlobalMuted}
-              onToggleGlobalMute={handleToggleGlobalMute}
-              isMobile={isMobile && !isTablet}
-              mobileRecommendationStyle={adminSettings.mobileRecommendationStyle || 'portrait'}
-            />
+            {currentHeroShow ? (
+              <HeroRecommendation
+                show={currentHeroShow}
+                isInWatchlist={watchlist.includes(currentHeroShow.id)}
+                onToggleWatchlist={handleToggleWatchlist}
+                onOpenDetails={(s) => handleOpenDetails(s, 'trailer')}
+                onPlay={handlePlayShow}
+                isPausedByFeedHover={isFeedCardHovered}
+                isPausedByModal={
+                  Boolean(selectedShowForDetail) ||
+                  Boolean(playingMedia) ||
+                  Boolean(selectedSpecialFeed) ||
+                  Boolean(selectedActorForPool) ||
+                  isMobileSearchOpen ||
+                  isMobileProfileOpen ||
+                  isAccountModalOpen ||
+                  isAppSettingsModalOpen ||
+                  isRequestContentModalOpen ||
+                  isDownloadModalOpen ||
+                  isWatchlistModalOpen ||
+                  activeFilter !== 'all' ||
+                  searchQuery.trim().length > 0 ||
+                  isRecommendationPaused
+                }
+                isGlobalMuted={isGlobalMuted}
+                onToggleGlobalMute={handleToggleGlobalMute}
+                isMobile={isMobile && !isTablet}
+                mobileRecommendationStyle={adminSettings.mobileRecommendationStyle || 'portrait'}
+              />
+            ) : shows.length === 0 ? (
+              <div className="min-h-[55vh] flex flex-col items-center justify-center px-4 py-16 text-center select-none">
+                <div className="w-16 h-16 rounded-2xl bg-white/5 border border-white/10 flex items-center justify-center mb-4 text-zinc-400 shadow-inner">
+                  <Film className="w-8 h-8 text-zinc-300" />
+                </div>
+                <h2 className="text-xl sm:text-2xl font-bold text-white mb-2">No Titles in Database</h2>
+                <p className="text-sm text-zinc-400 max-w-md mb-6 leading-relaxed">
+                  Link your <code className="text-amber-400 font-mono bg-white/5 px-1.5 py-0.5 rounded border border-white/10">full_backup.json</code> file in <code className="text-amber-400 font-mono bg-white/5 px-1.5 py-0.5 rounded border border-white/10">src/</code> or add movies and series directly through the Admin Panel.
+                </p>
+                <button
+                  onClick={() => setIsAdminPanelOpen(true)}
+                  className="px-6 py-2.5 rounded-full bg-red-600 hover:bg-red-700 text-white font-semibold text-sm transition-all cursor-pointer shadow-lg shadow-red-900/40 hover:scale-105 active:scale-95"
+                >
+                  Open Admin Panel
+                </button>
+              </div>
+            ) : null}
 
             {/* Active Category Filter Pill (shown ONLY for explicit custom category filter, NEVER on series or movies pages) */}
             {Boolean(selectedCategoryFilter) && activeFilter !== 'series' && activeFilter !== 'movies' && (
