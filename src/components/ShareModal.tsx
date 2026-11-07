@@ -17,21 +17,24 @@ export const ShareModal: React.FC<ShareModalProps> = ({
 }) => {
   const [copied, setCopied] = useState(false);
 
+  // Pick current host and origin dynamically from the browser environment
+  const currentOrigin = typeof window !== 'undefined' ? window.location.origin : 'http://localhost:3000';
+  const currentHost = typeof window !== 'undefined' ? window.location.host : 'localhost:3000';
+
   const slug = show.slug || show.id;
-  // Always use diziurdu.com domain for public sharing links as requested
-  const shareUrl = `https://diziurdu.com/watch/${slug}`;
+  const shareUrl = `${currentOrigin}/watch/${slug}`;
   
-  // Exact title format requested: "Abc - Dizi Urdu"
-  const shareTitle = `${show.title} - Dizi Urdu`;
+  // Title format: "Title - Platform Name"
+  const shareTitle = `${show.title} - ${platformName}`;
 
-  // Always use admin-added backdrop first
-  const shareBackdrop =
-    show.backdropUrl ||
-    show.posterLandscapeUrl ||
-    show.posterVerticalUrl ||
-    'https://images.unsplash.com/photo-1578632767115-351597cf2477?auto=format&fit=crop&w=1920&q=80';
+  // Always use the real admin-added backdrop (absolute URL for social sharing)
+  let rawBackdrop = show.backdropUrl || show.posterLandscapeUrl || show.posterVerticalUrl || '';
+  if (rawBackdrop && rawBackdrop.startsWith('/')) {
+    rawBackdrop = `${currentOrigin}${rawBackdrop}`;
+  }
+  const shareBackdrop = rawBackdrop;
 
-  // Description line with maturity rating, genre, year, number of episodes/seasons and admin detail
+  // Metadata information: maturity rating, genres, release year, seasons/episodes
   const maturity = show.maturityRating || '16+';
   const genreList = Array.isArray(show.genres) && show.genres.length > 0 ? show.genres.join(', ') : 'Drama';
   const year = show.releaseYear || '2025';
@@ -39,7 +42,7 @@ export const ShareModal: React.FC<ShareModalProps> = ({
     show.type === 'series'
       ? (show.durationOrSeasons || (show.seasons && show.seasons.length > 0 ? `${show.seasons.length} Season${show.seasons.length > 1 ? 's' : ''}` : '1 Season'))
       : (show.durationOrSeasons || 'Feature Film');
-  const details = show.synopsis || show.shortDescription || '';
+  const details = show.synopsis || show.description || show.shortDescription || '';
 
   const shareDescription = `${maturity} • ${genreList} • ${year} • ${durationOrSeasons}${details ? ` • ${details}` : ''}`;
 
@@ -61,18 +64,22 @@ export const ShareModal: React.FC<ShareModalProps> = ({
 
     setMeta('property', 'og:title', shareTitle);
     setMeta('property', 'og:description', shareDescription);
-    setMeta('property', 'og:image', shareBackdrop);
+    if (shareBackdrop) {
+      setMeta('property', 'og:image', shareBackdrop);
+      setMeta('property', 'og:image:secure_url', shareBackdrop);
+      setMeta('name', 'twitter:image', shareBackdrop);
+    }
     setMeta('property', 'og:url', shareUrl);
-    setMeta('property', 'og:site_name', 'Dizi Urdu');
+    setMeta('property', 'og:site_name', platformName || currentHost);
+    setMeta('property', 'og:type', 'video.other');
     setMeta('name', 'twitter:card', 'summary_large_image');
     setMeta('name', 'twitter:title', shareTitle);
     setMeta('name', 'twitter:description', shareDescription);
-    setMeta('name', 'twitter:image', shareBackdrop);
 
     return () => {
       document.title = prevTitle;
     };
-  }, [isOpen, shareTitle, shareDescription, shareBackdrop, shareUrl]);
+  }, [isOpen, shareTitle, shareDescription, shareBackdrop, shareUrl, platformName, currentHost]);
 
   if (!isOpen) return null;
 
@@ -179,7 +186,7 @@ export const ShareModal: React.FC<ShareModalProps> = ({
       onClick={onClose}
     >
       <div
-        className="w-full max-w-lg bg-[#16171d] border border-white/10 rounded-2xl p-5 sm:p-6 shadow-2xl relative select-none animate-in zoom-in-95 duration-200"
+        className="w-full max-w-md bg-[#16171d] border border-white/10 rounded-2xl p-5 sm:p-6 shadow-2xl relative select-none animate-in zoom-in-95 duration-200"
         onClick={(e) => e.stopPropagation()}
       >
         {/* Header */}
@@ -202,16 +209,16 @@ export const ShareModal: React.FC<ShareModalProps> = ({
           </button>
         </div>
 
-        {/* Show Preview Card with Admin-added Backdrop */}
+        {/* Simplified Compact Show Header */}
         <div className="flex items-center gap-3.5 my-4 p-3 rounded-xl bg-white/[0.04] border border-white/10">
           <img
-            src={shareBackdrop}
+            src={shareBackdrop || 'https://images.unsplash.com/photo-1578632767115-351597cf2477?auto=format&fit=crop&w=640&q=80'}
             alt={show.title}
             referrerPolicy="no-referrer"
-            className="w-24 h-14 rounded-lg object-cover shrink-0 bg-zinc-800 shadow-sm border border-white/10"
+            className="w-20 h-12 rounded-lg object-cover shrink-0 bg-zinc-800 shadow-sm border border-white/10"
           />
           <div className="min-w-0 flex-1">
-            <h4 className="text-sm font-bold text-white truncate">{shareTitle}</h4>
+            <h4 className="text-sm font-bold text-white truncate">{show.title}</h4>
             <div className="flex items-center gap-1.5 flex-wrap mt-0.5">
               <span className="px-1.5 py-0.2 rounded bg-blue-600/80 text-white font-bold text-[10px]">
                 {maturity}
@@ -220,9 +227,6 @@ export const ShareModal: React.FC<ShareModalProps> = ({
                 {genreList} • {year} • {durationOrSeasons}
               </span>
             </div>
-            {details && (
-              <p className="text-[10px] text-zinc-400 line-clamp-1 mt-0.5">{details}</p>
-            )}
           </div>
         </div>
 
@@ -254,13 +258,15 @@ export const ShareModal: React.FC<ShareModalProps> = ({
           </div>
         </div>
 
-        {/* Copy Link Section (showing diziurdu.com URL) */}
+        {/* Copy Link Section */}
         <div className="mt-4 pt-3.5 border-t border-white/10">
           <div className="flex items-center justify-between mb-1.5">
             <label className="text-xs font-semibold text-zinc-400 uppercase tracking-wider">
               Website Link
             </label>
-            <span className="text-[10px] text-emerald-400 font-mono font-medium">diziurdu.com</span>
+            <span className="text-[10px] text-emerald-400 font-mono font-medium truncate max-w-[200px]">
+              {currentHost}
+            </span>
           </div>
           <div className="flex items-center gap-2 bg-[#101115] border border-white/10 rounded-xl p-1.5 pl-3">
             <span className="text-xs text-zinc-300 truncate flex-1 font-mono">

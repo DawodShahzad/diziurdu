@@ -522,6 +522,7 @@ export const AdminDashboardPage: React.FC<AdminDashboardPageProps> = ({
     slug: (type === 'series' ? 'new-series-' : 'new-movie-') + Math.floor(Math.random() * 9000 + 1000),
     announcementPill: type === 'series' ? 'Season 1 Streaming Now' : 'Premiere Feature Film',
     is_recommended: true,
+    isSpecialSingleFeedEligible: false,
     categories: ['Historical Epics', 'Action & Combat'],
     supportingTitles: [],
 
@@ -1722,6 +1723,11 @@ export const AdminDashboardPage: React.FC<AdminDashboardPageProps> = ({
                                   Hero Eligible
                                 </span>
                               )}
+                              {show.isSpecialSingleFeedEligible && (
+                                <span className="text-[9px] px-1.5 py-0.2 rounded bg-purple-950 text-purple-300 border border-purple-800/60">
+                                  Special Feed
+                                </span>
+                              )}
                             </p>
                             <span className="text-[10px] text-zinc-400 font-mono">
                               Slug: /{show.slug || show.id} · {show.durationOrSeasons} · {show.maturityRating}
@@ -1879,6 +1885,11 @@ export const AdminDashboardPage: React.FC<AdminDashboardPageProps> = ({
                               {show.is_recommended && (
                                 <span className="text-[10px] px-1.5 py-0.2 rounded bg-amber-950 text-amber-400 border border-amber-800/80 font-mono">
                                   Recommended Hero
+                                </span>
+                              )}
+                              {show.isSpecialSingleFeedEligible && (
+                                <span className="text-[10px] px-1.5 py-0.2 rounded bg-purple-950 text-purple-300 border border-purple-800/80 font-mono">
+                                  Special Single Feed
                                 </span>
                               )}
                               {show.tmdbId && (
@@ -5314,6 +5325,25 @@ export const AdminDashboardPage: React.FC<AdminDashboardPageProps> = ({
                         className="sr-only peer"
                       />
                       <div className="w-11 h-6 bg-zinc-700 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-zinc-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-red-600"></div>
+                    </label>
+                  </div>
+
+                  {/* Special Single Feed Eligibility Checkbox */}
+                  <div className="p-3.5 rounded-xl bg-zinc-900 border border-zinc-800 flex items-center justify-between">
+                    <div>
+                      <h5 className="text-xs font-bold text-white">Special Single Feed Eligible</h5>
+                      <p className="text-[11px] text-zinc-400">
+                        When enabled, title is eligible to be featured in the special single feed banner on the desktop homepage.
+                      </p>
+                    </div>
+                    <label className="relative inline-flex items-center cursor-pointer">
+                      <input
+                        type="checkbox"
+                        checked={formData.isSpecialSingleFeedEligible ?? false}
+                        onChange={(e) => setFormData({ ...formData, isSpecialSingleFeedEligible: e.target.checked })}
+                        className="sr-only peer"
+                      />
+                      <div className="w-11 h-6 bg-zinc-700 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-zinc-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-purple-600"></div>
                     </label>
                   </div>
 

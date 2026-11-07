@@ -44,6 +44,7 @@ interface NavbarProps {
   onClearWatchlist?: () => void;
   onClearWatchHistory?: () => void;
   isSpecialFeedPage?: boolean;
+  isOffline?: boolean;
 }
 
 export const Navbar: React.FC<NavbarProps> = ({
@@ -70,7 +71,8 @@ export const Navbar: React.FC<NavbarProps> = ({
   onProfileMenuAction,
   onClearWatchlist,
   onClearWatchHistory,
-  isSpecialFeedPage = false
+  isSpecialFeedPage = false,
+  isOffline = false
 }) => {
   type ActiveMenu = 'none' | 'search' | 'notifications' | 'profile' | 'more';
   const [activeMenu, setActiveMenu] = useState<ActiveMenu>('none');
@@ -222,36 +224,28 @@ export const Navbar: React.FC<NavbarProps> = ({
     };
   }, [activeMenu]);
 
-  // Compute mobile top navbar background opacity: starts at 0% at top, smoothly reaches 100% solid black at 3 inches (~288px)
-  const mobileNavOpacity = Math.min(1.0, scrollY / 288);
-
   return (
-    <header className="fixed top-0 left-0 right-0 z-50 border-none select-none">
-      {/* Background for Mobile: starts at 0% opacity, attains 100% solid black at 3 inches scroll, 0 blur */}
-      <div
-        className="md:hidden absolute inset-0 pointer-events-none backdrop-blur-none transition-[background-color] duration-75"
-        style={{
-          backgroundColor: `rgba(0, 0, 0, ${mobileNavOpacity})`
-        }}
-      />
-
-      {/* Background for Desktop: with simple 0.7s fade-in and 0.5s fade-out */}
-      <div className="hidden md:block absolute inset-0 pointer-events-none -z-10 overflow-hidden">
-        {/* Soft, gentle top vignette when at top (matching Netflix reference image) */}
+    <header
+      style={{
+        top: isOffline && windowWidth > 768 ? '52px' : '0px'
+      }}
+      className="fixed left-0 right-0 z-50 border-none select-none transition-[top] duration-200"
+    >
+      {/* Background for Desktop & Mobile: subtle top gradient without harsh glare, smooth ramp to 100% opacity on scroll */}
+      <div className="absolute inset-0 pointer-events-none -z-10 overflow-hidden">
+        {/* Soft top gradient when at top (scrollY ~ 0) without high glare */}
         <div
           style={{
-            transition: isScrolled ? 'opacity 700ms linear' : 'opacity 500ms linear',
-            opacity: isScrolled ? 0 : 1
+            opacity: Math.max(0, 1 - scrollY / 50)
           }}
-          className="absolute inset-0 bg-gradient-to-b from-black/50 via-black/20 to-transparent pointer-events-none"
+          className="absolute inset-0 bg-gradient-to-b from-black/25 via-transparent to-transparent pointer-events-none transition-opacity duration-300"
         />
-        {/* Solid black fill on scroll: Desktop only */}
+        {/* Mobile & Desktop: smoothly reaches 100% black opacity as user scrolls down, not instantly */}
         <div
           style={{
-            transition: isScrolled ? 'opacity 700ms linear' : 'opacity 500ms linear',
-            opacity: isScrolled ? 1 : 0
+            opacity: Math.min(1, Math.max(0, scrollY / 90))
           }}
-          className="hidden md:block absolute inset-0 bg-black shadow-[0_8px_30px_rgb(0,0,0,0.85)] pointer-events-none"
+          className="absolute inset-0 bg-black pointer-events-none transition-opacity duration-200"
         />
       </div>
 

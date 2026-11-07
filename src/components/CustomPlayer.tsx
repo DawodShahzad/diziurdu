@@ -22,6 +22,8 @@ export interface CustomPlayerProps {
   titleLogoUrl?: string;
   previewThumbnailUrl?: string;
   autoPlay?: boolean;
+  initialCurrentTime?: number;
+  onProgressUpdate?: (currentTime: number, duration: number) => void;
   onClose?: () => void;
   onEnded?: () => void;
 }
@@ -39,6 +41,8 @@ export const CustomPlayer: React.FC<CustomPlayerProps> = ({
   titleLogoUrl,
   previewThumbnailUrl = 'https://images.unsplash.com/photo-1579783902614-a3fb3927b675?auto=format&fit=crop&w=640&q=80',
   autoPlay = true,
+  initialCurrentTime = 0,
+  onProgressUpdate,
   onClose,
   onEnded
 }) => {
@@ -237,15 +241,26 @@ export const CustomPlayer: React.FC<CustomPlayerProps> = ({
       }
     };
 
+    const hasSeekedInitialRef = { current: false };
+
     const handleTimeUpdate = () => {
       if (!isDraggingRef.current) {
         setCurrentTime(video.currentTime);
+      }
+      if (onProgressUpdate && video.duration) {
+        onProgressUpdate(video.currentTime, video.duration);
       }
       updateBufferedRange();
     };
 
     const handleLoadedMetadata = () => {
       setDuration(video.duration || 0);
+      if (initialCurrentTime > 0 && !hasSeekedInitialRef.current) {
+        hasSeekedInitialRef.current = true;
+        try {
+          video.currentTime = initialCurrentTime;
+        } catch {}
+      }
       updateBufferedRange();
     };
 
@@ -296,6 +311,11 @@ export const CustomPlayer: React.FC<CustomPlayerProps> = ({
     video.addEventListener('ended', handleEnded);
 
     return () => {
+      try {
+        if (onProgressUpdate && video.duration > 0) {
+          onProgressUpdate(video.currentTime, video.duration);
+        }
+      } catch {}
       video.removeEventListener('timeupdate', handleTimeUpdate);
       video.removeEventListener('progress', handleProgress);
       video.removeEventListener('canplaythrough', handleCanPlayThrough);
@@ -309,7 +329,7 @@ export const CustomPlayer: React.FC<CustomPlayerProps> = ({
       if (topPillTimerRef.current) window.clearTimeout(topPillTimerRef.current);
       if (hideControlsTimer.current) window.clearTimeout(hideControlsTimer.current);
     };
-  }, [onEnded]);
+  }, [onEnded, onProgressUpdate, initialCurrentTime]);
 
   const togglePlay = useCallback(() => {
     if (!videoRef.current) return;

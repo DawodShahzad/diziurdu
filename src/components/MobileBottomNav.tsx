@@ -1,9 +1,10 @@
-import React from 'react';
+import React, { useRef } from 'react';
 import { Search } from 'lucide-react';
 
 interface MobileBottomNavProps {
   activeTab: 'home' | 'search' | 'profile';
   onSelectTab: (tab: 'home' | 'search' | 'profile') => void;
+  onTripleTapHome?: () => void;
   userAvatar?: string;
   platformName?: string;
   navbarStyle?: 'floating' | 'bottom_fixed';
@@ -13,11 +14,29 @@ interface MobileBottomNavProps {
 export const MobileBottomNav: React.FC<MobileBottomNavProps> = ({
   activeTab,
   onSelectTab,
+  onTripleTapHome,
   userAvatar = 'https://images.unsplash.com/photo-1553284965-83fd3e82fa5a?auto=format&fit=crop&w=120&q=80',
   navbarStyle = 'floating',
   showLabels = true
 }) => {
   const isBottomFixed = navbarStyle === 'bottom_fixed';
+
+  // Triple-tap tracker on Home button: only triple-tap reloads/rotates feed; single or double tap navigates to home
+  const homeTapTimesRef = useRef<number[]>([]);
+  const handleHomeClick = () => {
+    const now = Date.now();
+    homeTapTimesRef.current = homeTapTimesRef.current.filter((t) => now - t < 1200);
+    homeTapTimesRef.current.push(now);
+
+    if (homeTapTimesRef.current.length >= 3) {
+      homeTapTimesRef.current = [];
+      if (onTripleTapHome) {
+        onTripleTapHome();
+        return;
+      }
+    }
+    onSelectTab('home');
+  };
 
   // Dynamic icon sizing: when labels are hidden beneath icons, increase icon sizes for balanced presence
   const iconSizeClass = showLabels ? 'w-5 h-5' : 'w-6.5 h-6.5';
@@ -36,7 +55,7 @@ export const MobileBottomNav: React.FC<MobileBottomNavProps> = ({
         >
           {/* 1. Home Tab */}
           <button
-            onClick={() => onSelectTab('home')}
+            onClick={handleHomeClick}
             className={`flex flex-col items-center justify-center cursor-pointer flex-1 h-full ${
               activeTab === 'home' ? 'text-white' : 'text-zinc-400 hover:text-zinc-200'
             }`}
@@ -118,7 +137,7 @@ export const MobileBottomNav: React.FC<MobileBottomNavProps> = ({
       >
         {/* 1. Home Tab */}
         <button
-          onClick={() => onSelectTab('home')}
+          onClick={handleHomeClick}
           className={`flex flex-col items-center justify-center cursor-pointer w-14 ${
             showLabels ? 'h-10' : 'h-9'
           } shrink-0 ${

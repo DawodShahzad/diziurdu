@@ -32,7 +32,7 @@ export const WatchlistModal: React.FC<WatchlistModalProps> = ({
             </div>
             <div>
               <h2 className="text-xl md:text-2xl font-bold text-white tracking-tight font-display">
-                My Saved Watchlist ({watchlistShows.length})
+                My Saved Watchlist
               </h2>
               <p className="text-xs text-zinc-400">
                 Shows and movies bookmarked for later binge viewing

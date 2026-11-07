@@ -62,7 +62,7 @@ export const CastPoolModal: React.FC<CastPoolModalProps> = ({
   return (
     <div
       ref={containerRef}
-      className="fixed inset-0 z-60 overflow-y-auto overflow-x-hidden p-0 sm:p-5 bg-black/85 backdrop-blur-md flex items-start justify-center custom-scrollbar animate-in fade-in duration-200"
+      className="fixed inset-0 z-60 overflow-y-auto overflow-x-hidden p-0 sm:p-5 bg-black/50 flex items-start justify-center custom-scrollbar animate-in fade-in duration-200"
       onClick={(e) => {
         if (e.target === e.currentTarget) onClose();
       }}

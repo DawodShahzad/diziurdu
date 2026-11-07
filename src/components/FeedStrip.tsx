@@ -4,12 +4,14 @@ import { ShowCard, triggerGlobalScroll, getGlobalMousePos } from './ShowCard';
 import { ChevronLeft, ChevronRight, Volume2, VolumeX } from 'lucide-react';
 import { ShowTitleLogo } from './ShowTitleLogo';
 import { attachHlsVideo } from '../utils/hlsHelper';
+import { WatchProgressItem } from '../utils/watchProgress';
 
 interface FeedStripProps {
   feed: FeedConfig;
   shows: Show[];
   customShows?: Show[];
   watchlist: string[];
+  watchHistory?: Record<string, WatchProgressItem>;
   onToggleWatchlist: (showId: string) => void;
   onOpenDetails: (show: Show) => void;
   onPlayShow: (show: Show) => void;
@@ -56,6 +58,7 @@ export const FeedStrip: React.FC<FeedStripProps> = ({
   shows,
   customShows,
   watchlist,
+  watchHistory,
   onToggleWatchlist,
   onOpenDetails,
   onPlayShow,
@@ -1158,6 +1161,7 @@ export const FeedStrip: React.FC<FeedStripProps> = ({
                       onPopoutViewClose={handlePopoutClose}
                       aspectRatio={cardAspectRatio}
                       isContinueWatching={isContinueWatchingFeed}
+                      watchProgress={watchHistory?.[show.id]}
                       disablePopout={disablePopout}
                       isStretchable={isStretchableFeed}
                       onLongPress={onLongPressShow}
@@ -1263,6 +1267,7 @@ export const FeedStrip: React.FC<FeedStripProps> = ({
               onPopoutViewClose={handlePopoutClose}
               aspectRatio={cardAspectRatio}
               isContinueWatching={isContinueWatchingFeed}
+              watchProgress={watchHistory?.[show.id]}
               disablePopout={disablePopout}
               isStretchable={isStretchableFeed}
               onLongPress={onLongPressShow}

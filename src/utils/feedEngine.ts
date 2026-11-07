@@ -1,7 +1,8 @@
 import { Show, WatchHistoryItem, FeedConfig } from '../types';
+import { WatchProgressItem } from './watchProgress';
 import { buildActorIndex } from './actorIndex';
 
-export type WatchHistory = Record<string, WatchHistoryItem> | WatchHistoryItem[];
+export type WatchHistory = Record<string, WatchHistoryItem | WatchProgressItem | any> | (WatchHistoryItem | WatchProgressItem | any)[];
 
 export interface FeedRow {
   id: string;
@@ -239,13 +240,15 @@ export function generateDailyFeeds(
   userHistory: WatchHistory,
   userList: string[] = [],
   currentDate?: Date,
-  adminFeeds?: FeedConfig[]
+  adminFeeds?: FeedConfig[],
+  arrangementCycle?: number
 ): FeedRow[] {
   const catalog = items || [];
   if (catalog.length === 0) return [];
 
   const targetDate = currentDate || new Date();
-  const timeSeed = getThirtyMinuteSeed(targetDate);
+  const cycleSeed = (arrangementCycle !== undefined ? arrangementCycle : 0) * 10007;
+  const timeSeed = getThirtyMinuteSeed(targetDate) + cycleSeed;
   const timeRng = createSeededRandom(timeSeed);
 
   const historyItems = normalizeWatchHistory(userHistory);
@@ -936,19 +939,67 @@ export function generateDailyFeeds(
   }
 
   // ==========================================
-  // 9. INTERNAL SHUFFLE OF CONTENT (Every 30 mins)
-  // Keeps top ranked items in top 3 spots, shuffles the rest
+  // 9. INTERNAL SHUFFLE OF CONTENT & STRICT CROSS-ROW ANTI-REPLICATION
+  // Guarantees adjacent rows on screen do not replicate the same visible front titles
   // ==========================================
+  const recentRowWindow: string[][] = [];
+
   const internallyShuffledRows: FeedRow[] = dedupedSequencedRows.map((row, idx) => {
     // Preserve strict Top 10 rank order for #1-10 rows
     if (row.showRankNumbers) {
+      recentRowWindow.push(row.shows.slice(0, 5).map((s) => s.id));
+      if (recentRowWindow.length > 3) recentRowWindow.shift();
       return row;
     }
+
     const rowSeed = timeSeed + idx * 7919;
-    const shuffledItems = applyInternalFeedShuffle(row.shows, rowSeed);
+    const baseItems = applyInternalFeedShuffle(row.shows, rowSeed);
+
+    // Collect all show IDs that appeared in the visible front (first 5 cards) of the preceding 3 rows
+    const recentlyVisible = new Set<string>();
+    for (const pastRow of recentRowWindow) {
+      for (const id of pastRow) {
+        recentlyVisible.add(id);
+      }
+    }
+
+    // Partition shows into fresh vs already visible in preceding rows
+    const fresh: Show[] = [];
+    const repeated: Show[] = [];
+    for (const s of baseItems) {
+      if (recentlyVisible.has(s.id)) {
+        repeated.push(s);
+      } else {
+        fresh.push(s);
+      }
+    }
+
+    // Lead with fresh shows so adjacent rows show completely different titles
+    let finalizedShows = [...fresh, ...repeated];
+
+    // Supplement with diverse catalog shows if fresh count is low
+    if (fresh.length < 4 && catalog.length > 0) {
+      const matchGenre = row.shows[0]?.genres?.[0]?.toLowerCase();
+      const supplements = catalog.filter((c) => {
+        if (recentlyVisible.has(c.id)) return false;
+        if (finalizedShows.some((fs) => fs.id === c.id)) return false;
+        if (row.categoryKey === 'movies' && c.type !== 'movie') return false;
+        if (row.categoryKey === 'series' && c.type !== 'series') return false;
+        if (matchGenre && !(c.genres || []).some((g) => g.toLowerCase() === matchGenre)) return false;
+        return true;
+      });
+      if (supplements.length > 0) {
+        finalizedShows.splice(fresh.length, 0, ...supplements.slice(0, 5 - fresh.length));
+      }
+    }
+
+    // Save top 5 show IDs to the sliding window
+    recentRowWindow.push(finalizedShows.slice(0, 5).map((s) => s.id));
+    if (recentRowWindow.length > 3) recentRowWindow.shift();
+
     return {
       ...row,
-      shows: shuffledItems
+      shows: finalizedShows
     };
   });
 

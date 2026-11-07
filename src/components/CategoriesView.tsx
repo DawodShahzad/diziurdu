@@ -17,6 +17,7 @@ interface CategoriesViewProps {
   onCloseCategories?: () => void;
   onSelectCategoryCard?: (category: CategoryItem) => void;
   resetKey?: number;
+  initialCategory?: CategoryItem | null;
 }
 
 export const CATEGORIES_DATA: CategoryItem[] = INITIAL_CATEGORIES || [];
@@ -31,10 +32,18 @@ export const CategoriesView: React.FC<CategoriesViewProps> = ({
   onIncrementPoints,
   onCloseCategories,
   onSelectCategoryCard,
-  resetKey
+  resetKey,
+  initialCategory
 }) => {
-  const [selectedCategory, setSelectedCategory] = useState<CategoryItem | null>(null);
+  const [selectedCategory, setSelectedCategory] = useState<CategoryItem | null>(initialCategory || null);
   const categoryScrollPosRef = useRef<number>(0);
+
+  // Sync when initialCategory changes
+  useEffect(() => {
+    if (initialCategory) {
+      setSelectedCategory(initialCategory);
+    }
+  }, [initialCategory]);
 
   // When resetKey changes (e.g. user re-clicks Categories in filter strip), return to categories list
   useEffect(() => {

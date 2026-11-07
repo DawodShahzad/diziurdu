@@ -510,19 +510,19 @@ export const HeroRecommendation: React.FC<HeroRecommendationProps> = ({
               </div>
 
               {/* Two Pill Buttons Side-by-Side: Play & Add to My List */}
-              <div className="flex items-center gap-2.5 sm:gap-3 w-full max-w-[340px] sm:max-w-[380px]">
+              <div className="flex items-center gap-3 sm:gap-3.5 w-full max-w-[360px] sm:max-w-[420px]">
                 <button
                   onClick={(e) => {
                     e.stopPropagation();
                     onPlay(show);
                   }}
-                  className="flex-1 py-2 sm:py-2.5 px-4 sm:px-5 rounded-full bg-white hover:bg-white/90 text-black font-semibold text-xs sm:text-sm flex items-center justify-center gap-1.5 sm:gap-2 shadow-xl cursor-pointer active:scale-95 transition-transform"
+                  className="flex-1 py-2.5 sm:py-3 px-5 sm:px-6 rounded-full bg-white hover:bg-white/90 text-black font-bold text-sm sm:text-base flex items-center justify-center gap-1 sm:gap-1.5 shadow-xl cursor-pointer active:scale-95 transition-transform"
                   aria-label={`Play ${show.title}`}
                 >
-                  <svg className="w-4 h-4 sm:w-4.5 sm:h-4.5 fill-current shrink-0" viewBox="0 0 24 24">
+                  <svg className="w-5.5 h-5.5 sm:w-6.5 sm:h-6.5 fill-current shrink-0" viewBox="0 0 24 24">
                     <path d="M7.05 3.6A1.5 1.5 0 0 0 4.75 4.9v14.2a1.5 1.5 0 0 0 2.3 1.3l12.1-7.1a1.5 1.5 0 0 0 0-2.6L7.05 3.6z" />
                   </svg>
-                  <span>Play</span>
+                  <span className="tracking-wide">Play</span>
                 </button>
 
                 <button
@@ -530,7 +530,7 @@ export const HeroRecommendation: React.FC<HeroRecommendationProps> = ({
                     e.stopPropagation();
                     onToggleWatchlist(show.id);
                   }}
-                  className="flex-1 py-2 sm:py-2.5 px-3.5 sm:px-4 rounded-full bg-white/20 hover:bg-white/30 text-white font-semibold text-xs sm:text-sm flex items-center justify-center gap-1.5 shadow-xl cursor-pointer active:scale-95 transition-transform"
+                  className="flex-1 py-2.5 sm:py-3 px-4.5 sm:px-5 rounded-full bg-white/20 hover:bg-white/30 text-white font-semibold text-sm sm:text-base flex items-center justify-center gap-2 shadow-xl cursor-pointer active:scale-95 transition-transform"
                   aria-label="My List"
                 >
                   {isInWatchlist ? (
@@ -735,16 +735,16 @@ export const HeroRecommendation: React.FC<HeroRecommendationProps> = ({
 
               {/* Two Pill Buttons: Play & More Info (hidden on 16:9 mobile recommendation - tap anywhere opens details) */}
               {!isLandscapeMobile && (
-                <div className="flex items-center gap-2.5 sm:gap-3.5">
+                <div className="flex items-center gap-3 sm:gap-4">
                   <button
                     onClick={(e) => {
                       e.stopPropagation();
                       onPlay(show);
                     }}
-                    className="pl-2.5 pr-3 sm:pl-3.5 sm:pr-4 xl:pl-4 xl:pr-4.5 py-1.5 sm:py-2 xl:py-2.5 rounded-full bg-white hover:bg-white/90 focus-visible:ring-2 focus-visible:ring-red-500 focus-visible:outline-none text-black font-bold text-[14px] sm:text-[16px] xl:text-[17px] flex items-center gap-1.5 shadow-lg cursor-pointer tracking-wide transition-colors"
+                    className="pl-4 pr-5 sm:pl-5 sm:pr-6 xl:pl-6 xl:pr-7 py-2 sm:py-2.5 xl:py-3 rounded-full bg-white hover:bg-white/90 focus-visible:ring-2 focus-visible:ring-red-500 focus-visible:outline-none text-black font-bold text-[15px] sm:text-[17px] xl:text-[19px] flex items-center gap-1 sm:gap-1.5 shadow-xl cursor-pointer tracking-wide transition-colors"
                     aria-label={`Play ${show.title}`}
                   >
-                    <svg className="w-4.5 h-4.5 sm:w-5 sm:h-5 xl:w-5.5 xl:h-5.5 shrink-0 fill-current" viewBox="0 0 24 24">
+                    <svg className="w-5.5 h-5.5 sm:w-6.5 sm:h-6.5 xl:w-7.5 xl:h-7.5 shrink-0 fill-current" viewBox="0 0 24 24">
                       <path d="M7.05 3.6A1.5 1.5 0 0 0 4.75 4.9v14.2a1.5 1.5 0 0 0 2.3 1.3l12.1-7.1a1.5 1.5 0 0 0 0-2.6L7.05 3.6z" />
                     </svg>
                     <span className="tracking-wide">Play</span>
@@ -756,7 +756,7 @@ export const HeroRecommendation: React.FC<HeroRecommendationProps> = ({
                       e.stopPropagation();
                       onOpenDetails(show);
                     }}
-                    className="px-4 sm:px-5 xl:px-5.5 py-1.5 sm:py-2 xl:py-2.5 rounded-full bg-white/20 hover:bg-white/30 backdrop-blur-none focus-visible:ring-2 focus-visible:ring-red-500 focus-visible:outline-none text-white font-semibold text-[13px] sm:text-[15px] xl:text-[16px] flex items-center justify-center transition-colors cursor-pointer shadow-md tracking-wide"
+                    className="px-5 sm:px-6 xl:px-6.5 py-2 sm:py-2.5 xl:py-3 rounded-full bg-white/20 hover:bg-white/30 backdrop-blur-none focus-visible:ring-2 focus-visible:ring-red-500 focus-visible:outline-none text-white font-semibold text-[14px] sm:text-[16px] xl:text-[17px] flex items-center justify-center transition-colors cursor-pointer shadow-md tracking-wide"
                     aria-label={`More info about ${show.title}`}
                   >
                     <span>More Info</span>

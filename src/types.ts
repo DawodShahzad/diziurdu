@@ -100,6 +100,7 @@ export interface Show {
   slug?: string;
   announcementPill?: string; // 5-7 words pill displayed over recommendation banner
   is_recommended?: boolean; // recommendation eligibility for hero and featured strips
+  isSpecialSingleFeedEligible?: boolean; // special single feed banner eligibility on desktop homepage
   categories?: string[]; // category tags
   supportingTitles?: string[]; // Multiple supporting/alternative titles used to search for this show/movie
 

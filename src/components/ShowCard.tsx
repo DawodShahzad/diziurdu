@@ -1,9 +1,10 @@
 import React, { useState, useRef, useEffect, useCallback, useMemo } from 'react';
 import { Show } from '../types';
-import { Play, Plus, Check, ThumbsUp, ChevronDown, Volume2, VolumeX, Info } from 'lucide-react';
+import { Play, Plus, Check, ThumbsUp, ChevronDown, Volume2, VolumeX, Info, MoreVertical } from 'lucide-react';
 import { ShowTitleLogo } from './ShowTitleLogo';
 import { getActiveArtwork } from '../utils/artworkRotator';
 import { attachHlsVideo, isHlsSource } from '../utils/hlsHelper';
+import { WatchProgressItem, formatProgressTime } from '../utils/watchProgress';
 
 interface ShowCardProps {
   show: Show;
@@ -25,6 +26,7 @@ interface ShowCardProps {
   cardSize?: 'default' | 'small' | 'full' | 'special';
   aspectRatio?: '2:3' | '16:9' | '9:16';
   isContinueWatching?: boolean;
+  watchProgress?: WatchProgressItem;
   disablePopout?: boolean;
   isStretchable?: boolean;
   onLongPress?: (show: Show) => void;
@@ -174,6 +176,7 @@ export const ShowCard: React.FC<ShowCardProps> = ({
   cardSize = 'default',
   aspectRatio,
   isContinueWatching = false,
+  watchProgress,
   disablePopout = false,
   isStretchable = false,
   onLongPress
@@ -1420,10 +1423,10 @@ export const ShowCard: React.FC<ShowCardProps> = ({
                   <div className="flex items-center gap-2">
                     <button
                       onClick={handlePlayClick}
-                      className="px-3.5 py-1.5 rounded-full bg-white hover:bg-white/90 text-black font-bold text-xs sm:text-[13px] flex items-center gap-1.5 shadow-md cursor-pointer"
+                      className="px-4 sm:px-5 py-2 rounded-full bg-white hover:bg-white/90 text-black font-bold text-xs sm:text-sm flex items-center gap-1.5 shadow-lg cursor-pointer"
                       aria-label="Play"
                     >
-                      <Play className="w-3.5 h-3.5 fill-black" />
+                      <Play className="w-4.5 h-4.5 sm:w-5 sm:h-5 fill-black" />
                       <span>Play</span>
                     </button>
                     <button
@@ -1521,15 +1524,75 @@ export const ShowCard: React.FC<ShowCardProps> = ({
               )}
             </div>
           ) : isContinueWatching ? (
-            /* 3. Continue Watching: 16:9 aspect ratio poster showing 1 full card and edge of next title (smaller than 80vw special feed) */
-            <div className="relative w-[68vw] max-w-[295px] sm:w-[260px] md:w-[290px] aspect-video rounded-[6px] overflow-hidden bg-[#181818] border-0 shadow-none transition-all duration-300">
-              <img
-                src={posterLandscapeUrl}
-                alt={show.title}
-                referrerPolicy="no-referrer"
-                onError={() => setImageError(true)}
-                className="w-full h-full object-cover"
-              />
+            /* 3. Continue Watching:
+               - On Mobile: Matching image_74bcd37d.png with progress bar inside card at bottom, rounded-xl corners,
+                 and below the card: S1 E1  24 min left + 3 vertical dots menu button
+               - On Desktop & Tablet: Progress bar below card
+            */
+            <div className="relative w-[68vw] max-w-[295px] sm:w-[260px] md:w-[290px] flex flex-col shrink-0">
+              <div className="relative w-full aspect-video rounded-xl sm:rounded-[6px] overflow-hidden bg-[#181818] border-0 shadow-none transition-all duration-300">
+                <img
+                  src={posterLandscapeUrl}
+                  alt={show.title}
+                  referrerPolicy="no-referrer"
+                  onError={() => setImageError(true)}
+                  className="w-full h-full object-cover"
+                />
+                {/* Mobile layout: Progress bar at bottom of thumbnail with no bottom padding */}
+                <div className="sm:hidden absolute inset-x-0 bottom-0 h-[3px] bg-white/20 overflow-hidden z-20 pointer-events-none">
+                  <div
+                    className="h-full bg-white transition-all duration-300"
+                    style={{
+                      width: `${Math.min(100, Math.max(0, watchProgress?.progressPercent && watchProgress.progressPercent > 0 ? watchProgress.progressPercent : 35))}%`
+                    }}
+                  />
+                </div>
+              </div>
+
+              {/* Mobile layout beneath card: S1 E1  24 min left  ⋮ (matching image_74bcd37d.png) */}
+              <div className="sm:hidden flex items-center justify-between pt-1.5 px-0.5 select-none">
+                <div className="flex items-center gap-2 min-w-0">
+                  {(show.type === 'series' || (show.seasons && show.seasons.length > 0)) && (
+                    <span className="font-bold text-white text-[13px] tracking-tight shrink-0">
+                      S{watchProgress?.seasonNumber || 1} E{watchProgress?.episodeNumber || 1}
+                    </span>
+                  )}
+                  <span className="text-zinc-400 font-normal text-[13px] truncate">
+                    {watchProgress?.duration && watchProgress?.currentTime !== undefined && watchProgress.duration > watchProgress.currentTime
+                      ? `${Math.max(1, Math.round((watchProgress.duration - watchProgress.currentTime) / 60))} min left`
+                      : '24 min left'}
+                  </span>
+                </div>
+                <button
+                  type="button"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    if (onLongPress) {
+                      onLongPress(show);
+                    }
+                  }}
+                  className="p-1 -mr-1 text-zinc-400 hover:text-white transition-colors cursor-pointer shrink-0"
+                  aria-label="More options"
+                >
+                  <MoreVertical className="w-4 h-4" />
+                </button>
+              </div>
+
+              {/* Desktop & Tablet layout: progress bar below the card (matching desktop layout) or height placeholder */}
+              {watchProgress && watchProgress.progressPercent > 0 && !watchProgress.isNextEpisodePrompt ? (
+                <div className="hidden sm:block w-full px-1.5 pt-2 pb-0.5">
+                  <div className="w-full h-[3.5px] bg-[#4d4d4d] rounded-full overflow-hidden">
+                    <div
+                      className="h-full bg-[#e50914] rounded-full"
+                      style={{ width: `${Math.min(100, Math.max(0, watchProgress.progressPercent))}%` }}
+                    />
+                  </div>
+                </div>
+              ) : (
+                <div className="hidden sm:block w-full px-1.5 pt-2 pb-0.5 pointer-events-none opacity-0 select-none" aria-hidden="true">
+                  <div className="w-full h-[3.5px]" />
+                </div>
+              )}
             </div>
           ) : (
             /* 4. Default Desktop Card: 16:9 aspect ratio (shows 2 full cards and edge of 3rd on mobile; 4 cards per row on desktop) */
@@ -1804,27 +1867,57 @@ export const ShowCard: React.FC<ShowCardProps> = ({
               </button>
             </div>
 
-            {/* Metadata Line - clear larger font matching prompt */}
-            <div className="flex items-center gap-2.5 text-[14px] sm:text-[14.5px] font-semibold">
-              <span className="text-[#46d369] font-bold">{show.imdbRating ? `${show.imdbRating}` : `${show.matchScore}% Match`}</span>
-              <span className="text-zinc-200 px-1.5 py-0.5 rounded border border-zinc-700 text-[12px] leading-none">
-                {show.maturityRating}
-              </span>
-              <span className="text-zinc-200 font-bold">{show.durationOrSeasons}</span>
-              <span className="px-1.5 py-0.5 rounded bg-zinc-800 text-zinc-300 text-[11px] font-bold leading-none">HD</span>
-            </div>
+            {/* Watch Progress Indicator (Matching Image 2): Episode title + red progress bar with time left */}
+            {watchProgress && (watchProgress.progressPercent > 0 || watchProgress.isNextEpisodePrompt) && (
+              <div className="space-y-1.5 pt-1">
+                <div className="text-white font-bold text-sm sm:text-[14px] leading-tight truncate">
+                  {watchProgress.seasonNumber && watchProgress.episodeNumber
+                    ? `S${watchProgress.seasonNumber}:E${watchProgress.episodeNumber} "${watchProgress.episodeTitle || `Episode ${watchProgress.episodeNumber}`}"`
+                    : watchProgress.episodeTitle
+                    ? `"${watchProgress.episodeTitle}"`
+                    : show.title}
+                </div>
 
-            {/* Short Genres - larger font */}
-            <div className="flex flex-wrap gap-1.5 text-[13px] sm:text-[13.5px] text-zinc-300 font-medium">
-              {show.genres.slice(0, 3).map((g, i) => (
-                <span key={g} className="flex items-center gap-1.5">
-                  <span>{g}</span>
-                  {i < Math.min(show.genres.length - 1, 2) && (
-                    <span className="text-zinc-600 font-bold">•</span>
-                  )}
-                </span>
-              ))}
-            </div>
+                <div className="flex items-center gap-3">
+                  <div className="flex-1 h-[2.5px] sm:h-[3px] bg-[#404040] rounded-full overflow-hidden">
+                    <div
+                      className="h-full bg-[#e50914] rounded-full"
+                      style={{ width: `${Math.min(100, Math.max(0, watchProgress.progressPercent))}%` }}
+                    />
+                  </div>
+                  <span className="text-zinc-300 font-medium text-xs sm:text-[13px] whitespace-nowrap leading-none">
+                    {formatProgressTime(watchProgress.currentTime, watchProgress.duration)}
+                  </span>
+                </div>
+              </div>
+            )}
+
+            {/* When card has progress bar & episode detail, DO NOT add other infos (matching Image 2). Only add when no progress bar exists */}
+            {!(watchProgress && (watchProgress.progressPercent > 0 || watchProgress.isNextEpisodePrompt)) && (
+              <>
+                {/* Metadata Line - clear larger font matching prompt */}
+                <div className="flex items-center gap-2.5 text-[14px] sm:text-[14.5px] font-semibold">
+                  <span className="text-[#46d369] font-bold">{show.imdbRating ? `${show.imdbRating}` : `${show.matchScore}% Match`}</span>
+                  <span className="text-zinc-200 px-1.5 py-0.5 rounded border border-zinc-700 text-[12px] leading-none">
+                    {show.maturityRating}
+                  </span>
+                  <span className="text-zinc-200 font-bold">{show.durationOrSeasons}</span>
+                  <span className="px-1.5 py-0.5 rounded bg-zinc-800 text-zinc-300 text-[11px] font-bold leading-none">HD</span>
+                </div>
+
+                {/* Short Genres - larger font */}
+                <div className="flex flex-wrap gap-1.5 text-[13px] sm:text-[13.5px] text-zinc-300 font-medium">
+                  {show.genres.slice(0, 3).map((g, i) => (
+                    <span key={g} className="flex items-center gap-1.5">
+                      <span>{g}</span>
+                      {i < Math.min(show.genres.length - 1, 2) && (
+                        <span className="text-zinc-600 font-bold">•</span>
+                      )}
+                    </span>
+                  ))}
+                </div>
+              </>
+            )}
           </div>
         </div>
       )}

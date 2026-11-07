@@ -108,26 +108,38 @@ function socialShareCrawlerPlugin(): Plugin {
             );
 
             if (show) {
-              const title = `${show.title} - Dizi Urdu`;
-              const backdrop = show.backdropUrl || show.posterLandscapeUrl || 'https://images.unsplash.com/photo-1578632767115-351597cf2477?auto=format&fit=crop&w=1200&q=80';
+              const req = (ctx as any)?.req;
+              const currentHost = (req?.headers?.host as string) || 'localhost:3000';
+              const protocol = req?.headers?.['x-forwarded-proto'] || (req?.socket?.encrypted ? 'https' : 'http');
+              const siteName = (data.adminSettings && data.adminSettings.platformName) ? data.adminSettings.platformName : currentHost;
+              const title = `${show.title} - ${siteName}`;
+              
+              // Guarantee absolute URL for social crawlers (WhatsApp, Facebook, Twitter, Discord)
+              let rawBackdrop = show.backdropUrl || show.posterLandscapeUrl || show.posterVerticalUrl || 'https://images.unsplash.com/photo-1578632767115-351597cf2477?auto=format&fit=crop&w=1280&q=80';
+              if (rawBackdrop.startsWith('/')) {
+                rawBackdrop = `${protocol}://${currentHost}${rawBackdrop}`;
+              }
+              const backdrop = rawBackdrop;
+
               const maturity = show.maturityRating || '16+';
               const genreList = Array.isArray(show.genres) && show.genres.length > 0 ? show.genres.join(', ') : 'Drama';
               const year = show.releaseYear || '2025';
               const durationOrSeasons = show.type === 'series'
                 ? (show.durationOrSeasons || (show.seasons && show.seasons.length > 0 ? `${show.seasons.length} Season${show.seasons.length > 1 ? 's' : ''}` : '1 Season'))
                 : (show.durationOrSeasons || 'Feature Film');
-              const details = show.synopsis || show.shortDescription || '';
+              const details = show.synopsis || show.description || show.shortDescription || '';
               const desc = `${maturity} • ${genreList} • ${year} • ${durationOrSeasons}${details ? ` • ${details}` : ''}`;
-              const shareUrl = `https://diziurdu.com/watch/${slug}`;
+              const shareUrl = `${protocol}://${currentHost}/watch/${slug}`;
 
               html = html.replace(/<title>.*?<\/title>/i, `<title>${title}</title>`);
-              html = html.replace(/<meta property="og:title" content=".*?" \/>/i, `<meta property="og:title" content="${title.replace(/"/g, '&quot;')}" />`);
-              html = html.replace(/<meta property="og:description" content=".*?" \/>/i, `<meta property="og:description" content="${desc.replace(/"/g, '&quot;')}" />`);
-              html = html.replace(/<meta property="og:image" content=".*?" \/>/i, `<meta property="og:image" content="${backdrop}" />`);
-              html = html.replace(/<meta property="og:url" content=".*?" \/>/i, `<meta property="og:url" content="${shareUrl}" />`);
-              html = html.replace(/<meta name="twitter:title" content=".*?" \/>/i, `<meta name="twitter:title" content="${title.replace(/"/g, '&quot;')}" />`);
-              html = html.replace(/<meta name="twitter:description" content=".*?" \/>/i, `<meta name="twitter:description" content="${desc.replace(/"/g, '&quot;')}" />`);
-              html = html.replace(/<meta name="twitter:image" content=".*?" \/>/i, `<meta name="twitter:image" content="${backdrop}" />`);
+              html = html.replace(/<meta\s+property=["']og:title["'].*?>/i, `<meta property="og:title" content="${title.replace(/"/g, '&quot;')}" />`);
+              html = html.replace(/<meta\s+property=["']og:description["'].*?>/i, `<meta property="og:description" content="${desc.replace(/"/g, '&quot;')}" />`);
+              html = html.replace(/<meta\s+property=["']og:image["'].*?>/i, `<meta property="og:image" content="${backdrop}" />\n    <meta property="og:image:secure_url" content="${backdrop}" />\n    <meta property="og:image:width" content="1280" />\n    <meta property="og:image:height" content="720" />`);
+              html = html.replace(/<meta\s+property=["']og:url["'].*?>/i, `<meta property="og:url" content="${shareUrl}" />`);
+              html = html.replace(/<meta\s+property=["']og:site_name["'].*?>/i, `<meta property="og:site_name" content="${siteName.replace(/"/g, '&quot;')}" />`);
+              html = html.replace(/<meta\s+name=["']twitter:title["'].*?>/i, `<meta name="twitter:title" content="${title.replace(/"/g, '&quot;')}" />`);
+              html = html.replace(/<meta\s+name=["']twitter:description["'].*?>/i, `<meta name="twitter:description" content="${desc.replace(/"/g, '&quot;')}" />`);
+              html = html.replace(/<meta\s+name=["']twitter:image["'].*?>/i, `<meta name="twitter:image" content="${backdrop}" />`);
             }
           }
         }

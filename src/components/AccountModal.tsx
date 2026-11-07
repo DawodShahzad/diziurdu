@@ -207,7 +207,7 @@ export const AccountModal: React.FC<AccountModalProps> = ({
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-6 bg-black/85 backdrop-blur-md animate-modal-backdrop select-none">
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-6 bg-black/50 animate-modal-backdrop select-none">
       <div className="relative w-full max-w-3xl bg-[#14151a] border border-white/10 rounded-2xl shadow-2xl overflow-hidden flex flex-col max-h-[92vh] animate-modal-content">
         {/* Header */}
         <div className="px-6 py-4.5 border-b border-white/10 flex items-center justify-between bg-[#111216]">

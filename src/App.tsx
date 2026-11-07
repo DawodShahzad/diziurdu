@@ -53,37 +53,46 @@ import { EditProfilePage } from './components/EditProfilePage';
 import { AppSettingsModal } from './components/AppSettingsModal';
 import { RequestContentModal } from './components/RequestContentModal';
 import { CustomPlayer } from './components/CustomPlayer';
-import { EmbedPlayerModal, isEmbedVideo } from './components/EmbedPlayerModal';
+import { EmbedPlayerModal, isEmbedVideo, parseTimeToSeconds } from './components/EmbedPlayerModal';
 import { Footer } from './components/Footer';
 import { CategoriesView, CATEGORIES_DATA } from './components/CategoriesView';
 import { ShowCard } from './components/ShowCard';
 import { SpecialFeedPage } from './components/SpecialFeedPage';
+import { SpecialSingleFeed } from './components/SpecialSingleFeed';
+import { BrowseByGenreRow, GenreItem } from './components/BrowseByGenreRow';
 import { GlobalTooltip } from './components/GlobalTooltip';
-import { OfflineAlertBar } from './components/OfflineAlertBar';
+import { OfflineAlertBar, useOfflineStatus } from './components/OfflineAlertBar';
 import { MobileBottomNav } from './components/MobileBottomNav';
 import { MobileSearchModal } from './components/MobileSearchModal';
 import { MobileProfileModal } from './components/MobileProfileModal';
 import { MobilePosterActionSheet } from './components/MobilePosterActionSheet';
 import { Film, Tv, Sparkles, Filter, ChevronRight, Bookmark, X } from 'lucide-react';
+import { WatchProgressItem, EpisodeProgressItem } from './utils/watchProgress';
 
-function getNextRotatingRecommendation(pool: Show[], storageKey: string): Show | null {
+function getPinnedOrRotatingRecommendation(pool: Show[], storageKey: string, forceRotate = false): Show | null {
   if (!pool || pool.length === 0) return null;
   if (pool.length === 1) return pool[0];
 
-  let lastId: string | null = null;
+  let pinnedId: string | null = null;
   try {
-    lastId = sessionStorage.getItem(storageKey);
+    pinnedId = localStorage.getItem(storageKey);
   } catch {}
 
-  // Filter out the previously shown item so it ALWAYS changes on reload!
-  const differentShows = pool.filter((s) => s.id !== lastId);
+  // Pinned recommendation across page reloads: keep the same show on reload!
+  if (!forceRotate && pinnedId) {
+    const existing = pool.find((s) => s.id === pinnedId);
+    if (existing) return existing;
+  }
+
+  // Pick fresh recommendation when rotating (e.g., 10-min interval or mobile triple tap)
+  const differentShows = pool.filter((s) => s.id !== pinnedId);
   const candidates = differentShows.length > 0 ? differentShows : pool;
 
   const chosenIndex = Math.floor(Math.random() * candidates.length);
   const chosen = candidates[chosenIndex];
 
   try {
-    sessionStorage.setItem(storageKey, chosen.id);
+    localStorage.setItem(storageKey, chosen.id);
   } catch {}
 
   return chosen;
@@ -91,6 +100,7 @@ function getNextRotatingRecommendation(pool: Show[], storageKey: string): Show |
 
 export default function App() {
   const currentBackupExportTime = (fullBackupData as any)?.exported_at || '';
+  const isOffline = useOfflineStatus();
 
   // Synchronize state directly from full_backup.json on first load with zero mock data
   const [shows, setShows] = useState<Show[]>(() => {
@@ -175,20 +185,31 @@ export default function App() {
     return DB_NOTIFICATIONS;
   });
 
-  // 30-minute feed and row rotation clock
+  // Track page reload count in browser storage so that after 3 reloads it changes row arrangement
+  const [reloadCount] = useState<number>(() => {
+    if (typeof window === 'undefined') return 0;
+    try {
+      const current = parseInt(localStorage.getItem('dizi_reload_count') || '0', 10);
+      const next = current + 1;
+      localStorage.setItem('dizi_reload_count', String(next));
+      return next;
+    } catch {
+      return 0;
+    }
+  });
+
+  const arrangementCycle = Math.floor(reloadCount / 3);
+
+  // 10-minute feed and row rotation clock
   const [currentTimeSlot, setCurrentTimeSlot] = useState<number>(() => Date.now());
 
   useEffect(() => {
     const interval = setInterval(() => {
       const now = Date.now();
-      const currentBlock = Math.floor(now / (30 * 60 * 1000));
-      const previousBlock = Math.floor(currentTimeSlot / (30 * 60 * 1000));
-      if (currentBlock !== previousBlock) {
-        setCurrentTimeSlot(now);
-      }
-    }, 15000);
+      setCurrentTimeSlot(now);
+    }, 10 * 60 * 1000);
     return () => clearInterval(interval);
-  }, [currentTimeSlot]);
+  }, []);
 
   useEffect(() => {
     localStorage.setItem('cineflix_notifications', JSON.stringify(notifications));
@@ -274,7 +295,8 @@ export default function App() {
     }
   }, [platformName, selectedShowForDetail]);
 
-  // Persistent rotating recommendations for Home, Series, and Movies that ALWAYS change on reload
+  // Pinned recommendations for Home, Series, and Movies that do NOT change on reload
+  // Stable on page reload; refreshes after 10 minutes or on mobile triple tap of home button
   const [pageRecommendations, setPageRecommendations] = useState<{
     all: Show | null;
     series: Show | null;
@@ -291,13 +313,13 @@ export default function App() {
     const poolMovies = eligibleMovies.length > 0 ? eligibleMovies : initialPool.filter((s: Show) => s.type === 'movie');
 
     return {
-      all: getNextRotatingRecommendation(poolAll, 'cineflix_last_rec_all') || poolAll[0] || null,
-      series: getNextRotatingRecommendation(poolSeries, 'cineflix_last_rec_series') || poolSeries[0] || poolAll[0] || null,
-      movies: getNextRotatingRecommendation(poolMovies, 'cineflix_last_rec_movies') || poolMovies[0] || poolAll[0] || null,
+      all: getPinnedOrRotatingRecommendation(poolAll, 'dizi_pinned_rec_all', false) || poolAll[0] || null,
+      series: getPinnedOrRotatingRecommendation(poolSeries, 'dizi_pinned_rec_series', false) || poolSeries[0] || poolAll[0] || null,
+      movies: getPinnedOrRotatingRecommendation(poolMovies, 'dizi_pinned_rec_movies', false) || poolMovies[0] || poolAll[0] || null,
     };
   });
 
-  // Keep recommendations synced if shows updates
+  // Keep recommendations synced if shows updates without rotating if pinned show still exists
   useEffect(() => {
     setPageRecommendations((prev) => {
       const eligibleAll = shows.filter((s) => s.is_recommended !== false);
@@ -309,12 +331,43 @@ export default function App() {
       const eligibleMovies = shows.filter((s) => s.type === 'movie' && s.is_recommended !== false);
       const poolMovies = eligibleMovies.length > 0 ? eligibleMovies : shows.filter((s) => s.type === 'movie');
 
+      const nextAll = (prev.all && poolAll.find((s) => s.id === prev.all?.id)) || getPinnedOrRotatingRecommendation(poolAll, 'dizi_pinned_rec_all', false) || poolAll[0] || null;
+      const nextSeries = (prev.series && poolSeries.find((s) => s.id === prev.series?.id)) || getPinnedOrRotatingRecommendation(poolSeries, 'dizi_pinned_rec_series', false) || poolSeries[0] || poolAll[0] || null;
+      const nextMovies = (prev.movies && poolMovies.find((s) => s.id === prev.movies?.id)) || getPinnedOrRotatingRecommendation(poolMovies, 'dizi_pinned_rec_movies', false) || poolMovies[0] || poolAll[0] || null;
+
+      if (prev.all?.id === nextAll?.id && prev.series?.id === nextSeries?.id && prev.movies?.id === nextMovies?.id) {
+        return prev;
+      }
+
       return {
-        all: (prev.all && poolAll.find((s) => s.id === prev.all?.id)) || getNextRotatingRecommendation(poolAll, 'cineflix_last_rec_all') || poolAll[0] || null,
-        series: (prev.series && poolSeries.find((s) => s.id === prev.series?.id)) || getNextRotatingRecommendation(poolSeries, 'cineflix_last_rec_series') || poolSeries[0] || poolAll[0] || null,
-        movies: (prev.movies && poolMovies.find((s) => s.id === prev.movies?.id)) || getNextRotatingRecommendation(poolMovies, 'cineflix_last_rec_movies') || poolMovies[0] || poolAll[0] || null,
+        all: nextAll,
+        series: nextSeries,
+        movies: nextMovies,
       };
     });
+  }, [shows]);
+
+  // Whole feed and recommendation refresh after 10 minutes
+  useEffect(() => {
+    const refreshTimer = setInterval(() => {
+      const eligibleAll = shows.filter((s) => s.is_recommended !== false);
+      const poolAll = eligibleAll.length > 0 ? eligibleAll : shows;
+
+      const eligibleSeries = shows.filter((s) => s.type === 'series' && s.is_recommended !== false);
+      const poolSeries = eligibleSeries.length > 0 ? eligibleSeries : shows.filter((s) => s.type === 'series');
+
+      const eligibleMovies = shows.filter((s) => s.type === 'movie' && s.is_recommended !== false);
+      const poolMovies = eligibleMovies.length > 0 ? eligibleMovies : shows.filter((s) => s.type === 'movie');
+
+      setPageRecommendations({
+        all: getPinnedOrRotatingRecommendation(poolAll, 'dizi_pinned_rec_all', true) || poolAll[0] || null,
+        series: getPinnedOrRotatingRecommendation(poolSeries, 'dizi_pinned_rec_series', true) || poolSeries[0] || poolAll[0] || null,
+        movies: getPinnedOrRotatingRecommendation(poolMovies, 'dizi_pinned_rec_movies', true) || poolMovies[0] || poolAll[0] || null,
+      });
+      setCurrentTimeSlot(Date.now());
+    }, 10 * 60 * 1000);
+
+    return () => clearInterval(refreshTimer);
   }, [shows]);
 
   const [isWatchlistModalOpen, setIsWatchlistModalOpen] = useState<boolean>(false);
@@ -381,14 +434,37 @@ export default function App() {
   const [isRequestContentModalOpen, setIsRequestContentModalOpen] = useState<boolean>(false);
   const [isLoggedIn, setIsLoggedIn] = useState<boolean>(true);
 
-  // User Profile state (matching user screenshot with exact UI)
+  // User Profile state: pick first picture from first picture row as initial when not saved in local browser
   const [userAvatar, setUserAvatar] = useState<string>(() => {
-    const saved = localStorage.getItem('cineflix_user_avatar');
-    return (
-      saved ||
-      'https://images.unsplash.com/photo-1553284965-83fd3e82fa5a?auto=format&fit=crop&w=240&q=80'
-    );
+    try {
+      const saved = localStorage.getItem('cineflix_user_avatar');
+      if (saved) return saved;
+    } catch {}
+    // Pick first picture from first picture row from full backup database
+    const groups = (DB_PROFILE_GROUPS && DB_PROFILE_GROUPS.length > 0)
+      ? DB_PROFILE_GROUPS
+      : (((fullBackupData as any)?.profilePictureGroups) || []);
+    const firstGroup = groups.find((g: any) => g.enabled !== false && !g.isHidden && Array.isArray(g.images) && g.images.length > 0) || groups[0];
+    if (firstGroup) {
+      if (Array.isArray(firstGroup.images) && firstGroup.images.length > 0) {
+        return firstGroup.images[0];
+      }
+      if (Array.isArray((firstGroup as any).avatars) && (firstGroup as any).avatars.length > 0) {
+        return (firstGroup as any).avatars[0]?.url || (firstGroup as any).avatars[0];
+      }
+    }
+    return 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?auto=format&fit=crop&w=320&q=80';
   });
+
+  // Keep chosen profile picture saved in local browser storage
+  useEffect(() => {
+    if (userAvatar) {
+      try {
+        localStorage.setItem('cineflix_user_avatar', userAvatar);
+      } catch {}
+    }
+  }, [userAvatar]);
+
   const [userName, setUserName] = useState<string>(() => {
     return localStorage.getItem('cineflix_user_name') || 'Good';
   });
@@ -405,7 +481,7 @@ export default function App() {
     return localStorage.getItem('cineflix_user_password') || '••••••••••••';
   });
 
-  // Fullscreen Netflix Video Player state
+  // Fullscreen Video Player state
   const [playingMedia, setPlayingMedia] = useState<{
     show: Show;
     videoUrl: string;
@@ -420,6 +496,10 @@ export default function App() {
     playerBgImageUrl?: string;
     seasonNumber?: number;
     episodeNumber?: number;
+    episodeId?: string;
+    episodeTitle?: string;
+    initialCurrentTime?: number;
+    isTrailer?: boolean;
     hasNextEpisode?: boolean;
     nextEpisodeInfo?: {
       videoUrl: string;
@@ -432,32 +512,231 @@ export default function App() {
       playerBgImageUrl?: string;
       seasonNumber: number;
       episodeNumber: number;
+      episodeId?: string;
     } | null;
   } | null>(null);
 
-  // User Watch Progress History
-  const [watchHistory, setWatchHistory] = useState<Record<string, {
-    showId: string;
-    showTitle: string;
-    seasonNumber?: number;
-    episodeNumber?: number;
-    episodeTitle?: string;
-    videoUrl: string;
-    videoSourceType?: VideoSourceType;
-    updatedAt: number;
-    thumbnailUrl?: string;
-  }>>(() => {
+  // User Watch Progress History in Local Storage with exact position tracking
+  const [watchHistory, setWatchHistory] = useState<Record<string, WatchProgressItem>>(() => {
     try {
-      const saved = localStorage.getItem('cineflix_watch_history');
-      return saved ? JSON.parse(saved) : {};
-    } catch {
-      return {};
+      const saved = localStorage.getItem('dizi_watch_history') || localStorage.getItem('cineflix_watch_history');
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        if (parsed && typeof parsed === 'object' && Object.keys(parsed).length > 0) {
+          return parsed;
+        }
+      }
+    } catch {}
+
+    // Seed initial watch progress matching user reference screenshots so progress bars are visible immediately
+    const catalog: Show[] = (fullBackupData && Array.isArray((fullBackupData as any).shows))
+      ? ((fullBackupData as any).shows as Show[])
+      : DB_SHOWS;
+    const firstSeries = catalog.find((s) => s.type === 'series' && s.seasons && s.seasons.length > 0 && s.seasons[0].episodes.length >= 2) || catalog[0];
+
+    if (firstSeries) {
+      const ep1 = firstSeries.seasons?.[0]?.episodes?.[0];
+      const ep2 = firstSeries.seasons?.[0]?.episodes?.[1];
+
+      const ep1Dur = 48 * 60; // 48 mins
+      const ep2Dur = 63 * 60; // 63 mins
+      const ep2Cur = 35 * 60; // 35 mins ("35 of 63m")
+
+      const ep1Progress: EpisodeProgressItem = {
+        currentTime: ep1Dur,
+        duration: ep1Dur,
+        progressPercent: 100,
+        seasonNumber: 1,
+        episodeNumber: 1,
+        episodeId: ep1?.id || 'ep-1',
+        episodeTitle: ep1?.title || 'Episode 1',
+        updatedAt: Date.now() - 3600000
+      };
+
+      const ep2Progress: EpisodeProgressItem = {
+        currentTime: ep2Cur,
+        duration: ep2Dur,
+        progressPercent: Math.round((ep2Cur / ep2Dur) * 100),
+        seasonNumber: 1,
+        episodeNumber: 2,
+        episodeId: ep2?.id || 'ep-2',
+        episodeTitle: ep2?.title || 'Episode 2',
+        updatedAt: Date.now()
+      };
+
+      const seedShowProgress: WatchProgressItem = {
+        showId: firstSeries.id,
+        showTitle: firstSeries.title,
+        seasonNumber: 1,
+        episodeNumber: 2,
+        episodeId: ep2?.id || 'ep-2',
+        episodeTitle: ep2?.title || 'Episode 2',
+        videoUrl: ep2?.videoUrl || firstSeries.trailerUrl,
+        videoSourceType: ep2?.videoSourceType || 'direct',
+        currentTime: ep2Cur,
+        duration: ep2Dur,
+        progressPercent: Math.round((ep2Cur / ep2Dur) * 100),
+        updatedAt: Date.now(),
+        thumbnailUrl: firstSeries.posterLandscapeUrl || firstSeries.backdropUrl,
+        completed: false,
+        episodesProgress: {
+          [ep1?.id || 's1e1']: ep1Progress,
+          [ep2?.id || 's1e2']: ep2Progress
+        }
+      };
+
+      const initialMap = { [firstSeries.id]: seedShowProgress };
+      try {
+        localStorage.setItem('dizi_watch_history', JSON.stringify(initialMap));
+        localStorage.setItem('cineflix_watch_history', JSON.stringify(initialMap));
+      } catch {}
+      return initialMap;
     }
+
+    return {};
   });
 
-  // Freeze shows, watchlist & watch history for main feed generation across session:
-  // Adding/removing to watchlist only updates the watchlist and checkmarks;
-  // feed rows and order do not change or re-shuffle until next reload!
+  // Keep watch history saved in local browser storage
+  useEffect(() => {
+    try {
+      localStorage.setItem('dizi_watch_history', JSON.stringify(watchHistory));
+      localStorage.setItem('cineflix_watch_history', JSON.stringify(watchHistory));
+    } catch {}
+  }, [watchHistory]);
+
+  // Handle live progress updates from EmbedPlayerModal (YouTube/Dailymotion) or CustomPlayer (HTML5/HLS)
+  // Progress features are strictly for episodes and movies only, not for trailers and more
+  const handleProgressUpdate = (
+    show: Show,
+    currentTime: number,
+    duration: number,
+    seasonNumber?: number,
+    episodeNumber?: number,
+    episodeTitle?: string,
+    episodeId?: string,
+    videoUrl?: string,
+    videoSourceType?: VideoSourceType,
+    isTrailer?: boolean,
+    rawVideoTime?: number
+  ) => {
+    if (isTrailer) return;
+    if (show.type === 'series' && episodeNumber === undefined && !episodeId) return;
+    if (!duration || duration <= 0) return;
+    const progressPercent = Math.min(100, Math.max(0, Math.round((currentTime / duration) * 100)));
+    const epKey = episodeId || (episodeNumber !== undefined ? `s${seasonNumber || 1}e${episodeNumber}` : 'movie');
+
+    setWatchHistory((prev) => {
+      const existingShow = prev[show.id];
+      if (
+        existingShow &&
+        Math.floor(existingShow.currentTime) === Math.floor(currentTime) &&
+        existingShow.progressPercent === progressPercent &&
+        existingShow.episodeId === episodeId
+      ) {
+        return prev;
+      }
+      const existingEpisodes = existingShow?.episodesProgress || {};
+
+      const updatedEpisode: EpisodeProgressItem = {
+        currentTime,
+        duration,
+        progressPercent,
+        seasonNumber,
+        episodeNumber,
+        episodeId,
+        episodeTitle,
+        updatedAt: Date.now(),
+        rawVideoTime: rawVideoTime !== undefined ? rawVideoTime : currentTime
+      };
+
+      // Check if this episode has been watched to >= 90%
+      let nextEpisodePrompt: Episode | null = null;
+      if (progressPercent >= 90 && show.type === 'series' && show.seasons && show.seasons.length > 0) {
+        const curSea = show.seasons.find((s) => s.seasonNumber === (seasonNumber || 1)) || show.seasons[0];
+        const epIdx = curSea.episodes.findIndex((e) => (episodeId && e.id === episodeId) || e.episodeNumber === episodeNumber);
+        if (epIdx >= 0 && epIdx < curSea.episodes.length - 1) {
+          nextEpisodePrompt = curSea.episodes[epIdx + 1];
+        } else {
+          // Check next season
+          const seaIdx = show.seasons.findIndex((s) => s.seasonNumber === curSea.seasonNumber);
+          if (seaIdx >= 0 && seaIdx < show.seasons.length - 1) {
+            const nextSea = show.seasons[seaIdx + 1];
+            if (nextSea.episodes && nextSea.episodes.length > 0) {
+              nextEpisodePrompt = nextSea.episodes[0];
+            }
+          }
+        }
+      }
+
+      // If episode was watched to 90%+ and has a next episode, prompt next episode with empty progress bar
+      let updatedShow: WatchProgressItem;
+      if (nextEpisodePrompt) {
+        const nextStart = parseTimeToSeconds(nextEpisodePrompt.startTime) || 0;
+        const nextDur = parseTimeToSeconds(nextEpisodePrompt.duration) || 45 * 60;
+        updatedShow = {
+          showId: show.id,
+          showTitle: show.title,
+          seasonNumber: nextEpisodePrompt.seasonNumber || seasonNumber || 1,
+          episodeNumber: nextEpisodePrompt.episodeNumber,
+          episodeId: nextEpisodePrompt.id,
+          episodeTitle: nextEpisodePrompt.title,
+          videoUrl: nextEpisodePrompt.videoUrl,
+          videoSourceType: nextEpisodePrompt.videoSourceType,
+          currentTime: 0,
+          duration: nextDur,
+          progressPercent: 0,
+          updatedAt: Date.now(),
+          thumbnailUrl: nextEpisodePrompt.thumbnailUrl || show.posterLandscapeUrl || show.backdropUrl,
+          completed: false,
+          isNextEpisodePrompt: true,
+          rawVideoTime: nextStart,
+          episodesProgress: {
+            ...existingEpisodes,
+            [epKey]: {
+              ...updatedEpisode,
+              completed: true
+            }
+          }
+        };
+      } else {
+        updatedShow = {
+          showId: show.id,
+          showTitle: show.title,
+          seasonNumber: seasonNumber !== undefined ? seasonNumber : existingShow?.seasonNumber,
+          episodeNumber: episodeNumber !== undefined ? episodeNumber : existingShow?.episodeNumber,
+          episodeId: episodeId || existingShow?.episodeId,
+          episodeTitle: episodeTitle || existingShow?.episodeTitle,
+          videoUrl: videoUrl || existingShow?.videoUrl || show.trailerUrl,
+          videoSourceType: videoSourceType || existingShow?.videoSourceType,
+          currentTime,
+          duration,
+          progressPercent,
+          updatedAt: Date.now(),
+          thumbnailUrl: existingShow?.thumbnailUrl || show.posterLandscapeUrl || show.backdropUrl,
+          completed: progressPercent >= 95,
+          isNextEpisodePrompt: false,
+          rawVideoTime: rawVideoTime !== undefined ? rawVideoTime : currentTime,
+          episodesProgress: {
+            ...existingEpisodes,
+            [epKey]: updatedEpisode
+          }
+        };
+      }
+
+      const next = {
+        ...prev,
+        [show.id]: updatedShow
+      };
+
+      try {
+        localStorage.setItem('dizi_watch_history', JSON.stringify(next));
+        localStorage.setItem('cineflix_watch_history', JSON.stringify(next));
+      } catch {}
+
+      return next;
+    });
+  };
+
   const initialShowsRef = useRef(shows);
   const initialWatchlistRef = useRef(watchlist);
   const initialWatchHistoryRef = useRef(watchHistory);
@@ -469,41 +748,38 @@ export default function App() {
     episodeTitle?: string,
     videoUrl?: string,
     videoSourceType?: VideoSourceType,
-    thumbnailUrl?: string
+    thumbnailUrl?: string,
+    episodeId?: string,
+    rawVideoTime?: number
   ) => {
-    const isMovie = show.type === 'movie';
-    let isLastEpisode = false;
-    if (show.type === 'series' && show.seasons && show.seasons.length > 0) {
-      const lastSeason = show.seasons[show.seasons.length - 1];
-      if (lastSeason && lastSeason.episodes && lastSeason.episodes.length > 0) {
-        const lastEp = lastSeason.episodes[lastSeason.episodes.length - 1];
-        if (seasonNumber === lastSeason.seasonNumber && episodeNumber === lastEp.episodeNumber) {
-          isLastEpisode = true;
-        }
-      }
-    }
-    const isCompleted = isMovie || isLastEpisode;
-
-    const updated = {
-      ...watchHistory,
-      [show.id]: {
+    const epKey = episodeId || (episodeNumber !== undefined ? `s${seasonNumber || 1}e${episodeNumber}` : 'movie');
+    setWatchHistory((prev) => {
+      const existing = prev[show.id];
+      const epExisting = existing?.episodesProgress?.[epKey];
+      const updatedShow: WatchProgressItem = {
         showId: show.id,
         showTitle: show.title,
-        seasonNumber,
-        episodeNumber,
-        episodeTitle,
-        videoUrl: videoUrl || show.trailerUrl,
-        videoSourceType,
-        completed: isCompleted,
-        progressPercent: isCompleted ? 100 : 50,
+        seasonNumber: seasonNumber !== undefined ? seasonNumber : existing?.seasonNumber,
+        episodeNumber: episodeNumber !== undefined ? episodeNumber : existing?.episodeNumber,
+        episodeTitle: episodeTitle || existing?.episodeTitle,
+        episodeId: episodeId || existing?.episodeId,
+        videoUrl: videoUrl || existing?.videoUrl || show.trailerUrl,
+        videoSourceType: videoSourceType || existing?.videoSourceType,
+        currentTime: epExisting?.currentTime || 0,
+        duration: epExisting?.duration || 0,
+        progressPercent: epExisting?.progressPercent || 0,
         updatedAt: Date.now(),
-        thumbnailUrl: thumbnailUrl || show.posterLandscapeUrl || show.backdropUrl
-      }
-    };
-    setWatchHistory(updated);
-    try {
-      localStorage.setItem('cineflix_watch_history', JSON.stringify(updated));
-    } catch {}
+        thumbnailUrl: thumbnailUrl || existing?.thumbnailUrl || show.posterLandscapeUrl || show.backdropUrl,
+        episodesProgress: existing?.episodesProgress || {},
+        rawVideoTime: rawVideoTime !== undefined ? rawVideoTime : epExisting?.rawVideoTime
+      };
+      const next = { ...prev, [show.id]: updatedShow };
+      try {
+        localStorage.setItem('dizi_watch_history', JSON.stringify(next));
+        localStorage.setItem('cineflix_watch_history', JSON.stringify(next));
+      } catch {}
+      return next;
+    });
   };
 
   const handleClearWatchlist = () => {
@@ -654,61 +930,58 @@ export default function App() {
   const [isMobileSearchOpen, setIsMobileSearchOpen] = useState<boolean>(false);
   const [isMobileProfileOpen, setIsMobileProfileOpen] = useState<boolean>(false);
   const [actionSheetShow, setActionSheetShow] = useState<Show | null>(null);
+  const [isMobileSeasonPickerOpen, setIsMobileSeasonPickerOpen] = useState<boolean>(false);
+  const [isMobileProfileEditOpen, setIsMobileProfileEditOpen] = useState<boolean>(false);
+  const [isMobileInfoSheetOpen, setIsMobileInfoSheetOpen] = useState<boolean>(false);
   const [customHeroShow, setCustomHeroShow] = useState<Show | null>(null);
   const [categoriesResetKey, setCategoriesResetKey] = useState<number>(0);
+  const [selectedCategoryFromGenre, setSelectedCategoryFromGenre] = useState<CategoryItem | null>(null);
   const lastHomeClickTimeRef = useRef<number>(0);
 
   const handleGoHome = () => {
-    const now = Date.now();
-    const isAlreadyOnHome =
-      activeFilter === 'all' &&
-      !selectedShowForDetail &&
-      !isMobileSearchOpen &&
-      !isMobileProfileOpen &&
-      !selectedSpecialFeed &&
-      !selectedCategoryFilter &&
-      searchQuery.trim().length === 0;
-
-    const isDoubleClicked = now - lastHomeClickTimeRef.current < 1600;
-    lastHomeClickTimeRef.current = now;
-
-    if (isAlreadyOnHome || isDoubleClicked) {
-      // User clicked home button twice or while already on home:
-      // go back to home page, scroll to top, and reload top hero recommendation show
-      setSelectedShowForDetail(null);
-      setIsMobileSearchOpen(false);
-      setIsMobileProfileOpen(false);
-      setSelectedSpecialFeed(null);
-      setSelectedCategoryFilter(null);
-      setSearchQuery('');
+    // Return to home without changing recommendation (only mobile triple tap reloads/rotates)
+    setSelectedShowForDetail(null);
+    setIsMobileSearchOpen(false);
+    setIsMobileProfileOpen(false);
+    setSelectedSpecialFeed(null);
+    setSelectedCategoryFilter(null);
+    setSelectedCategoryFromGenre(null);
+    setSearchQuery('');
+    if (activeFilter !== 'all') {
       setActiveFilter('all');
-      pageScrollPositionsRef.current['all'] = 0;
-      window.scrollTo({ top: 0, behavior: 'smooth' });
-
-      // Rotate / reload hero recommendation show
-      const eligibleShows = shows.filter((s) => s.is_recommended !== false);
-      const pool = eligibleShows.length > 0 ? eligibleShows : shows;
-      if (pool.length > 0) {
-        const nextShow = pool[Math.floor(Math.random() * pool.length)];
-        setCustomHeroShow(nextShow);
-      }
-    } else {
-      // User clicked home button from any page: return to home at same scroll position!
-      setSelectedShowForDetail(null);
-      setIsMobileSearchOpen(false);
-      setIsMobileProfileOpen(false);
-      setSelectedSpecialFeed(null);
-      setSelectedCategoryFilter(null);
-      setSearchQuery('');
-      if (activeFilter !== 'all') {
-        setActiveFilter('all');
-        try {
-          sessionStorage.setItem('cineflix_active_filter', 'all');
-        } catch {}
-      }
-      const targetScroll = pageScrollPositionsRef.current['all'] || 0;
-      window.scrollTo({ top: targetScroll, behavior: 'instant' });
+      try {
+        sessionStorage.setItem('cineflix_active_filter', 'all');
+      } catch {}
     }
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  };
+
+  const handleTripleTapHome = () => {
+    // In mobile layout, triple tap to home button reloads/rotates recommendation and feed arrangement
+    const eligibleAll = shows.filter((s) => s.is_recommended !== false);
+    const poolAll = eligibleAll.length > 0 ? eligibleAll : shows;
+    const nextShow = getPinnedOrRotatingRecommendation(poolAll, 'dizi_pinned_rec_all', true) || poolAll[0] || null;
+
+    setPageRecommendations((prev) => ({
+      ...prev,
+      all: nextShow
+    }));
+    setCustomHeroShow(nextShow);
+    setCurrentTimeSlot(Date.now());
+
+    try {
+      const current = parseInt(localStorage.getItem('dizi_reload_count') || '0', 10);
+      localStorage.setItem('dizi_reload_count', String(current + 3));
+    } catch {}
+
+    setSelectedShowForDetail(null);
+    setIsMobileSearchOpen(false);
+    setIsMobileProfileOpen(false);
+    setSelectedSpecialFeed(null);
+    setSelectedCategoryFilter(null);
+    setSearchQuery('');
+    setActiveFilter('all');
+    window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
   const handleMobileSelectTab = (tab: 'home' | 'search' | 'profile') => {
@@ -802,6 +1075,7 @@ export default function App() {
       return;
     }
     if (target === 'categories') {
+      setSelectedCategoryFromGenre(null);
       setCategoriesResetKey((prev) => prev + 1);
     }
     setSelectedCategoryFilter(null);
@@ -1003,7 +1277,52 @@ export default function App() {
     if (image) setMeta('twitter:image', image, true);
   };
 
-  // Open Details Modal & update address bar with Netflix-style shareable slug without page reload
+  // Helper to build clean, simplified URLs:
+  // Multi-season: /watch/:slug/s1/e1
+  // Single-season: /watch/:slug/e1 (omits season as requested!)
+  // Movie / Show: /watch/:slug
+  const buildCleanWatchUrl = (
+    show: Show,
+    episodeId?: string | null,
+    options?: { subView?: string; trailerId?: string | null }
+  ): string => {
+    const slug = show.slug || show.id || show.title.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '');
+    const totalSeasons = show.seasons?.length || (show.type === 'series' ? 1 : 0);
+
+    let path = `/watch/${slug}`;
+
+    if (episodeId && show.seasons) {
+      let foundEp: any = null;
+      let foundSeasonNum = 1;
+      for (const s of show.seasons) {
+        const ep = s.episodes?.find((e: any) => e.id === episodeId);
+        if (ep) {
+          foundEp = ep;
+          foundSeasonNum = s.seasonNumber || ep.seasonNumber || 1;
+          break;
+        }
+      }
+
+      if (foundEp) {
+        const epNum = foundEp.episodeNumber || 1;
+        if (totalSeasons > 1) {
+          path = `/watch/${slug}/s${foundSeasonNum}/e${epNum}`;
+        } else {
+          path = `/watch/${slug}/e${epNum}`;
+        }
+      }
+    }
+
+    const queryParams = new URLSearchParams();
+    if (options?.subView === 'blog') queryParams.set('tab', 'blog');
+    else if (options?.subView === 'cast') queryParams.set('tab', 'cast');
+    if (options?.trailerId) queryParams.set('trailer', options.trailerId);
+
+    const qs = queryParams.toString();
+    return qs ? `${path}?${qs}` : path;
+  };
+
+  // Open Details Modal & update address bar with clean simplified URL
   const handleOpenDetails = (
     show: Show,
     mode: 'trailer' | 'episode' = 'trailer',
@@ -1018,21 +1337,9 @@ export default function App() {
     setSelectedShowForDetail(show);
 
     try {
-      const slug = show.id || show.title.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '');
-      const currentUrl = new URL(window.location.href);
-      currentUrl.searchParams.set('watch', slug);
-
-      if (subView === 'blog') currentUrl.searchParams.set('tab', 'blog');
-      else if (subView === 'cast') currentUrl.searchParams.set('tab', 'cast');
-      else currentUrl.searchParams.delete('tab');
-
-      if (episodeId) currentUrl.searchParams.set('episode', episodeId);
-      else currentUrl.searchParams.delete('episode');
-
-      if (trailerId) currentUrl.searchParams.set('trailer', trailerId);
-      else currentUrl.searchParams.delete('trailer');
-
-      window.history.pushState({ showId: show.id, slug }, '', currentUrl.toString());
+      const slug = show.slug || show.id || show.title.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '');
+      const cleanUrl = buildCleanWatchUrl(show, episodeId, { subView, trailerId });
+      window.history.pushState({ showId: show.id, slug }, '', cleanUrl);
 
       const backdrop = show.backdropUrl || show.posterLandscapeUrl || '';
       const maturity = show.maturityRating || '16+';
@@ -1042,10 +1349,11 @@ export default function App() {
         show.type === 'series'
           ? (show.durationOrSeasons || (show.seasons && show.seasons.length > 0 ? `${show.seasons.length} Season${show.seasons.length > 1 ? 's' : ''}` : '1 Season'))
           : (show.durationOrSeasons || 'Feature Film');
-      const details = show.synopsis || show.shortDescription || '';
+      const details = show.synopsis || show.description || show.shortDescription || '';
       const desc = `${maturity} • ${genreList} • ${year} • ${durationOrSeasons}${details ? ` • ${details}` : ''}`;
-      const canonicalShareUrl = `https://diziurdu.com/watch/${slug}`;
-      setMetaTags(`${show.title} - Dizi Urdu`, desc, backdrop, canonicalShareUrl);
+      const currentOrigin = typeof window !== 'undefined' ? window.location.origin : 'http://localhost:3000';
+      const canonicalShareUrl = `${currentOrigin}${cleanUrl}`;
+      setMetaTags(`${show.title} - ${platformName}`, desc, backdrop, canonicalShareUrl);
     } catch {}
   };
 
@@ -1057,12 +1365,7 @@ export default function App() {
     document.body.style.overflow = '';
     document.documentElement.style.overflow = '';
     try {
-      const currentUrl = new URL(window.location.href);
-      currentUrl.searchParams.delete('watch');
-      currentUrl.searchParams.delete('tab');
-      currentUrl.searchParams.delete('episode');
-      currentUrl.searchParams.delete('trailer');
-      window.history.pushState(null, '', currentUrl.toString());
+      window.history.pushState(null, '', '/');
       setMetaTags(
         `${platformName} – Discover Cast, Official Trailers, and Urdu Dubbed Turkish Dramas`,
         `Discover Cast, Official Trailers, and Urdu Dubbed Turkish Dramas on ${platformName}.`,
@@ -1080,47 +1383,42 @@ export default function App() {
     setDetailSubView(view);
     if (!selectedShowForDetail) return;
     try {
-      const slug = selectedShowForDetail.id || selectedShowForDetail.title.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '');
-      const currentUrl = new URL(window.location.href);
-      currentUrl.searchParams.set('watch', slug);
-
-      currentUrl.searchParams.delete('tab');
-      currentUrl.searchParams.delete('episode');
-      currentUrl.searchParams.delete('trailer');
+      const cleanUrl = buildCleanWatchUrl(
+        selectedShowForDetail,
+        meta?.episode?.id || null,
+        { subView: view, trailerId: meta?.trailer?.id || null }
+      );
+      window.history.pushState(null, '', cleanUrl);
 
       if (view === 'blog') {
-        currentUrl.searchParams.set('tab', 'blog');
         setMetaTags(
           `${selectedShowForDetail.blog.heading} – ${platformName}`,
           selectedShowForDetail.blog.sections[0]?.content || selectedShowForDetail.shortDescription,
           selectedShowForDetail.blog.heroImage || selectedShowForDetail.posterLandscapeUrl,
-          currentUrl.toString()
+          window.location.origin + cleanUrl
         );
       } else if (view === 'cast') {
-        currentUrl.searchParams.set('tab', 'cast');
         setMetaTags(
           `${selectedShowForDetail.title} – Cast & Characters – ${platformName}`,
           `Explore the cast and characters of ${selectedShowForDetail.title}`,
           selectedShowForDetail.posterLandscapeUrl,
-          currentUrl.toString()
+          window.location.origin + cleanUrl
         );
       } else if (meta?.episode) {
-        currentUrl.searchParams.set('episode', meta.episode.id);
         const epTitle = `${selectedShowForDetail.title} S${meta.episode.seasonNumber || 1}:E${meta.episode.episodeNumber} "${meta.episode.title}"`;
         setMetaTags(
           `${epTitle} – ${platformName}`,
           meta.episode.synopsis || meta.episode.subheading || selectedShowForDetail.shortDescription,
           meta.episode.thumbnailUrl || selectedShowForDetail.posterLandscapeUrl,
-          currentUrl.toString()
+          window.location.origin + cleanUrl
         );
       } else if (meta?.trailer) {
-        currentUrl.searchParams.set('trailer', meta.trailer.id);
         const trTitle = `${meta.trailer.title} – ${selectedShowForDetail.title} Trailer`;
         setMetaTags(
           `${trTitle} – ${platformName}`,
           `Watch official trailer for ${selectedShowForDetail.title}`,
           meta.trailer.thumbnailUrl || selectedShowForDetail.posterLandscapeUrl,
-          currentUrl.toString()
+          window.location.origin + cleanUrl
         );
       } else {
         const backdrop = selectedShowForDetail.backdropUrl || selectedShowForDetail.posterLandscapeUrl || '';
@@ -1131,17 +1429,16 @@ export default function App() {
           selectedShowForDetail.type === 'series'
             ? (selectedShowForDetail.durationOrSeasons || (selectedShowForDetail.seasons && selectedShowForDetail.seasons.length > 0 ? `${selectedShowForDetail.seasons.length} Season${selectedShowForDetail.seasons.length > 1 ? 's' : ''}` : '1 Season'))
             : (selectedShowForDetail.durationOrSeasons || 'Feature Film');
-        const details = selectedShowForDetail.synopsis || selectedShowForDetail.shortDescription || '';
+        const details = selectedShowForDetail.synopsis || selectedShowForDetail.description || selectedShowForDetail.shortDescription || '';
         const desc = `${maturity} • ${genreList} • ${year} • ${durationOrSeasons}${details ? ` • ${details}` : ''}`;
-        const canonicalShareUrl = `https://diziurdu.com/watch/${slug}`;
+        const currentOrigin = typeof window !== 'undefined' ? window.location.origin : 'http://localhost:3000';
         setMetaTags(
-          `${selectedShowForDetail.title} - Dizi Urdu`,
+          `${selectedShowForDetail.title} - ${platformName}`,
           desc,
           backdrop,
-          canonicalShareUrl
+          currentOrigin + cleanUrl
         );
       }
-      window.history.pushState(null, '', currentUrl.toString());
     } catch {}
   };
 
@@ -1198,6 +1495,29 @@ export default function App() {
         const tabParam = urlParams.get('tab');
         const actorParam = urlParams.get('actor');
 
+        const pathname = window.location.pathname;
+        let pathWatchSlug: string | null = null;
+        let pathSeasonNumber: number | null = null;
+        let pathEpisodeNumber: number | null = null;
+
+        const multiSeasonMatch = pathname.match(/^\/watch\/([^/]+)\/s([0-9]+)\/e([0-9]+)\/?$/i);
+        const singleSeasonMatch = pathname.match(/^\/watch\/([^/]+)\/e([0-9]+)\/?$/i);
+        const showOnlyMatch = pathname.match(/^\/watch\/([^/]+)\/?$/i);
+
+        if (multiSeasonMatch) {
+          pathWatchSlug = decodeURIComponent(multiSeasonMatch[1]);
+          pathSeasonNumber = parseInt(multiSeasonMatch[2], 10);
+          pathEpisodeNumber = parseInt(multiSeasonMatch[3], 10);
+        } else if (singleSeasonMatch) {
+          pathWatchSlug = decodeURIComponent(singleSeasonMatch[1]);
+          pathSeasonNumber = 1;
+          pathEpisodeNumber = parseInt(singleSeasonMatch[2], 10);
+        } else if (showOnlyMatch) {
+          pathWatchSlug = decodeURIComponent(showOnlyMatch[1]);
+        }
+
+        const effectiveWatchTarget = pathWatchSlug || watchParam;
+
         if (actorParam) {
           const foundActor = shows.flatMap((s) => s.cast).find(
             (c) =>
@@ -1211,22 +1531,36 @@ export default function App() {
           setSelectedActorForPool((prev) => (prev ? null : prev));
         }
 
-        if (watchParam) {
+        if (effectiveWatchTarget) {
           const matched = shows.find(
             (s) =>
-              s.id.toLowerCase() === watchParam.toLowerCase() ||
-              s.title.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '') === watchParam.toLowerCase()
+              s.id.toLowerCase() === effectiveWatchTarget.toLowerCase() ||
+              s.slug?.toLowerCase() === effectiveWatchTarget.toLowerCase() ||
+              s.title.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '') === effectiveWatchTarget.toLowerCase()
           );
           if (matched) {
+            let resolvedEpId = episodeParam || null;
+            if (pathEpisodeNumber !== null && matched.seasons) {
+              for (const sea of matched.seasons) {
+                if (pathSeasonNumber === null || sea.seasonNumber === pathSeasonNumber) {
+                  const ep = sea.episodes?.find((e: any) => e.episodeNumber === pathEpisodeNumber);
+                  if (ep) {
+                    resolvedEpId = ep.id;
+                    break;
+                  }
+                }
+              }
+            }
+
             setSelectedShowForDetail(matched);
-            setDetailEpisodeId(episodeParam || null);
+            setDetailEpisodeId(resolvedEpId || null);
             setDetailTrailerId(trailerParam || null);
             if (tabParam === 'blog' || tabParam === 'cast') {
               setDetailSubView(tabParam);
             } else {
               setDetailSubView('main');
             }
-            if (episodeParam) {
+            if (resolvedEpId) {
               setDetailVideoMode('episode');
             } else {
               setDetailVideoMode('trailer');
@@ -1240,10 +1574,11 @@ export default function App() {
               matched.type === 'series'
                 ? (matched.durationOrSeasons || (matched.seasons && matched.seasons.length > 0 ? `${matched.seasons.length} Season${matched.seasons.length > 1 ? 's' : ''}` : '1 Season'))
                 : (matched.durationOrSeasons || 'Feature Film');
-            const details = matched.synopsis || matched.shortDescription || '';
+            const details = matched.synopsis || matched.description || matched.shortDescription || '';
             const desc = `${maturity} • ${genreList} • ${year} • ${durationOrSeasons}${details ? ` • ${details}` : ''}`;
-            const canonicalShareUrl = `https://diziurdu.com/watch/${matched.slug || matched.id}`;
-            setMetaTags(`${matched.title} - Dizi Urdu`, desc, backdrop, canonicalShareUrl);
+            const currentOrigin = typeof window !== 'undefined' ? window.location.origin : 'http://localhost:3000';
+            const cleanUrl = buildCleanWatchUrl(matched, resolvedEpId, { subView: tabParam || undefined, trailerId: trailerParam });
+            setMetaTags(`${matched.title} - ${platformName}`, desc, backdrop, currentOrigin + cleanUrl);
           }
         } else {
           setSelectedShowForDetail((prev) => (prev ? null : prev));
@@ -1352,72 +1687,117 @@ export default function App() {
       show.seasons.length > 0 &&
       show.seasons[0].episodes.length > 0;
     const firstEp = hasEpisodes ? show.seasons![0].episodes[0] : null;
-    const secondEp = hasEpisodes && show.seasons![0].episodes.length > 1 ? show.seasons![0].episodes[1] : null;
+
+    // Check if user has watch history for this show to resume where left off
+    const historyItem = watchHistory[show.id];
+    let chosenEp = firstEp;
+    let initialSeekTime = 0;
+
+    if (historyItem) {
+      if (show.seasons && show.seasons.length > 0) {
+        for (const sea of show.seasons) {
+          const match = sea.episodes.find((e) =>
+            (historyItem.episodeId && e.id === historyItem.episodeId) ||
+            (historyItem.episodeNumber && e.episodeNumber === historyItem.episodeNumber && (!historyItem.seasonNumber || sea.seasonNumber === historyItem.seasonNumber))
+          );
+          if (match) {
+            chosenEp = match;
+            break;
+          }
+        }
+      }
+
+      const epKey = chosenEp?.id || (chosenEp?.episodeNumber !== undefined ? `s${chosenEp?.seasonNumber || 1}e${chosenEp?.episodeNumber}` : 'movie');
+      const epProgress = historyItem.episodesProgress?.[epKey];
+      const startSec = parseTimeToSeconds(chosenEp?.startTime) || 0;
+
+      if (epProgress?.rawVideoTime !== undefined && epProgress.rawVideoTime > 0) {
+        initialSeekTime = epProgress.rawVideoTime;
+      } else if (epProgress?.currentTime && epProgress.currentTime > 0) {
+        initialSeekTime = startSec + epProgress.currentTime;
+      } else if (historyItem.rawVideoTime !== undefined && historyItem.rawVideoTime > 0) {
+        initialSeekTime = historyItem.rawVideoTime;
+      } else if (historyItem.currentTime && historyItem.currentTime > 0) {
+        initialSeekTime = startSec + historyItem.currentTime;
+      } else {
+        initialSeekTime = startSec;
+      }
+    }
+
+    const activeEp = chosenEp || firstEp;
+
+    // Find next episode relative to activeEp
+    let secondEp = null;
+    if (activeEp && show.seasons && show.seasons.length > 0) {
+      const currentSeason = show.seasons.find((sea) => sea.seasonNumber === (activeEp.seasonNumber || 1)) || show.seasons[0];
+      const epIndex = currentSeason.episodes.findIndex((e) => e.id === activeEp.id);
+      if (epIndex >= 0 && epIndex < currentSeason.episodes.length - 1) {
+        secondEp = currentSeason.episodes[epIndex + 1];
+      }
+    }
 
     // If source is direct target link, only load trailer
     const isTargetLink =
       (show.type === 'movie' && (show.movieStreamType === 'external' || (show as any).movieStreamType === 'target_link')) ||
-      Boolean(firstEp && (firstEp.videoSourceType === 'external' || (firstEp as any).videoSourceType === 'target_link'));
+      Boolean(activeEp && (activeEp.videoSourceType === 'external' || (activeEp as any).videoSourceType === 'target_link'));
 
     const effectiveVideoUrl = isTargetLink
       ? (show.trailerUrl || show.hoverPreviewUrl || '')
-      : firstEp
-      ? firstEp.videoUrl
+      : activeEp
+      ? activeEp.videoUrl
       : (show.movieStreamUrl || show.trailerUrl || show.hoverPreviewUrl || '');
 
     const effectiveSourceType: VideoSourceType = isTargetLink
       ? 'direct'
-      : firstEp
-      ? (firstEp.videoSourceType || 'direct')
+      : activeEp
+      ? (activeEp.videoSourceType || 'direct')
       : (show.movieStreamType || 'direct');
 
     const title = show.title;
     const epSubtitle = isTargetLink
       ? 'Official Trailer'
-      : firstEp
-      ? firstEp.subheading
-        ? `S${firstEp.seasonNumber || 1}: E${firstEp.episodeNumber} "${firstEp.title}" • ${firstEp.subheading}`
-        : `S${firstEp.seasonNumber || 1}: E${firstEp.episodeNumber} "${firstEp.title}"`
+      : activeEp
+      ? activeEp.subheading
+        ? `S${activeEp.seasonNumber || 1}: E${activeEp.episodeNumber} "${activeEp.title}" • ${activeEp.subheading}`
+        : `S${activeEp.seasonNumber || 1}: E${activeEp.episodeNumber} "${activeEp.title}"`
       : show.type === 'movie'
       ? `${show.releaseYear.split('-')[0]} • Full Movie`
       : 'Official Preview';
 
-    // Strictly add slug to browser URL: no video/player exists without adding slug
     try {
       const slug = show.slug || show.id || show.title.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '');
-      const currentUrl = new URL(window.location.href);
-      currentUrl.searchParams.set('watch', slug);
-      if (firstEp && !isTargetLink) {
-        currentUrl.searchParams.set('episode', firstEp.id);
-      } else if (isTargetLink) {
-        currentUrl.searchParams.set('trailer', 'main');
-      }
-      window.history.pushState({ showId: show.id, slug }, '', currentUrl.toString());
+      const cleanUrl = buildCleanWatchUrl(
+        show,
+        activeEp && !isTargetLink ? activeEp.id : null,
+        { trailerId: isTargetLink ? 'main' : null }
+      );
+      window.history.pushState({ showId: show.id, slug }, '', cleanUrl);
       setMetaTags(
         `${show.title} – Watch on ${platformName}`,
         show.shortDescription || show.synopsis,
         show.posterLandscapeUrl || show.backdropUrl,
-        currentUrl.toString()
+        window.location.origin + cleanUrl
       );
     } catch {}
 
-    // Record user watch history progress
-    if (firstEp && !isTargetLink) {
+    // Record user watch history progress: ONLY for episodes and movies, NEVER for trailers
+    if (activeEp && !isTargetLink) {
       recordWatchProgress(
         show,
-        firstEp.seasonNumber,
-        firstEp.episodeNumber,
-        firstEp.title,
+        activeEp.seasonNumber,
+        activeEp.episodeNumber,
+        activeEp.title,
         effectiveVideoUrl,
         effectiveSourceType,
-        firstEp.thumbnailUrl
+        activeEp.thumbnailUrl,
+        activeEp.id
       );
-    } else {
+    } else if (show.type === 'movie' && !isTargetLink) {
       recordWatchProgress(
         show,
         undefined,
         undefined,
-        show.type === 'movie' && !isTargetLink ? 'Full Movie' : 'Trailer',
+        'Full Movie',
         effectiveVideoUrl,
         effectiveSourceType,
         show.posterLandscapeUrl || show.backdropUrl
@@ -1432,12 +1812,16 @@ export default function App() {
       subtitle: epSubtitle,
       episodeSubtitle: epSubtitle,
       titleLogoUrl: show.titleLogoUrl,
-      previewThumbnailUrl: firstEp?.thumbnailUrl || show.posterLandscapeUrl || show.backdropUrl,
-      startTime: firstEp?.startTime,
-      endTime: firstEp?.endTime,
-      playerBgImageUrl: firstEp?.playerBgImageUrl || show.backdropUrl,
-      seasonNumber: firstEp?.seasonNumber,
-      episodeNumber: firstEp?.episodeNumber,
+      previewThumbnailUrl: activeEp?.thumbnailUrl || show.posterLandscapeUrl || show.backdropUrl,
+      startTime: activeEp?.startTime,
+      endTime: activeEp?.endTime,
+      initialCurrentTime: initialSeekTime,
+      isTrailer: Boolean(isTargetLink),
+      playerBgImageUrl: activeEp?.playerBgImageUrl || show.backdropUrl,
+      seasonNumber: activeEp?.seasonNumber,
+      episodeNumber: activeEp?.episodeNumber,
+      episodeId: activeEp?.id,
+      episodeTitle: activeEp?.title,
       hasNextEpisode: Boolean(secondEp),
       nextEpisodeInfo: secondEp
         ? {
@@ -1542,14 +1926,15 @@ export default function App() {
   }, [searchQuery, shows]);
 
   // Comprehensive Feed Engine: Section A (History/State), Section B (Algorithmic Top 10 / Rewatched),
-  // Section C (Curated Categories) with 30-minute rotation and anti-fatigue de-duplication
+  // Section C (Curated Categories) with 10-minute rotation, 3-reload arrangement cycle, and anti-fatigue de-duplication
   const dailyFeeds = useMemo(() => {
     const rows = generateDailyFeeds(
       shows,
       watchHistory,
       watchlist,
       new Date(currentTimeSlot),
-      feeds
+      feeds,
+      arrangementCycle
     );
 
     // Special feed ONLY shows on home page (activeFilter === 'all')
@@ -1576,7 +1961,7 @@ export default function App() {
     }
 
     return pageRows;
-  }, [shows, watchHistory, watchlist, currentTimeSlot, feeds, activeFilter]);
+  }, [shows, watchHistory, watchlist, currentTimeSlot, feeds, activeFilter, arrangementCycle]);
 
   // Category filter: matching shows and custom feed lines for multi-line regular feed (strictly from that category)
   const categoryMatchingShows = useMemo(() => {
@@ -1710,6 +2095,46 @@ export default function App() {
     return pageRecommendations.all || (heroShow && heroShow.is_recommended !== false ? heroShow : pool[0]) || null;
   }, [activeFilter, selectedCategoryFilter, categoryMatchingShows, shows, pageRecommendations, heroShow, customHeroShow]);
 
+  // Only 1 special single feed on desktop homepage
+  const specialFeedShow = useMemo<Show | null>(() => {
+    if (!shows || shows.length === 0) return null;
+    // 1. Look for show explicitly toggled as special single feed eligible in admin panel
+    const explicitlyEligible = shows.find((s) => s.isSpecialSingleFeedEligible === true);
+    if (explicitlyEligible) return explicitlyEligible;
+    // 2. Otherwise pick an eligible show that isn't the hero recommendation
+    const candidate = shows.find(
+      (s) => s.id !== currentHeroShow?.id && s.is_recommended !== false && (s.seasons?.length || s.type === 'series')
+    );
+    return candidate || shows.find((s) => s.id !== currentHeroShow?.id) || shows[0] || null;
+  }, [shows, currentHeroShow]);
+
+  // Handler for selecting genre card from Browse by Genre row on homepage
+  const handleSelectGenreFromFeed = (genre: GenreItem | CategoryItem) => {
+    const catNameLower = genre.name.toLowerCase();
+    const foundCat = categoriesList.find(
+      (c) =>
+        c.name.toLowerCase() === catNameLower ||
+        c.id.toLowerCase() === genre.id.toLowerCase() ||
+        c.name.toLowerCase().includes(catNameLower) ||
+        catNameLower.includes(c.name.toLowerCase())
+    );
+
+    const targetCat: CategoryItem = foundCat || {
+      id: genre.id,
+      name: genre.name,
+      imageUrl: genre.imageUrl,
+      genreKeywords: (genre as GenreItem).keywords || [genre.name.toLowerCase()]
+    };
+
+    setSelectedCategoryFromGenre(targetCat);
+    setSelectedCategoryFilter(null);
+    setSelectedSpecialFeed(null);
+    setSearchQuery('');
+    setActiveFilter('categories');
+    setCategoriesResetKey((prev) => prev + 1);
+    window.scrollTo({ top: 0, behavior: 'instant' });
+  };
+
   // Watchlist shows list
   const watchlistShows = shows.filter((s) => watchlist.includes(s.id));
 
@@ -1784,12 +2209,18 @@ export default function App() {
   }
 
   return (
-    <div className="min-h-screen bg-[#141414] text-zinc-100 flex flex-col font-sans selection:bg-red-600 selection:text-white">
+    <div
+      style={{
+        paddingTop: isOffline && !isMobile ? '52px' : undefined
+      }}
+      className="min-h-screen bg-[#141414] text-zinc-100 flex flex-col font-sans selection:bg-red-600 selection:text-white"
+    >
       {/* Live Internet Connection Offline Alert Bar */}
-      <OfflineAlertBar />
+      <OfflineAlertBar isOffline={isOffline} />
 
       {/* 1. Transparent Navbar (Same like Netflix) - NO admin buttons or links visible to users */}
       <Navbar
+        isOffline={isOffline}
         watchlistCount={watchlist.length}
         onOpenWatchlist={() => handleSelectPage('watchlist')}
         onOpenDownloadModal={() => {
@@ -1928,6 +2359,7 @@ export default function App() {
                     shows={shows}
                     customShows={continueWatchingShows}
                     watchlist={watchlist}
+                    watchHistory={watchHistory}
                     onToggleWatchlist={handleToggleWatchlist}
                     onOpenDetails={(s) => handleOpenDetails(s, 'trailer')}
                     onPlayShow={handlePlayShow}
@@ -1956,6 +2388,7 @@ export default function App() {
                     shows={shows}
                     customShows={userWatchlistShows}
                     watchlist={watchlist}
+                    watchHistory={watchHistory}
                     onToggleWatchlist={handleToggleWatchlist}
                     onOpenDetails={(s) => handleOpenDetails(s, 'trailer')}
                     onPlayShow={handlePlayShow}
@@ -2034,6 +2467,7 @@ export default function App() {
               onIncrementPoints={handleIncrementPoints}
               onCloseCategories={() => handleSelectPage('all')}
               resetKey={categoriesResetKey}
+              initialCategory={selectedCategoryFromGenre}
             />
           </div>
         ) : (
@@ -2181,48 +2615,93 @@ export default function App() {
               </div>
             ) : (
               <div className="relative z-20 space-y-2.5 md:space-y-3.5 mt-2 md:mt-3">
-                {dailyFeeds.map((row) => (
-                  <FeedStrip
-                    key={row.id}
-                    feed={{
-                      id: row.id,
-                      title: row.title,
-                      subtitle: row.subtitle,
-                      categoryKey: (row.categoryKey as any) || 'custom',
-                      enabled: true,
-                      showRankNumbers: row.showRankNumbers,
-                      isCuratedByAdmin: row.isCuratedByAdmin,
-                      isSpecialFeed: row.isSpecialFeed,
-                      isStretchableFeed: row.isStretchableFeed,
-                      specialLogoUrl: row.specialLogoUrl,
-                      specialTagline: row.specialTagline,
-                      specialExploreText: row.specialExploreText,
-                      specialExploreAction: row.specialExploreAction,
-                      specialExploreCategory: row.specialExploreCategory,
-                      specialBgImageUrl: row.specialBgImageUrl,
-                      specialBgDarkness: row.specialBgDarkness,
-                      specialBgColor: row.specialBgColor
-                    }}
-                    shows={shows}
-                    customShows={row.shows}
-                    watchlist={watchlist}
-                    onToggleWatchlist={handleToggleWatchlist}
-                    onOpenDetails={(s) => handleOpenDetails(s, 'trailer')}
-                    onPlayShow={handlePlayShow}
-                    onIncrementPoints={handleIncrementPoints}
-                    isGlobalMuted={isGlobalMuted}
-                    onToggleGlobalMute={handleToggleGlobalMute}
-                    onHoverCardStart={() => setIsFeedCardHovered(true)}
-                    onHoverCardEnd={() => setIsFeedCardHovered(false)}
-                    onExploreSpecialFeed={(f, fShows) => handleExploreSpecialFeed(f, fShows)}
-                    onEditFeed={(feedId) => handleEditCuratedFeed(feedId)}
-                    isMobile={isMobile}
-                    isTablet={isTablet}
-                    onLongPressShow={(s) => setActionSheetShow(s)}
-                    enableStretchableCards={adminSettings.enableStretchableCards !== false}
-                    showTop10Badges={adminSettings.showTop10Badges !== false}
-                  />
+                {dailyFeeds.map((row, idx) => (
+                  <React.Fragment key={row.id}>
+                    <FeedStrip
+                      feed={{
+                        id: row.id,
+                        title: row.title,
+                        subtitle: row.subtitle,
+                        categoryKey: (row.categoryKey as any) || 'custom',
+                        enabled: true,
+                        showRankNumbers: row.showRankNumbers,
+                        isCuratedByAdmin: row.isCuratedByAdmin,
+                        isSpecialFeed: row.isSpecialFeed,
+                        isStretchableFeed: row.isStretchableFeed,
+                        specialLogoUrl: row.specialLogoUrl,
+                        specialTagline: row.specialTagline,
+                        specialExploreText: row.specialExploreText,
+                        specialExploreAction: row.specialExploreAction,
+                        specialExploreCategory: row.specialExploreCategory,
+                        specialBgImageUrl: row.specialBgImageUrl,
+                        specialBgDarkness: row.specialBgDarkness,
+                        specialBgColor: row.specialBgColor
+                      }}
+                      shows={shows}
+                      customShows={row.shows}
+                      watchlist={watchlist}
+                      watchHistory={watchHistory}
+                      onToggleWatchlist={handleToggleWatchlist}
+                      onOpenDetails={(s) => handleOpenDetails(s, 'trailer')}
+                      onPlayShow={handlePlayShow}
+                      onIncrementPoints={handleIncrementPoints}
+                      isGlobalMuted={isGlobalMuted}
+                      onToggleGlobalMute={handleToggleGlobalMute}
+                      onHoverCardStart={() => setIsFeedCardHovered(true)}
+                      onHoverCardEnd={() => setIsFeedCardHovered(false)}
+                      onExploreSpecialFeed={(f, fShows) => handleExploreSpecialFeed(f, fShows)}
+                      onEditFeed={(feedId) => handleEditCuratedFeed(feedId)}
+                      isMobile={isMobile}
+                      isTablet={isTablet}
+                      onLongPressShow={(s) => setActionSheetShow(s)}
+                      enableStretchableCards={adminSettings.enableStretchableCards !== false}
+                      showTop10Badges={adminSettings.showTop10Badges !== false}
+                    />
+
+                    {/* Special Single Feed Desktop Section: Exactly 1 single feed banner on desktop homepage */}
+                    {idx === 1 && activeFilter === 'all' && !selectedCategoryFilter && !searchQuery.trim() && specialFeedShow && (
+                      <SpecialSingleFeed
+                        show={specialFeedShow}
+                        onPlay={handlePlayShow}
+                        onOpenDetails={(s) => handleOpenDetails(s, 'trailer')}
+                      />
+                    )}
+
+                    {/* Browse by Genre Square Feed: Rendered on Desktop & Mobile homepage */}
+                    {idx === 2 && activeFilter === 'all' && !selectedCategoryFilter && !searchQuery.trim() && (
+                      <BrowseByGenreRow
+                        categories={categoriesList}
+                        shows={shows}
+                        onSelectGenre={handleSelectGenreFromFeed}
+                      />
+                    )}
+                  </React.Fragment>
                 ))}
+
+                {/* If feeds list has fewer than 2 rows, guarantee SpecialSingleFeed and BrowseByGenreRow are shown on homepage */}
+                {dailyFeeds.length < 2 && activeFilter === 'all' && !selectedCategoryFilter && !searchQuery.trim() && (
+                  <>
+                    {specialFeedShow && (
+                      <SpecialSingleFeed
+                        show={specialFeedShow}
+                        onPlay={handlePlayShow}
+                        onOpenDetails={(s) => handleOpenDetails(s, 'trailer')}
+                      />
+                    )}
+                    <BrowseByGenreRow
+                      categories={categoriesList}
+                      shows={shows}
+                      onSelectGenre={handleSelectGenreFromFeed}
+                    />
+                  </>
+                )}
+                {dailyFeeds.length === 2 && activeFilter === 'all' && !selectedCategoryFilter && !searchQuery.trim() && (
+                  <BrowseByGenreRow
+                    categories={categoriesList}
+                    shows={shows}
+                    onSelectGenre={handleSelectGenreFromFeed}
+                  />
+                )}
               </div>
             )}
           </>
@@ -2236,6 +2715,7 @@ export default function App() {
           onRequestContent={() => setIsRequestContentModalOpen(true)}
           onOpenCategories={() => handleSelectPage('categories')}
           platformName={platformName}
+          isMyListPage={activeFilter === 'watchlist'}
         />
       </main>
 
@@ -2250,6 +2730,8 @@ export default function App() {
           onToggleWatchlist={handleToggleWatchlist}
           onClose={handleCloseDetails}
           onPlayShow={handlePlayShow}
+          onMobileSeasonSheetChange={setIsMobileSeasonPickerOpen}
+          onMobileInfoSheetChange={setIsMobileInfoSheetOpen}
           onSelectShow={(newShow) => handleOpenDetails(newShow, 'trailer')}
           onSelectActor={(actor) => handleSelectActorForPool(actor)}
           onSelectGenre={(genre) => {
@@ -2258,7 +2740,8 @@ export default function App() {
             window.scrollTo({ top: 0, behavior: 'instant' });
           }}
           onUpdateShowBlog={handleUpdateShowBlog}
-          onWatchInFullPlayer={(s, ep, trailer) => {
+          watchProgress={selectedShowForDetail ? watchHistory[selectedShowForDetail.id] : undefined}
+          onWatchInFullPlayer={(s, ep, trailer, initialSeekTime) => {
             if (ep) {
               handleSubViewChange('main', { episode: ep });
             } else if (trailer) {
@@ -2292,27 +2775,61 @@ export default function App() {
               }
             }
 
-            // Record user watch progress history
-            if (ep) {
-              recordWatchProgress(
-                s,
-                ep.seasonNumber,
-                ep.episodeNumber,
-                ep.title,
-                vUrl,
-                vType,
-                ep.thumbnailUrl
-              );
+            // Calculate exact frame seek position
+            const startSec = parseTimeToSeconds(ep?.startTime) || 0;
+            const epKey = ep?.id || (ep?.episodeNumber !== undefined ? `s${ep?.seasonNumber || 1}e${ep?.episodeNumber}` : 'movie');
+            const epProgress = s && watchHistory[s.id]?.episodesProgress?.[epKey];
+
+            // CRITICAL FIX: Only use top-level watchHistory if it belongs to this exact episode!
+            const isSameEpisodeAsHistory = Boolean(
+              ep &&
+              ((watchHistory[s.id]?.episodeId && watchHistory[s.id]?.episodeId === ep.id) ||
+               (watchHistory[s.id]?.episodeNumber && watchHistory[s.id]?.episodeNumber === ep.episodeNumber))
+            );
+
+            let effectiveSeek = startSec;
+            if (initialSeekTime !== undefined) {
+              effectiveSeek = initialSeekTime;
+            } else if (epProgress?.rawVideoTime !== undefined && epProgress.rawVideoTime > 0) {
+              effectiveSeek = epProgress.rawVideoTime;
+            } else if (epProgress?.currentTime !== undefined && epProgress.currentTime > 0) {
+              effectiveSeek = startSec + epProgress.currentTime;
+            } else if (isSameEpisodeAsHistory && watchHistory[s.id]?.rawVideoTime && watchHistory[s.id]!.rawVideoTime! > 0) {
+              effectiveSeek = watchHistory[s.id]!.rawVideoTime!;
+            } else if (isSameEpisodeAsHistory && watchHistory[s.id]?.currentTime && watchHistory[s.id]!.currentTime > 0) {
+              effectiveSeek = startSec + watchHistory[s.id]!.currentTime;
             } else {
-              recordWatchProgress(
-                s,
-                undefined,
-                undefined,
-                trailer ? trailer.title : 'Trailer',
-                vUrl,
-                vType,
-                trailer?.thumbnailUrl || s.posterLandscapeUrl
-              );
+              effectiveSeek = startSec;
+            }
+
+            // Record user watch progress history: ONLY for episodes and movies, NEVER for trailers
+            const isTrailer = Boolean(trailer) || (s.type === 'series' && !ep);
+            if (!isTrailer) {
+              if (ep) {
+                recordWatchProgress(
+                  s,
+                  ep.seasonNumber,
+                  ep.episodeNumber,
+                  ep.title,
+                  vUrl,
+                  vType,
+                  ep.thumbnailUrl,
+                  ep.id,
+                  effectiveSeek
+                );
+              } else if (s.type === 'movie') {
+                recordWatchProgress(
+                  s,
+                  undefined,
+                  undefined,
+                  s.title,
+                  vUrl,
+                  vType,
+                  s.posterLandscapeUrl || s.backdropUrl,
+                  undefined,
+                  effectiveSeek
+                );
+              }
             }
 
             setPlayingMedia({
@@ -2326,9 +2843,13 @@ export default function App() {
               previewThumbnailUrl: trailer?.thumbnailUrl || ep?.thumbnailUrl || s.posterLandscapeUrl || s.backdropUrl,
               startTime: ep?.startTime,
               endTime: ep?.endTime,
+              initialCurrentTime: effectiveSeek,
+              isTrailer: isTrailer,
               playerBgImageUrl: ep?.playerBgImageUrl || s.backdropUrl,
               seasonNumber: ep?.seasonNumber,
               episodeNumber: ep?.episodeNumber,
+              episodeId: ep?.id,
+              episodeTitle: ep?.title,
               hasNextEpisode: Boolean(nextEp),
               nextEpisodeInfo: nextEp
                 ? {
@@ -2427,6 +2948,13 @@ export default function App() {
           setUserHandle(p.handle);
           setUserEmail(p.email);
           setUserWhatsapp(p.whatsapp);
+          try {
+            localStorage.setItem('cineflix_user_avatar', p.avatar);
+            localStorage.setItem('cineflix_user_name', p.name);
+            localStorage.setItem('cineflix_user_handle', p.handle);
+            localStorage.setItem('cineflix_user_email', p.email);
+            localStorage.setItem('cineflix_user_whatsapp', p.whatsapp);
+          } catch {}
           if (p.password) {
             setUserPassword(p.password);
             localStorage.setItem('cineflix_user_password', p.password);
@@ -2466,6 +2994,23 @@ export default function App() {
             videoSourceType={playingMedia.videoSourceType}
             startTime={playingMedia.startTime}
             endTime={playingMedia.endTime}
+            initialCurrentTime={playingMedia.initialCurrentTime || 0}
+            onProgressUpdate={(cur, dur, raw) => {
+              if (playingMedia.isTrailer) return;
+              handleProgressUpdate(
+                playingMedia.show,
+                cur,
+                dur,
+                playingMedia.seasonNumber,
+                playingMedia.episodeNumber,
+                playingMedia.episodeTitle || playingMedia.subtitle,
+                playingMedia.episodeId,
+                playingMedia.videoUrl,
+                playingMedia.videoSourceType,
+                playingMedia.isTrailer,
+                raw
+              );
+            }}
             playerBgImageUrl={playingMedia.show?.embedBackdropUrl || playingMedia.playerBgImageUrl || playingMedia.show.backdropUrl}
             titleLogoUrl={playingMedia.titleLogoUrl}
             seasonNumber={playingMedia.seasonNumber}
@@ -2495,7 +3040,8 @@ export default function App() {
                   next.subtitle,
                   next.videoUrl,
                   next.videoSourceType,
-                  next.previewThumbnailUrl
+                  next.previewThumbnailUrl,
+                  next.episodeId
                 );
 
                 setPlayingMedia({
@@ -2507,9 +3053,11 @@ export default function App() {
                   previewThumbnailUrl: next.previewThumbnailUrl,
                   startTime: next.startTime,
                   endTime: next.endTime,
+                  initialCurrentTime: 0,
                   playerBgImageUrl: next.playerBgImageUrl || playingMedia.show.backdropUrl,
                   seasonNumber: next.seasonNumber,
                   episodeNumber: next.episodeNumber,
+                  episodeId: next.episodeId,
                   hasNextEpisode: Boolean(nextNextEp),
                   nextEpisodeInfo: nextNextEp
                     ? {
@@ -2522,7 +3070,8 @@ export default function App() {
                         endTime: nextNextEp.endTime,
                         playerBgImageUrl: nextNextEp.playerBgImageUrl || playingMedia.show.backdropUrl,
                         seasonNumber: nextNextEp.seasonNumber,
-                        episodeNumber: nextNextEp.episodeNumber
+                        episodeNumber: nextNextEp.episodeNumber,
+                        episodeId: nextNextEp.id
                       }
                     : null
                 });
@@ -2540,6 +3089,22 @@ export default function App() {
               titleLogoUrl={playingMedia.titleLogoUrl}
               previewThumbnailUrl={playingMedia.previewThumbnailUrl}
               autoPlay={true}
+              initialCurrentTime={playingMedia.initialCurrentTime || 0}
+              onProgressUpdate={(cur, dur) => {
+                if (playingMedia.isTrailer) return;
+                handleProgressUpdate(
+                  playingMedia.show,
+                  cur,
+                  dur,
+                  playingMedia.seasonNumber,
+                  playingMedia.episodeNumber,
+                  playingMedia.episodeTitle || playingMedia.subtitle,
+                  playingMedia.episodeId,
+                  playingMedia.videoUrl,
+                  playingMedia.videoSourceType,
+                  playingMedia.isTrailer
+                );
+              }}
               onClose={() => setPlayingMedia(null)}
             />
           </div>
@@ -2567,6 +3132,8 @@ export default function App() {
         onClose={() => setIsMobileProfileOpen(false)}
         userName={userName}
         userAvatar={userAvatar}
+        watchHistory={watchHistory}
+        onOpenPosterActionSheet={(s) => setActionSheetShow(s)}
         watchlistShows={watchlistShows}
         continueWatchingShows={continueWatchingShows}
         onRemoveFromWatchlist={handleToggleWatchlist}
@@ -2610,6 +3177,26 @@ export default function App() {
         }}
         onToggleAuth={() => setIsLoggedIn(!isLoggedIn)}
         isLoggedIn={isLoggedIn}
+        onSelectAvatar={(avatarUrl) => {
+          setUserAvatar(avatarUrl);
+          try {
+            localStorage.setItem('cineflix_user_avatar', avatarUrl);
+          } catch {}
+        }}
+        onUpdateUserName={(name) => {
+          setUserName(name);
+          try {
+            localStorage.setItem('cineflix_user_name', name);
+          } catch {}
+        }}
+        userHandle={userHandle}
+        onUpdateUserHandle={(handle) => {
+          setUserHandle(handle);
+          try {
+            localStorage.setItem('cineflix_user_handle', handle);
+          } catch {}
+        }}
+        onProfileEditOpenChange={setIsMobileProfileEditOpen}
       />
 
       {/* Mobile Poster Holding Action Sheet */}
@@ -2624,13 +3211,40 @@ export default function App() {
           handleOpenDetails(s, 'trailer');
         }}
         onOpenDetails={(s) => handleOpenDetails(s, 'trailer')}
+        watchProgress={actionSheetShow ? watchHistory[actionSheetShow.id] : undefined}
+        onRestartShow={(s) => {
+          try {
+            const saved = localStorage.getItem('cineflix_watch_progress');
+            if (saved) {
+              const parsed = JSON.parse(saved);
+              delete parsed[s.id];
+              localStorage.setItem('cineflix_watch_progress', JSON.stringify(parsed));
+              setWatchHistory((prev) => {
+                const next = { ...prev };
+                delete next[s.id];
+                return next;
+              });
+            }
+          } catch {}
+          handlePlayShow(s);
+        }}
+        onDownload={() => {
+          setIsDownloadModalOpen(true);
+        }}
+        onShare={(s) => {
+          handleOpenDetails(s, 'trailer');
+        }}
+        onRemoveFromContinueWatching={(sId) => {
+          handleRemoveFromWatchHistory(sId);
+        }}
       />
 
-      {/* Mobile Floating / Bottom-Fixed Navigation Bar: always visible on mobile across feed, popouts, more info, and profile */}
-      {isMobile && !isTablet && (
+      {/* Mobile Floating / Bottom-Fixed Navigation Bar: hidden when popups / sheets / player are active */}
+      {isMobile && !isTablet && !actionSheetShow && !isMobileSeasonPickerOpen && !isMobileProfileEditOpen && !isMobileInfoSheetOpen && !playingMedia && (
         <MobileBottomNav
           activeTab={isMobileSearchOpen ? 'search' : isMobileProfileOpen ? 'profile' : 'home'}
           onSelectTab={handleMobileSelectTab}
+          onTripleTapHome={handleTripleTapHome}
           userAvatar={userAvatar}
           platformName={platformName}
           navbarStyle={adminSettings.mobileNavbarStyle || 'floating'}

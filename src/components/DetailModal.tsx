@@ -30,19 +30,23 @@ import {
   Info
 } from 'lucide-react';
 
+import { WatchProgressItem, formatProgressTime } from '../utils/watchProgress';
+import { parseTimeToSeconds } from './EmbedPlayerModal';
+
 interface DetailModalProps {
   show: Show | null;
   allShows?: Show[];
   adminSettings: AdminSettings;
   isInWatchlist: boolean;
   watchlist?: string[];
+  watchProgress?: WatchProgressItem;
   onToggleWatchlist: (showId: string) => void;
   onClose: () => void;
   onSelectShow?: (show: Show) => void;
   onSelectActor?: (actor: CastMember) => void;
   onSelectGenre?: (genre: string) => void;
   onUpdateShowBlog?: (showId: string, updatedBlog: Show['blog']) => void;
-  onWatchInFullPlayer?: (show: Show, episode?: Episode | null, trailer?: TrailerItem | null) => void;
+  onWatchInFullPlayer?: (show: Show, episode?: Episode | null, trailer?: TrailerItem | null, initialSeekTime?: number) => void;
   onPlayShow?: (show: Show) => void;
   initialVideoMode?: 'trailer' | 'episode';
   initialEpisodeId?: string | null;
@@ -53,6 +57,8 @@ interface DetailModalProps {
   isGlobalMuted?: boolean;
   onToggleGlobalMute?: () => void;
   isFullPlayerOpen?: boolean;
+  onMobileSeasonSheetChange?: (isOpen: boolean) => void;
+  onMobileInfoSheetChange?: (isOpen: boolean) => void;
 }
 
 export const DetailModal: React.FC<DetailModalProps> = ({
@@ -61,6 +67,7 @@ export const DetailModal: React.FC<DetailModalProps> = ({
   adminSettings,
   isInWatchlist,
   watchlist = [],
+  watchProgress,
   onToggleWatchlist,
   onClose,
   onSelectShow,
@@ -77,7 +84,9 @@ export const DetailModal: React.FC<DetailModalProps> = ({
   top10ShowIds = [],
   isGlobalMuted = false,
   onToggleGlobalMute,
-  isFullPlayerOpen = false
+  isFullPlayerOpen = false,
+  onMobileSeasonSheetChange,
+  onMobileInfoSheetChange
 }) => {
   if (!show) return null;
 
@@ -197,7 +206,46 @@ export const DetailModal: React.FC<DetailModalProps> = ({
   );
   const [isMobileInfoPageOpen, setIsMobileInfoPageOpen] = useState<boolean>(false);
   const [isMobileSeasonDropdownOpen, setIsMobileSeasonDropdownOpen] = useState<boolean>(false);
+  const [seasonSheetDragY, setSeasonSheetDragY] = useState<number>(0);
+  const [isSeasonSheetDragging, setIsSeasonSheetDragging] = useState<boolean>(false);
+  const seasonTouchStartYRef = useRef<number>(0);
+
+  const handleSeasonTouchStart = (e: React.TouchEvent) => {
+    seasonTouchStartYRef.current = e.touches[0].clientY;
+    setIsSeasonSheetDragging(true);
+  };
+  const handleSeasonTouchMove = (e: React.TouchEvent) => {
+    if (!isSeasonSheetDragging) return;
+    const delta = e.touches[0].clientY - seasonTouchStartYRef.current;
+    if (delta > 0) {
+      setSeasonSheetDragY(delta);
+    } else {
+      setSeasonSheetDragY(0);
+    }
+  };
+  const handleSeasonTouchEnd = () => {
+    setIsSeasonSheetDragging(false);
+    if (seasonSheetDragY > 60) {
+      setIsMobileSeasonDropdownOpen(false);
+    }
+    setSeasonSheetDragY(0);
+  };
+
   const [isShareModalOpen, setIsShareModalOpen] = useState<boolean>(false);
+
+  useEffect(() => {
+    onMobileSeasonSheetChange?.(isMobileSeasonDropdownOpen);
+    return () => {
+      onMobileSeasonSheetChange?.(false);
+    };
+  }, [isMobileSeasonDropdownOpen, onMobileSeasonSheetChange]);
+
+  useEffect(() => {
+    onMobileInfoSheetChange?.(isMobileInfoPageOpen);
+    return () => {
+      onMobileInfoSheetChange?.(false);
+    };
+  }, [isMobileInfoPageOpen, onMobileInfoSheetChange]);
 
   // Mobile trailer player state: does NOT autoplay, shows thumbnail with centered play button, replay on end
   const [hasStartedTrailer, setHasStartedTrailer] = useState<boolean>(false);
@@ -748,9 +796,48 @@ export const DetailModal: React.FC<DetailModalProps> = ({
     }
     setIsVideoPlaying(false);
 
+    // If watch progress exists (including next episode prompt after 90% watched), resume that episode
+    if (watchProgress && (watchProgress.progressPercent > 0 || watchProgress.isNextEpisodePrompt) && onWatchInFullPlayer) {
+      let resumeEp: Episode | null = null;
+      if (show.seasons && show.seasons.length > 0) {
+        for (const sea of show.seasons) {
+          const match = sea.episodes.find(
+            (e) =>
+              (watchProgress.episodeId && e.id === watchProgress.episodeId) ||
+              (watchProgress.episodeNumber && e.episodeNumber === watchProgress.episodeNumber && (!watchProgress.seasonNumber || sea.seasonNumber === watchProgress.seasonNumber))
+          );
+          if (match) {
+            resumeEp = match;
+            break;
+          }
+        }
+      }
+      const startSec = parseTimeToSeconds(resumeEp?.startTime) || 0;
+      const epKey = resumeEp?.id || (resumeEp?.episodeNumber !== undefined ? `s${resumeEp?.seasonNumber || 1}e${resumeEp?.episodeNumber}` : 'movie');
+      const epProg = watchProgress.episodesProgress?.[epKey];
+      const seekPos =
+        epProg?.rawVideoTime !== undefined && epProg.rawVideoTime > 0
+          ? epProg.rawVideoTime
+          : watchProgress.rawVideoTime !== undefined && watchProgress.rawVideoTime > 0
+          ? watchProgress.rawVideoTime
+          : (epProg?.currentTime !== undefined ? startSec + epProg.currentTime : startSec + (watchProgress.currentTime || 0));
+
+      onWatchInFullPlayer(show, resumeEp, null, seekPos);
+      return;
+    }
+
     // If an episode other than episode 1 is explicitly selected, play that episode
     if (selectedEpisode && selectedEpisode.episodeNumber > 1 && onWatchInFullPlayer) {
-      onWatchInFullPlayer(show, selectedEpisode);
+      const epKey = selectedEpisode.id || `s${selectedEpisode.seasonNumber || 1}e${selectedEpisode.episodeNumber}`;
+      const epProg = watchProgress?.episodesProgress?.[epKey];
+      const startSec = parseTimeToSeconds(selectedEpisode.startTime) || 0;
+      const seek =
+        epProg?.rawVideoTime !== undefined && epProg.rawVideoTime > 0
+          ? epProg.rawVideoTime
+          : epProg?.currentTime !== undefined && epProg.currentTime > 0
+          ? startSec + epProg.currentTime
+          : startSec;
+      onWatchInFullPlayer(show, selectedEpisode, null, seek);
       return;
     }
 
@@ -805,7 +892,16 @@ export const DetailModal: React.FC<DetailModalProps> = ({
     setIsVideoPlaying(false);
 
     if (onWatchInFullPlayer) {
-      onWatchInFullPlayer(show, ep);
+      const epKey = ep.id || `s${ep.seasonNumber || 1}e${ep.episodeNumber}`;
+      const epProg = watchProgress?.episodesProgress?.[epKey];
+      const startSec = parseTimeToSeconds(ep.startTime) || 0;
+      const seek =
+        epProg?.rawVideoTime !== undefined && epProg.rawVideoTime > 0
+          ? epProg.rawVideoTime
+          : epProg?.currentTime !== undefined && epProg.currentTime > 0
+          ? startSec + epProg.currentTime
+          : startSec;
+      onWatchInFullPlayer(show, ep, null, seek);
     } else {
       setActivePlaybackSource('episode');
       setCustomVideoUrl(null);
@@ -1168,14 +1264,14 @@ export const DetailModal: React.FC<DetailModalProps> = ({
         data-modal-open="true"
         ref={scrollContainerRef}
       tabIndex={-1}
-      className="fixed inset-0 z-50 overflow-y-auto overflow-x-hidden bg-black/85 backdrop-blur-md animate-modal-backdrop custom-scrollbar outline-none"
+      className="fixed inset-0 z-50 overflow-y-auto overflow-x-hidden bg-black/50 animate-modal-backdrop custom-scrollbar outline-none"
       onClick={(e) => {
         if (e.target === e.currentTarget) onClose();
       }}
     >
       <div className="min-h-full flex items-start justify-center py-0 md:py-8 px-0 md:px-4 pointer-events-none">
         <div
-          className="relative w-full md:max-w-[780px] bg-[#181818] border-0 rounded-none md:rounded-2xl overflow-hidden shadow-2xl animate-modal-content select-none pointer-events-auto min-h-0 pb-0"
+          className="relative w-full md:max-w-[780px] bg-[#181818] border-0 rounded-none md:rounded-2xl overflow-hidden shadow-2xl animate-modal-content select-none pointer-events-auto min-h-screen md:min-h-0 pb-0 flex flex-col"
           style={{
             boxShadow: `0 25px 60px -15px rgba(0,0,0,0.95), 0 0 40px ${show.ambientColor}35`
           }}
@@ -1188,7 +1284,7 @@ export const DetailModal: React.FC<DetailModalProps> = ({
               <div className="absolute top-4 right-4 z-40 flex items-center gap-2">
                 <button
                   onClick={onClose}
-                  className="w-9 h-9 rounded-full bg-[#181818]/80 hover:bg-[#282828] text-white flex items-center justify-center border border-white/20 transition-colors cursor-pointer shadow-lg backdrop-blur-md"
+                  className="w-9 h-9 rounded-full bg-[#181818]/80 hover:bg-[#282828] text-white flex items-center justify-center border border-white/20 transition-colors cursor-pointer shadow-lg"
                   aria-label="Close modal"
                 >
                   <X className="w-5 h-5" />
@@ -1477,20 +1573,42 @@ export const DetailModal: React.FC<DetailModalProps> = ({
                 <ShowTitleLogo show={show} />
               </div>
 
+              {/* Watch Progress Indicator above Resume Button (Matching Image 3) */}
+              {watchProgress && (watchProgress.progressPercent > 0 || watchProgress.isNextEpisodePrompt) && (
+                <div className="w-full max-w-sm mb-3 select-none">
+                  {watchProgress.episodeNumber && (
+                    <div className="text-white/90 text-xs sm:text-sm font-semibold mb-1 truncate">
+                      S{watchProgress.seasonNumber || 1}:E{watchProgress.episodeNumber} {watchProgress.episodeTitle ? `"${watchProgress.episodeTitle}"` : ''}
+                    </div>
+                  )}
+                  <div className="flex items-center gap-3">
+                    <div className="flex-1 h-[2.5px] sm:h-[3px] bg-white/25 rounded-full overflow-hidden">
+                      <div
+                        className="h-full bg-[#e50914] rounded-full"
+                        style={{ width: `${Math.min(100, Math.max(0, watchProgress.progressPercent))}%` }}
+                      />
+                    </div>
+                    <span className="text-zinc-300 font-medium text-xs sm:text-[13px] whitespace-nowrap leading-none">
+                      {formatProgressTime(watchProgress.currentTime, watchProgress.duration)}
+                    </span>
+                  </div>
+                </div>
+              )}
+
               {/* Action Buttons Row */}
               <div className="flex items-center gap-3">
-                {/* Big White Play Button: Immediately stops preview trailer in background, respects target link */}
+                {/* Big White Play / Resume Button: Immediately stops preview trailer in background */}
                 <button
                   id="modal-main-play-button"
                   ref={playButtonRef}
                   onClick={handlePlayButton}
-                  className="pl-2.5 pr-3 sm:pl-3 sm:pr-3.5 py-1.5 sm:py-2 rounded-full bg-white hover:bg-white/90 text-black font-bold text-[15px] sm:text-[17px] flex items-center gap-1 shadow-lg cursor-pointer tracking-wide transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-white focus-visible:ring-offset-2 focus-visible:ring-offset-black"
+                  className="pl-4 pr-5 sm:pl-5 sm:pr-6 py-2 sm:py-2.5 xl:py-3 rounded-full bg-white hover:bg-white/90 text-black font-bold text-[16px] sm:text-[18px] flex items-center gap-1.5 shadow-xl cursor-pointer tracking-wide transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-white focus-visible:ring-offset-2 focus-visible:ring-offset-black"
                 >
                   {/* Rounded Play symbol */}
-                  <svg className="w-5 h-5 sm:w-5.5 sm:h-5.5 shrink-0 fill-current" viewBox="0 0 24 24">
+                  <svg className="w-6 h-6 sm:w-7 sm:h-7 shrink-0 fill-current" viewBox="0 0 24 24">
                     <path d="M7.05 3.6A1.5 1.5 0 0 0 4.75 4.9v14.2a1.5 1.5 0 0 0 2.3 1.3l12.1-7.1a1.5 1.5 0 0 0 0-2.6L7.05 3.6z" />
                   </svg>
-                  <span className="tracking-wide">Play</span>
+                  <span className="tracking-wide">{watchProgress && (watchProgress.progressPercent > 0 || watchProgress.isNextEpisodePrompt) ? 'Resume' : 'Play'}</span>
                 </button>
 
                 {/* Add to List Circular Button: reduced opacity, non-blur */}
@@ -1763,6 +1881,24 @@ export const DetailModal: React.FC<DetailModalProps> = ({
                             <Play className="w-4 h-4 fill-white text-white ml-0.5" />
                           </div>
                         </div>
+
+                        {/* Red progress line under watched episode thumbnail (Matching Image 4) */}
+                        {(() => {
+                          const epKey = ep.id || `s${ep.seasonNumber || 1}e${ep.episodeNumber}`;
+                          const epProg = watchProgress?.episodesProgress?.[epKey];
+                          const percent = epProg?.progressPercent || (watchProgress?.episodeNumber === ep.episodeNumber && watchProgress?.seasonNumber === (ep.seasonNumber || 1) ? watchProgress.progressPercent : 0);
+                          if (percent > 0) {
+                            return (
+                              <div className="absolute bottom-0 left-0 right-0 h-1 bg-[#404040]/80 z-20">
+                                <div
+                                  className="h-full bg-[#e50914]"
+                                  style={{ width: `${Math.min(100, Math.max(0, percent))}%` }}
+                                />
+                              </div>
+                            );
+                          }
+                          return null;
+                        })()}
                       </div>
 
                       {/* Title, Duration on right, and Synopsis */}
@@ -1945,40 +2081,29 @@ export const DetailModal: React.FC<DetailModalProps> = ({
               transform: mobileDragY > 0 ? `translateY(${mobileDragY}px)` : undefined,
               transition: isMobileDragging ? 'none' : 'transform 0.25s cubic-bezier(0.16, 1, 0.3, 1)'
             }}
-            className="block md:hidden bg-[#181818] min-h-0 pb-14 relative"
+            className="block md:hidden bg-[#181818] min-h-[100dvh] pb-14 relative flex flex-col flex-1"
           >
-            {/* Top Floating Controls: transparent back button with no border, transparent bar, no cross button */}
-            <div className="sticky top-0 z-40 w-full bg-transparent pointer-events-none flex items-center justify-between px-3 pt-3 pb-1 select-none">
-              {/* Left: Back button with transparent background and NO border */}
+            {/* 1. Mobile Trailer Video Player Container (Starts at top of screen) */}
+            <div
+              onClick={handleMobilePlayerTap}
+              className="relative aspect-video w-full bg-black overflow-hidden select-none cursor-pointer shrink-0"
+            >
+              {/* Back button inside video thumbnail: slight background opacity, no blur */}
               <button
-                onClick={onClose}
-                className="w-9 h-9 rounded-full bg-transparent hover:bg-white/10 text-white flex items-center justify-center cursor-pointer active:scale-95 transition-transform border-0 pointer-events-auto"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onClose();
+                }}
+                className="absolute top-3 left-3 z-30 w-9 h-9 rounded-full bg-black/25 hover:bg-black/40 backdrop-blur-none text-white flex items-center justify-center cursor-pointer active:scale-95 transition-all shadow-md border border-white/10"
                 aria-label="Back"
               >
                 <ArrowLeft className="w-5 h-5 text-white drop-shadow" />
               </button>
 
-              {/* Center: Transparent grab bar */}
-              <div
-                className="py-1 px-8 flex justify-center cursor-grab active:cursor-grabbing touch-none select-none pointer-events-auto"
-                onTouchStart={handleMobileTouchStart}
-                onTouchMove={handleMobileTouchMove}
-                onTouchEnd={handleMobileTouchEnd}
-                onTouchCancel={handleMobileTouchEnd}
-                onMouseDown={handleMobileMouseDown}
-              >
-                <div className="w-10 h-1 bg-transparent rounded-full" />
-              </div>
-
-              {/* Right: empty spacer (cross button removed as requested) */}
-              <div className="w-9 h-9" />
-            </div>
-
-            {/* 1. Mobile Trailer Video Player Container */}
-            <div
-              onClick={handleMobilePlayerTap}
-              className="relative aspect-video w-full bg-black overflow-hidden select-none cursor-pointer"
-            >
+              {/* Bottom fade out gradient: only shown when poster is showing, NOT when trailer is playing */}
+              {(!hasStartedTrailer || isMobileTrailerEnded) && (
+                <div className="absolute inset-x-0 bottom-0 h-14 sm:h-20 bg-gradient-to-t from-[#181818] via-[#181818]/60 to-transparent pointer-events-none z-20" />
+              )}
               {/* Mobile Trailer Video Element */}
               <video
                 ref={mobileVideoRef}
@@ -2208,18 +2333,40 @@ export const DetailModal: React.FC<DetailModalProps> = ({
               </div>
             </div>
 
-            {/* 3. Action Buttons Row: Play on left; Like, Add to List, Share, Info spread across screen width (matching image_cb4b0d49.png) */}
+            {/* Watch Progress Indicator above Resume Button on Mobile (Matching Image 3) */}
+            {watchProgress && (watchProgress.progressPercent > 0 || watchProgress.isNextEpisodePrompt) && (
+              <div className="px-4 pt-1 pb-1 flex flex-col gap-1">
+                {watchProgress.episodeNumber && (
+                  <div className="text-white font-bold text-xs tracking-tight truncate">
+                    S{watchProgress.seasonNumber || 1}:E{watchProgress.episodeNumber} {watchProgress.episodeTitle ? `"${watchProgress.episodeTitle}"` : ''}
+                  </div>
+                )}
+                <div className="flex items-center gap-3">
+                  <div className="w-28 sm:w-36 h-1 bg-white/25 rounded-full overflow-hidden">
+                    <div
+                      className="h-full bg-[#e50914] rounded-full"
+                      style={{ width: `${Math.min(100, Math.max(0, watchProgress.progressPercent))}%` }}
+                    />
+                  </div>
+                  <span className="text-white/80 font-bold text-xs tracking-tight">
+                    {formatProgressTime(watchProgress.currentTime, watchProgress.duration)}
+                  </span>
+                </div>
+              </div>
+            )}
+
+            {/* 3. Action Buttons Row: Play / Resume on left; Like, Add to List, Share, Info spread across screen width */}
             <div className="w-full px-4 py-2.5 overflow-x-auto no-scrollbar">
               <div className="flex items-center justify-between w-full min-w-[330px] gap-2.5 sm:gap-4">
                 <button
                   onClick={handlePlayButton}
-                  className="pl-4 pr-5 py-2 rounded-full bg-white hover:bg-white/90 active:scale-95 text-black font-bold text-sm flex items-center gap-1.5 shadow-lg cursor-pointer transition-transform shrink-0"
-                  aria-label={`Play ${show.title}`}
+                  className="pl-5 pr-6 py-2.5 sm:py-3 rounded-full bg-white hover:bg-white/90 active:scale-95 text-black font-bold text-base flex items-center gap-1.5 shadow-xl cursor-pointer transition-transform shrink-0"
+                  aria-label={`${watchProgress && (watchProgress.progressPercent > 0 || watchProgress.isNextEpisodePrompt) ? 'Resume' : 'Play'} ${show.title}`}
                 >
-                  <svg className="w-4.5 h-4.5 shrink-0 fill-current" viewBox="0 0 24 24">
+                  <svg className="w-6 h-6 shrink-0 fill-current" viewBox="0 0 24 24">
                     <path d="M7.05 3.6A1.5 1.5 0 0 0 4.75 4.9v14.2a1.5 1.5 0 0 0 2.3 1.3l12.1-7.1a1.5 1.5 0 0 0 0-2.6L7.05 3.6z" />
                   </svg>
-                  <span className="tracking-wide">Play</span>
+                  <span className="tracking-wide">{watchProgress && (watchProgress.progressPercent > 0 || watchProgress.isNextEpisodePrompt) ? 'Resume' : 'Play'}</span>
                 </button>
 
                 {/* Like, My List, Share, Info spread with equal spacing across screen width */}
@@ -2318,37 +2465,13 @@ export const DetailModal: React.FC<DetailModalProps> = ({
                 {/* Season selector on left, episode count on right */}
                 <div className="flex items-center justify-between">
                   {seasons.length > 1 ? (
-                    <div className="relative">
-                      <button
-                        onClick={() => setIsMobileSeasonDropdownOpen(!isMobileSeasonDropdownOpen)}
-                        className="bg-[#242424] hover:bg-[#2c2c2c] border border-white/15 text-white font-semibold text-xs px-3 py-1.5 rounded-md flex items-center gap-2 cursor-pointer transition-colors"
-                      >
-                        <span>Season {selectedSeasonNumber}</span>
-                        <ChevronDown className="w-3.5 h-3.5" />
-                      </button>
-
-                      {isMobileSeasonDropdownOpen && (
-                        <div className="absolute left-0 mt-1 w-40 bg-[#242424] border border-white/20 rounded-md shadow-2xl py-1 z-50">
-                          {seasons.map((s) => (
-                            <button
-                              key={s.seasonNumber}
-                              onClick={() => {
-                                setSelectedSeasonNumber(s.seasonNumber);
-                                setIsMobileSeasonDropdownOpen(false);
-                              }}
-                              className={`w-full text-left px-3 py-1.5 text-xs transition-colors cursor-pointer flex items-center justify-between ${
-                                s.seasonNumber === selectedSeasonNumber
-                                  ? 'bg-white/10 text-white font-bold'
-                                  : 'text-zinc-300 hover:bg-white/5 hover:text-white'
-                              }`}
-                            >
-                              <span>Season {s.seasonNumber}</span>
-                              <span className="text-[10px] text-zinc-500">({s.episodes.length} Ep)</span>
-                            </button>
-                          ))}
-                        </div>
-                      )}
-                    </div>
+                    <button
+                      onClick={() => setIsMobileSeasonDropdownOpen(true)}
+                      className="bg-[#242424] hover:bg-[#2c2c2c] border border-white/15 text-white font-semibold text-xs px-3 py-1.5 rounded-md flex items-center gap-2 cursor-pointer transition-colors active:scale-95"
+                    >
+                      <span>Season {selectedSeasonNumber}</span>
+                      <ChevronDown className="w-3.5 h-3.5" />
+                    </button>
                   ) : (
                     <div className="bg-[#242424] border border-white/15 text-white font-semibold text-xs px-3 py-1.5 rounded-md">
                       <span>Season 1</span>
@@ -2380,7 +2503,7 @@ export const DetailModal: React.FC<DetailModalProps> = ({
                           {ep.episodeNumber}
                         </span>
 
-                        {/* Increased size thumbnail, NO play button icon overlay, NO progress line */}
+                        {/* Thumbnail with red progress line running along bottom for watched episode (Image 4) */}
                         <div className="w-32 sm:w-36 aspect-video rounded-md overflow-hidden relative shrink-0 bg-black shadow-md">
                           <img
                             src={ep.thumbnailUrl}
@@ -2388,6 +2511,22 @@ export const DetailModal: React.FC<DetailModalProps> = ({
                             referrerPolicy="no-referrer"
                             className="w-full h-full object-cover"
                           />
+                          {(() => {
+                            const epKey = ep.id || `s${ep.seasonNumber || 1}e${ep.episodeNumber}`;
+                            const epProg = watchProgress?.episodesProgress?.[epKey];
+                            const percent = epProg?.progressPercent || (watchProgress?.episodeNumber === ep.episodeNumber && watchProgress?.seasonNumber === (ep.seasonNumber || 1) ? watchProgress.progressPercent : 0);
+                            if (percent > 0) {
+                              return (
+                                <div className="absolute bottom-0 left-0 right-0 h-1 bg-[#404040]/80 z-20">
+                                  <div
+                                    className="h-full bg-[#e50914]"
+                                    style={{ width: `${Math.min(100, Math.max(0, percent))}%` }}
+                                  />
+                                </div>
+                              );
+                            }
+                            return null;
+                          })()}
                         </div>
 
                         {/* Full Title (NO truncation) & Duration (NO synopsis) */}
@@ -2501,7 +2640,7 @@ export const DetailModal: React.FC<DetailModalProps> = ({
     {/* 6. Info Page Modal / Sheet at Root Level (Triggered by (i) button, covers 75% of screen with slick dark overlay without needing to scroll) */}
     {isMobileInfoPageOpen && (
       <div
-        className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm flex flex-col justify-end p-0 animate-in fade-in duration-200"
+        className="fixed inset-0 z-50 bg-black/40 flex flex-col justify-end p-0 animate-in fade-in duration-200"
         onClick={() => setIsMobileInfoPageOpen(false)}
       >
         <div
@@ -2640,6 +2779,75 @@ export const DetailModal: React.FC<DetailModalProps> = ({
             <p className="text-xs text-zinc-300 leading-relaxed">
               {show.synopsis || show.description || show.shortDescription}
             </p>
+          </div>
+        </div>
+      </div>
+    )}
+
+    {/* Mobile Season Selector Bottom Sheet Popup (Matching Image 4) */}
+    {isMobileSeasonDropdownOpen && (
+      <div
+        className="fixed inset-0 z-[200] bg-black/40 flex flex-col justify-end animate-in fade-in duration-200"
+        onClick={() => setIsMobileSeasonDropdownOpen(false)}
+      >
+        <div
+          onClick={(e) => e.stopPropagation()}
+          style={{
+            transform: seasonSheetDragY > 0 ? `translateY(${seasonSheetDragY}px)` : undefined,
+            transition: isSeasonSheetDragging ? 'none' : 'transform 0.25s cubic-bezier(0.16, 1, 0.3, 1)'
+          }}
+          className="w-full bg-[#181818] border-t border-white/10 rounded-t-3xl px-6 pt-2 pb-[max(env(safe-area-inset-bottom),28px)] shadow-2xl animate-in slide-in-from-bottom duration-250 select-none max-h-[75vh] flex flex-col"
+        >
+          {/* Top swipeable pill handle */}
+          <div
+            className="w-full py-2 flex justify-center cursor-grab active:cursor-grabbing touch-none select-none"
+            onTouchStart={handleSeasonTouchStart}
+            onTouchMove={handleSeasonTouchMove}
+            onTouchEnd={handleSeasonTouchEnd}
+            onTouchCancel={handleSeasonTouchEnd}
+          >
+            <div className="w-10 h-1 bg-zinc-500 hover:bg-zinc-400 rounded-full shrink-0" />
+          </div>
+
+          {/* Header: Title + Circular X Close button */}
+          <div className="flex items-center justify-between pb-3 shrink-0">
+            <h3 className="text-xl font-bold text-white tracking-tight">Select season</h3>
+            <button
+              onClick={() => setIsMobileSeasonDropdownOpen(false)}
+              className="w-8 h-8 rounded-full bg-[#2c2c2c] hover:bg-[#383838] text-zinc-300 hover:text-white flex items-center justify-center transition-colors cursor-pointer"
+              aria-label="Close"
+            >
+              <X className="w-4 h-4" />
+            </button>
+          </div>
+
+          {/* Season List */}
+          <div className="divide-y divide-white/[0.08] overflow-y-auto custom-scrollbar -mx-2 px-2">
+            {seasons.map((s) => {
+              const isSelected = s.seasonNumber === selectedSeasonNumber;
+              return (
+                <button
+                  key={s.seasonNumber}
+                  onClick={() => {
+                    setSelectedSeasonNumber(s.seasonNumber);
+                    setIsMobileSeasonDropdownOpen(false);
+                  }}
+                  className="w-full py-4 flex items-center justify-between text-left cursor-pointer group transition-colors"
+                >
+                  <div>
+                    <p className="text-base font-semibold text-white group-hover:text-red-400 transition-colors">
+                      Season {s.seasonNumber}
+                    </p>
+                    <p className="text-xs text-zinc-400 mt-0.5">
+                      {s.episodes?.length || 0} episodes
+                    </p>
+                  </div>
+                  {isSelected && (
+                    <Check className="w-5 h-5 text-white stroke-[2.5] shrink-0 ml-4" />
+                  )}
+                </button>
+              );
+            })}
           </div>
         </div>
       </div>

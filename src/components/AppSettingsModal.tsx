@@ -12,7 +12,8 @@ import {
   Wifi,
   HardDrive,
   Trash2,
-  RotateCcw
+  RotateCcw,
+  ArrowLeft
 } from 'lucide-react';
 
 interface AppSettingsModalProps {
@@ -55,8 +56,244 @@ export const AppSettingsModal: React.FC<AppSettingsModalProps> = ({
     }, 1200);
   };
 
+  const AndroidSwitch: React.FC<{ checked: boolean; onChange: () => void }> = ({ checked, onChange }) => (
+    <button
+      type="button"
+      role="switch"
+      aria-checked={checked}
+      onClick={onChange}
+      className={`relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full transition-colors duration-200 ease-in-out focus:outline-none ${
+        checked ? 'bg-[#065fd4]' : 'bg-[#717171]/40'
+      }`}
+    >
+      <span
+        className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow-md ring-0 transition duration-200 ease-in-out mt-0.5 ${
+          checked ? 'translate-x-5.5' : 'translate-x-0.5'
+        }`}
+      />
+    </button>
+  );
+
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-6 bg-black/85 backdrop-blur-md animate-modal-backdrop select-none">
+    <>
+      {/* ===================== MOBILE LAYOUT: ANDROID / YOUTUBE APP SETTINGS ===================== */}
+      <div className="fixed inset-0 z-50 sm:hidden bg-[#0f0f0f] text-white flex flex-col overflow-hidden animate-in fade-in duration-200 select-none">
+        {/* Android Top AppBar */}
+        <div className="sticky top-0 z-30 bg-[#0f0f0f] border-b border-white/[0.08] px-3 py-3 flex items-center justify-between shadow-sm">
+          <div className="flex items-center gap-3">
+            <button
+              onClick={onClose}
+              className="p-1.5 rounded-full hover:bg-white/10 active:bg-white/20 text-white transition-colors cursor-pointer"
+              aria-label="Back"
+            >
+              <ArrowLeft className="w-5 h-5" />
+            </button>
+            <h2 className="text-lg font-medium text-white tracking-normal">Settings</h2>
+          </div>
+        </div>
+
+        {/* Action feedback toast */}
+        {actionFeedback && (
+          <div className="bg-emerald-600 text-white text-xs font-semibold py-2 px-4 text-center">
+            {actionFeedback}
+          </div>
+        )}
+
+        {/* Vertically Grouped Android Settings List */}
+        <div className="flex-1 overflow-y-auto custom-scrollbar divide-y divide-white/[0.08] pb-12">
+          {/* Section 1: General & Playback */}
+          <div className="py-2">
+            <h3 className="px-5 pt-3 pb-1 text-xs font-bold text-[#3ea6ff] uppercase tracking-wider">
+              Playback Preferences
+            </h3>
+
+            <div className="px-5 py-3 flex items-center justify-between">
+              <div className="pr-4">
+                <p className="text-sm font-medium text-white">Autoplay next episode</p>
+                <p className="text-xs text-zinc-400 mt-0.5">When you finish an episode, we will automatically play the next</p>
+              </div>
+              <AndroidSwitch checked={autoplayNext} onChange={() => setAutoplayNext(!autoplayNext)} />
+            </div>
+
+            <div className="px-5 py-3 flex items-center justify-between">
+              <div className="pr-4">
+                <p className="text-sm font-medium text-white">Autoplay previews</p>
+                <p className="text-xs text-zinc-400 mt-0.5">Play video previews while browsing feeds</p>
+              </div>
+              <AndroidSwitch checked={autoplayPreviews} onChange={() => setAutoplayPreviews(!autoplayPreviews)} />
+            </div>
+
+            <div className="px-5 py-3 flex items-center justify-between">
+              <div>
+                <p className="text-sm font-medium text-white">Video streaming quality</p>
+                <p className="text-xs text-zinc-400 mt-0.5 capitalize">{videoQuality} Definition (Automatic)</p>
+              </div>
+              <button
+                onClick={() => setVideoQuality(videoQuality === 'high' ? 'medium' : videoQuality === 'medium' ? 'low' : 'high')}
+                className="text-xs font-bold text-[#3ea6ff] uppercase cursor-pointer"
+              >
+                {videoQuality}
+              </button>
+            </div>
+          </div>
+
+          {/* Section 2: Downloads & Offline */}
+          <div className="py-2">
+            <h3 className="px-5 pt-3 pb-1 text-xs font-bold text-[#3ea6ff] uppercase tracking-wider">
+              Downloads & Offline
+            </h3>
+
+            <div className="px-5 py-3 flex items-center justify-between">
+              <div className="pr-4">
+                <p className="text-sm font-medium text-white">Download over Wi-Fi only</p>
+                <p className="text-xs text-zinc-400 mt-0.5">Save mobile cellular data when downloading</p>
+              </div>
+              <AndroidSwitch checked={wifiOnlyDownloads} onChange={() => setWifiOnlyDownloads(!wifiOnlyDownloads)} />
+            </div>
+
+            <div className="px-5 py-3 flex items-center justify-between">
+              <div className="pr-4">
+                <p className="text-sm font-medium text-white">Smart downloads</p>
+                <p className="text-xs text-zinc-400 mt-0.5">Automatically delete watched episodes and download next</p>
+              </div>
+              <AndroidSwitch checked={smartDownloads} onChange={() => setSmartDownloads(!smartDownloads)} />
+            </div>
+
+            <div className="px-5 py-3 flex items-center justify-between">
+              <div>
+                <p className="text-sm font-medium text-white">Download quality</p>
+                <p className="text-xs text-zinc-400 mt-0.5">{downloadQuality === 'high' ? 'High Definition (1080p)' : 'Standard Definition (720p)'}</p>
+              </div>
+              <button
+                onClick={() => setDownloadQuality(downloadQuality === 'high' ? 'standard' : 'high')}
+                className="text-xs font-bold text-[#3ea6ff] uppercase cursor-pointer"
+              >
+                {downloadQuality}
+              </button>
+            </div>
+          </div>
+
+          {/* Section 3: Audio & Subtitles */}
+          <div className="py-2">
+            <h3 className="px-5 pt-3 pb-1 text-xs font-bold text-[#3ea6ff] uppercase tracking-wider">
+              Audio & Subtitles
+            </h3>
+
+            <div className="px-5 py-3">
+              <p className="text-sm font-medium text-white">Default audio</p>
+              <div className="flex gap-2 mt-2">
+                {['Turkish (Original)', 'Urdu Dubbed'].map((a) => (
+                  <button
+                    key={a}
+                    onClick={() => setDefaultAudio(a)}
+                    className={`px-3 py-1.5 rounded-full text-xs font-medium cursor-pointer transition-colors ${
+                      defaultAudio === a ? 'bg-[#3ea6ff] text-black font-bold' : 'bg-white/10 text-zinc-300'
+                    }`}
+                  >
+                    {a}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            <div className="px-5 py-3">
+              <p className="text-sm font-medium text-white">Default subtitles</p>
+              <div className="flex gap-2 mt-2">
+                {['English [CC]', 'Urdu Subtitles', 'Off'].map((s) => (
+                  <button
+                    key={s}
+                    onClick={() => setDefaultSubtitle(s)}
+                    className={`px-3 py-1.5 rounded-full text-xs font-medium cursor-pointer transition-colors ${
+                      defaultSubtitle === s ? 'bg-[#3ea6ff] text-black font-bold' : 'bg-white/10 text-zinc-300'
+                    }`}
+                  >
+                    {s}
+                  </button>
+                ))}
+              </div>
+            </div>
+          </div>
+
+          {/* Section 4: Data & History */}
+          <div className="py-2">
+            <h3 className="px-5 pt-3 pb-1 text-xs font-bold text-[#3ea6ff] uppercase tracking-wider">
+              Data & Storage
+            </h3>
+
+            {onClearWatchHistory && (
+              <div className="px-5 py-3 flex items-center justify-between">
+                <div>
+                  <p className="text-sm font-medium text-white">Clear Continue Watching</p>
+                  <p className="text-xs text-zinc-400 mt-0.5">Reset your saved episode watch progress</p>
+                </div>
+                <button
+                  onClick={() => {
+                    onClearWatchHistory();
+                    setActionFeedback('Watch history cleared successfully');
+                    setTimeout(() => setActionFeedback(null), 2500);
+                  }}
+                  className="px-3 py-1.5 rounded-lg bg-red-600/20 text-red-400 text-xs font-bold cursor-pointer hover:bg-red-600/30"
+                >
+                  Clear
+                </button>
+              </div>
+            )}
+
+            {onClearWatchlist && (
+              <div className="px-5 py-3 flex items-center justify-between">
+                <div>
+                  <p className="text-sm font-medium text-white">Clear My List</p>
+                  <p className="text-xs text-zinc-400 mt-0.5">Remove all saved series and movies</p>
+                </div>
+                <button
+                  onClick={() => {
+                    onClearWatchlist();
+                    setActionFeedback('Watchlist cleared successfully');
+                    setTimeout(() => setActionFeedback(null), 2500);
+                  }}
+                  className="px-3 py-1.5 rounded-lg bg-red-600/20 text-red-400 text-xs font-bold cursor-pointer hover:bg-red-600/30"
+                >
+                  Clear
+                </button>
+              </div>
+            )}
+          </div>
+
+          {/* Section 5: Diagnostics & About */}
+          <div className="py-2">
+            <h3 className="px-5 pt-3 pb-1 text-xs font-bold text-[#3ea6ff] uppercase tracking-wider">
+              About & Network
+            </h3>
+
+            <div className="px-5 py-3 flex items-center justify-between">
+              <div>
+                <p className="text-sm font-medium text-white">App version</p>
+                <p className="text-xs text-zinc-400 mt-0.5">v3.2.0 (Official Build 2026)</p>
+              </div>
+              <span className="text-xs text-zinc-500">{platformName}</span>
+            </div>
+
+            <div className="px-5 py-3">
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-sm font-medium text-white">Internet connection</p>
+                  <p className="text-xs text-zinc-400 mt-0.5">{networkStatus || 'Not tested'}</p>
+                </div>
+                <button
+                  onClick={handleTestNetwork}
+                  disabled={isTestingNetwork}
+                  className="px-3 py-1.5 rounded-lg bg-white/10 hover:bg-white/20 text-xs font-bold text-white cursor-pointer"
+                >
+                  {isTestingNetwork ? 'Checking...' : 'Check'}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* ===================== DESKTOP & TABLET LAYOUT (PRESERVED MODAL) ===================== */}
+      <div className="fixed inset-0 z-50 hidden sm:flex items-center justify-center p-3 sm:p-6 bg-black/50 animate-modal-backdrop select-none">
       <div className="relative w-full max-w-2xl bg-[#14151a] border border-white/10 rounded-2xl shadow-2xl overflow-hidden flex flex-col max-h-[92vh] animate-modal-content">
         {/* Header */}
         <div className="px-6 py-5 border-b border-white/10 flex items-center justify-between bg-[#111216]">
@@ -521,5 +758,6 @@ export const AppSettingsModal: React.FC<AppSettingsModalProps> = ({
         </div>
       </div>
     </div>
+    </>
   );
 };
