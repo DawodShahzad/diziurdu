@@ -1,5 +1,5 @@
 {
-  "exported_at": "2026-11-14T11:16:01.920Z",
+  "exported_at": "2026-11-14T11:59:38.364Z",
   "app": "Dizi Urdu",
   "version": "2.0",
   "shows": [
@@ -6541,7 +6541,15 @@
       "moreInfoBackdropUrl": "https://images-eu.ssl-images-amazon.com/images/S/pv-target-images/d5d896f14ea45f25720efd384e56c93c909472cb60ea9ec256b19b994f8913d8._SX1440_FMwebp_.png",
       "fullSizeMoreInfoFixedWidthPoster": true,
       "fullSizeMoreInfoFixedWidthVideo": true,
-      "moreInfoBackdropAmbiance": "#5eb309"
+      "moreInfoBackdropAmbiance": "#5eb309",
+      "shareLinkPreviewImage191x100Url": "https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcTVubt0My66BUxIRlcEGioFUrfLc2vH4QQI_RT2x60drddnzLkBmZ09KIk&s=10",
+      "shareLinkPreviewImage1x1Url": "https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcTVubt0My66BUxIRlcEGioFUrfLc2vH4QQI_RT2x60drddnzLkBmZ09KIk&s=10",
+      "shareLinkPreviewImage4x3Url": "https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcTVubt0My66BUxIRlcEGioFUrfLc2vH4QQI_RT2x60drddnzLkBmZ09KIk&s=10",
+      "shareDescription": "2014 5 Seasons 16+",
+      "stretchableFeedPoster9x16Url": "https://idsb.tmgrup.com.tr/ly/uploads/images/2021/02/07/91372.jpg",
+      "poster9x16Url": "https://idsb.tmgrup.com.tr/ly/uploads/images/2021/02/07/91372.jpg",
+      "stretchableFeedBackdropUrl": "https://idsb.tmgrup.com.tr/ly/uploads/images/2021/02/07/91372.jpg",
+      "mobileTallStretchPosterUrl": "https://idsb.tmgrup.com.tr/ly/uploads/images/2021/02/07/91372.jpg"
     },
     {
       "id": "barbaroslar",
