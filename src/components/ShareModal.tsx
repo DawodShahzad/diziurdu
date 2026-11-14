@@ -22,7 +22,7 @@ export const ShareModal: React.FC<ShareModalProps> = ({
   const currentHost = typeof window !== 'undefined' ? window.location.host : 'localhost:3000';
 
   const slug = show.slug || show.id;
-  const shareUrl = `${currentOrigin}/watch/${slug}`;
+  const shareUrl = `${currentOrigin}/share/${slug}`;
   
   // Title format: "Title - Platform Name"
   const shareTitle = `${show.title} - ${platformName}`;

@@ -1,5 +1,5 @@
 {
-  "exported_at": "2026-11-03T11:45:55.444Z",
+  "exported_at": "2026-11-14T11:16:01.920Z",
   "app": "Dizi Urdu",
   "version": "2.0",
   "shows": [
@@ -811,8 +811,8 @@
         "HDR10",
         "Dolby Atmos"
       ],
-      "points": 1218,
-      "all_time_score": 1218,
+      "points": 1219,
+      "all_time_score": 1219,
       "play_events": [
         {
           "timestamp": 1792259888149
@@ -867,6 +867,9 @@
         },
         {
           "timestamp": 1793651621566
+        },
+        {
+          "timestamp": 1794654136225
         }
       ],
       "whereToWatchEnabled": true,
@@ -1055,7 +1058,7 @@
       "verticalBackdropUrl2": "",
       "posterLandscapeUrl": "https://i.ytimg.com/vi/VTaxIlG-JQ0/maxresdefault.jpg",
       "posterLandscapeUrl2": "",
-      "posterVerticalUrl": "https://image.tmdb.org/t/p/w780/xHulNzEqtgkTuwrRorBRXdGzHML.jpg",
+      "posterVerticalUrl": "https://www.balkanweb.com/wp-content/uploads/2019/08/artworks-000003619657-9lm8au-t500x500.jpg",
       "posterVerticalUrl2": "",
       "titleLogoUrl": "https://res.cloudinary.com/hxk2tqpu/image/upload/v1792045012/maxresdefault-Picsart-AiImageEdfnhancer-removebg-preview.png",
       "embedBackdropUrl": "https://media.themoviedb.org/t/p/w1066_and_h600_face/zcEKO2vdfXAJoAnlgARyhGthLvK.jpg",
@@ -1318,7 +1321,8 @@
           "Original orchestral symphonic scores."
         ]
       },
-      "recommendationBackdropColor": "#c8b86a"
+      "recommendationBackdropColor": "#c8b86a",
+      "desktopTop10Image2x3Url": "https://www.balkanweb.com/wp-content/uploads/2019/08/artworks-000003619657-9lm8au-t500x500.jpg"
     },
     {
       "id": "series-1791979910788",
@@ -1336,7 +1340,7 @@
       "backdropUrl": "https://media.themoviedb.org/t/p/w1000_and_h563_face/wDUcwoRw1kZTJtfPYJosIAulroj.jpg",
       "verticalBackdropUrl": "https://images.unsplash.com/photo-1578632767115-351597cf2477?auto=format&fit=crop&w=720&q=80",
       "posterLandscapeUrl": "https://media.themoviedb.org/t/p/w1000_and_h563_face/v7AWkQ30Dz46Yr8ozfDjtm9sik6.jpg",
-      "posterVerticalUrl": "https://image.tmdb.org/t/p/w780/9VQO6d87KTcaLBJwFunv7nEUVOg.jpg",
+      "posterVerticalUrl": "https://m.media-amazon.com/images/M/MV5BNDgxODRkMTItMTAwMC00YWMxLWFhZTktYzE2NzEzMTJkYjY5XkEyXkFqcGc@._V1_.jpg",
       "titleLogoUrl": "https://ik.imagekit.io/dizi/9VQO6d87KTcaLBJwFunv7nEUVOg.png",
       "embedBackdropUrl": "https://image.tmdb.org/t/p/original/aiHuBXXMDm7rpa0DoVYsUdW4rM0.jpg",
       "embedBackdropDarkness": 80,
@@ -1600,7 +1604,8 @@
           "Original orchestral symphonic scores."
         ]
       },
-      "recommendationBackdropColor": "#b10b0b"
+      "recommendationBackdropColor": "#b10b0b",
+      "desktopTop10Image2x3Url": "https://m.media-amazon.com/images/M/MV5BNDgxODRkMTItMTAwMC00YWMxLWFhZTktYzE2NzEzMTJkYjY5XkEyXkFqcGc@._V1_.jpg"
     },
     {
       "id": "series-1791670205480",
@@ -1619,7 +1624,7 @@
       "backdropUrl": "https://m.media-amazon.com/images/S/pv-target-images/6c86c9a6107f005a0c48a770d8a585a3fe9bc0864fc7fd9bf1dfb40b51d3bcec.png",
       "verticalBackdropUrl": "https://images.unsplash.com/photo-1578632767115-351597cf2477?auto=format&fit=crop&w=720&q=80",
       "posterLandscapeUrl": "https://m.media-amazon.com/images/S/pv-target-images/192c56ae6295a6317db7a116aec72d68991960d7d8c9725142033480b80240b0.png",
-      "posterVerticalUrl": "https://image.tmdb.org/t/p/w780/xuarVMbyxXFRpuVScZadhjNtkBn.jpg",
+      "posterVerticalUrl": "https://i.pinimg.com/736x/24/f6/de/24f6debde9d6e4b1d3234b8df9e8d9bc.jpg",
       "titleLogoUrl": "https://res.cloudinary.com/hxk2tqpu/image/upload/v1791681187/0c6064173d51793ed2108d7a270b7029004492e854f5326d0f30ea675sd9fb8e37-Photoroom_1.png",
       "trailerUrl": "https://cdn.pixabay.com/video/2026/10/07/381346_large.mp4",
       "hoverPreviewUrl": "https://vjs.zencdn.net/v/oceans.mp4",
@@ -2262,7 +2267,9 @@
       },
       "recommendationBackdropColor": "#ff9924",
       "backdropDarkness": 0,
-      "sourceWatermarkUrl": ""
+      "sourceWatermarkUrl": "",
+      "desktopTop10Image2x3Url": "https://i.pinimg.com/736x/24/f6/de/24f6debde9d6e4b1d3234b8df9e8d9bc.jpg",
+      "desktopTop10Image2x3Ambiance": "#097150"
     },
     {
       "id": "series-1791669283849",
@@ -2707,7 +2714,8 @@
       "embedBackdropUrl": "https://www.formulatv.com/images/articulos/128000/128536_c31gtNF7vqceB02sJ6WRU8aokim9PLxzH-h2.webp",
       "embedBackdropDarkness": 84,
       "poster9x16Url": "https://upload.wikimedia.org/wikipedia/en/3/3d/BraveandBeautiful.png?utm_source=en.wikipedia.org&utm_campaign=imageinfo&utm_content=thumbnail_unscaled",
-      "poster1x2Url": "https://upload.wikimedia.org/wikipedia/en/3/3d/BraveandBeautiful.png?utm_source=en.wikipedia.org&utm_campaign=imageinfo&utm_content=thumbnail_unscaled"
+      "poster1x2Url": "https://upload.wikimedia.org/wikipedia/en/3/3d/BraveandBeautiful.png?utm_source=en.wikipedia.org&utm_campaign=imageinfo&utm_content=thumbnail_unscaled",
+      "mobileNormalFeed2x3Url": "https://upload.wikimedia.org/wikipedia/en/3/3d/BraveandBeautiful.png?utm_source=en.wikipedia.org&utm_campaign=imageinfo&utm_content=thumbnail_unscaled"
     },
     {
       "id": "series-1791667832759",
@@ -2725,7 +2733,7 @@
       "backdropUrl": "https://ik.imagekit.io/dizi/download-Picsart-AiImageEnhancer%20(1).jpg",
       "verticalBackdropUrl": "https://images.unsplash.com/photo-1578632767115-351597cf2477?auto=format&fit=crop&w=720&q=80",
       "posterLandscapeUrl": "https://www.dvdplanetstore.pk/wp-content/uploads/2014/03/manahil-aur-khalil-urdu1-turkish-drama-dvdplanetstorepk.jpg",
-      "posterVerticalUrl": "https://image.tmdb.org/t/p/w780/nmQCEmwXKfTD3wJgFFwxTwTEHXJ.jpg",
+      "posterVerticalUrl": "https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcTEBTqRCbLgJRLUjzC8Uy26jOhfLfJ9udan0qh56jNwnH_Z5CSPbxAcGMBs&s=10",
       "titleLogoUrl": "https://res.cloudinary.com/hxk2tqpu/image/upload/v1791668287/artworks-iczvLnY7n9BFpEiw-bHCmCw-t500x500-Photoroom.png",
       "trailerUrl": "https://vjs.zencdn.net/v/oceans.mp4",
       "hoverPreviewUrl": "https://vjs.zencdn.net/v/oceans.mp4",
@@ -3078,7 +3086,9 @@
       },
       "recommendationBackdropColor": "#94734c",
       "embedBackdropDarkness": 86,
-      "embedBackdropUrl": "https://ayyapim.com/media/images/sayfaici-yapim/1565177853.jpg?v=1791870636"
+      "embedBackdropUrl": "https://ayyapim.com/media/images/sayfaici-yapim/1565177853.jpg?v=1791870636",
+      "desktopTop10Image2x3Url": "https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcTEBTqRCbLgJRLUjzC8Uy26jOhfLfJ9udan0qh56jNwnH_Z5CSPbxAcGMBs&s=10",
+      "desktopTop10Image2x3Ambiance": "#d97706"
     },
     {
       "id": "series-1791666621503",
@@ -3096,7 +3106,7 @@
       "backdropUrl": "https://image.tmdb.org/t/p/original/oFCRaNl8a1k8nrUlBj25U4bzWtZ.jpg",
       "verticalBackdropUrl": "https://images.unsplash.com/photo-1578632767115-351597cf2477?auto=format&fit=crop&w=720&q=80",
       "posterLandscapeUrl": "https://i.ytimg.com/vi/Ga7SV6n_10k/sddefault.jpg",
-      "posterVerticalUrl": "https://image.tmdb.org/t/p/w780/dwtm8BD77ehylBCyRypzed2Q6cw.jpg",
+      "posterVerticalUrl": "https://media.startv.com.tr/star-tv//images/f3b2670b46fd8ba687ec7223.jpg",
       "titleLogoUrl": "https://ik.imagekit.io/dizi/d84e546e-fbe6-413c-b6b8-57d6f72c8793.png?updatedAt=1791916695770",
       "trailerUrl": "https://vjs.zencdn.net/v/oceans.mp4",
       "hoverPreviewUrl": "https://vjs.zencdn.net/v/oceans.mp4",
@@ -3349,7 +3359,8 @@
           "Authentic medieval armor hand-forged for the actors.",
           "Original orchestral symphonic scores."
         ]
-      }
+      },
+      "desktopTop10Image2x3Url": "https://media.startv.com.tr/star-tv//images/f3b2670b46fd8ba687ec7223.jpg"
     },
     {
       "id": "series-1791662023223",
@@ -3649,7 +3660,7 @@
       "backdropUrl": "https://media.themoviedb.org/t/p/w1066_and_h600_face/tNUc4apfzASP3cUmqtIngyecMUu.jpg",
       "verticalBackdropUrl": "",
       "posterLandscapeUrl": "https://s1.dmcdn.net/v/YkARA1g3LzaEjUM49/x720",
-      "posterVerticalUrl": "https://image.tmdb.org/t/p/w780/l2kTvitWN7tnpZGf4vb5MxK4TGf.jpg",
+      "posterVerticalUrl": "https://reviewit.pk/wp-content/uploads/2020/11/Yunus-Emre-To-Air-On-PTV-7.jpg",
       "titleLogoUrl": "https://res.cloudinary.com/hxk2tqpu/image/upload/v1792692313/98byhp.png",
       "trailerUrl": "https://vjs.zencdn.net/v/oceans.mp4",
       "hoverPreviewUrl": "https://vjs.zencdn.net/v/oceans.mp4",
@@ -3918,7 +3929,8 @@
         "erme",
         "younusemre"
       ],
-      "embedBackdropUrl": "https://cms-rotf-api.tabii.com/r/int/webp/w1920/q84/19000.jpeg"
+      "embedBackdropUrl": "https://cms-rotf-api.tabii.com/r/int/webp/w1920/q84/19000.jpeg",
+      "desktopTop10Image2x3Url": "https://reviewit.pk/wp-content/uploads/2020/11/Yunus-Emre-To-Air-On-PTV-7.jpg"
     },
     {
       "id": "show-1791644500391",
@@ -4054,7 +4066,7 @@
       },
       "tmdbId": 62553,
       "slug": "kurt-seyit-sura",
-      "posterVerticalUrl": "https://image.tmdb.org/t/p/w780/9lYKjtegF62sdr1UtWnmXBE067z.jpg",
+      "posterVerticalUrl": "https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcTkSCxEXwtAGRSxg5DHFmkl--mOeJqkeaXeka16ffHrgErXaeqPWIjLD__A&s=10",
       "categories": [
         "Romantic Dramas"
       ],
@@ -4271,7 +4283,9 @@
         }
       ],
       "embedBackdropUrl": "https://fr.web.img6.acsta.net/r_1920_1080/pictures/14/01/02/16/52/291727.jpg",
-      "embedBackdropDarkness": 35
+      "embedBackdropDarkness": 35,
+      "desktopTop10Image2x3Url": "https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcTkSCxEXwtAGRSxg5DHFmkl--mOeJqkeaXeka16ffHrgErXaeqPWIjLD__A&s=10",
+      "desktopTop10Image2x3Ambiance": "#a4a578"
     },
     {
       "id": "show-1791634097253",
@@ -4754,7 +4768,7 @@
       "is_recommended": true,
       "tmdbId": 49503,
       "slug": "the-end",
-      "posterVerticalUrl": "https://image.tmdb.org/t/p/w780/q35vfXwkj3zMldpVT3sEvwYKwo.jpg",
+      "posterVerticalUrl": "https://iaatv.tmgrup.com.tr/514e74/959/566/58/0/1280/720?u=https://iatv.tmgrup.com.tr/2018/03/28/son-1522239185175.jpg",
       "verticalBackdropUrl": "https://image.tmdb.org/t/p/original/frqnCIpKvQDUh9t338BxDUn6DxA.jpg",
       "hasEpisodicContent": true,
       "seasons": [
@@ -4780,7 +4794,10 @@
       ],
       "hoverPreviewUrl": "https://ik.imagekit.io/dizi/intro.mp4",
       "recommendationBackdropColor": "#a3896c",
-      "backdropDarkness": 0
+      "backdropDarkness": 0,
+      "desktopTop10Image2x3Url": "https://iaatv.tmgrup.com.tr/514e74/959/566/58/0/1280/720?u=https://iatv.tmgrup.com.tr/2018/03/28/son-1522239185175.jpg",
+      "desktopTop10Image2x3Ambiance": "#642f07",
+      "moreInfoBackdropUrl": "https://es.web.img3.acsta.net/r_1920_1080/medias/nmedia/18/86/78/80/20141154.jpg"
     },
     {
       "id": "dirilis-ertugrul",
@@ -6514,12 +6531,17 @@
       "hasEpisodicContent": true,
       "tmdbId": 66017,
       "slug": "resurrection-ertugrul",
-      "posterVerticalUrl": "https://image.tmdb.org/t/p/w780/rOar34cNLn2sgDH5FmAa1bvMpBv.jpg",
+      "posterVerticalUrl": "https://m.media-amazon.com/images/M/MV5BYzQzMWZjNTAtZDE4Yi00N2M0LThhZjMtODhhMTFkMjY1NDFkXkEyXkFqcGc@._V1_FMjpg_UX804_.jpg",
       "is_recommended": true,
       "embedBackdropUrl": "https://mir-s3-cdn-cf.behance.net/project_modules/1400/6416b722266513.5630f6fc1d0ab.jpg",
       "embedBackdropDarkness": 85,
       "embedBackdropBlur": 1,
-      "sourceWatermarkUrl": ""
+      "sourceWatermarkUrl": "",
+      "desktopTop10Image2x3Url": "https://m.media-amazon.com/images/M/MV5BYzQzMWZjNTAtZDE4Yi00N2M0LThhZjMtODhhMTFkMjY1NDFkXkEyXkFqcGc@._V1_FMjpg_UX804_.jpg",
+      "moreInfoBackdropUrl": "https://images-eu.ssl-images-amazon.com/images/S/pv-target-images/d5d896f14ea45f25720efd384e56c93c909472cb60ea9ec256b19b994f8913d8._SX1440_FMwebp_.png",
+      "fullSizeMoreInfoFixedWidthPoster": true,
+      "fullSizeMoreInfoFixedWidthVideo": true,
+      "moreInfoBackdropAmbiance": "#5eb309"
     },
     {
       "id": "barbaroslar",
@@ -7071,7 +7093,7 @@
       "titleLogoUrl": "https://ik.imagekit.io/dizi/61d56190-af4c-4b72-9b2e-c82cd0eb71dd%20(1).png",
       "tmdbId": 132752,
       "slug": "barbaroslar",
-      "posterVerticalUrl": "https://image.tmdb.org/t/p/w780/f4Ih65EVp6SQc8E89bQ7NbyGeei.jpg",
+      "posterVerticalUrl": "https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcRtLoRz7na4N10NIzzZAT4JFVJNHY8z1JFSYvXfDVmo9HembFvzBjRT-yU&s=10",
       "recommendationBackdropColor": "#ffffff",
       "embedBackdropBlur": 1,
       "hasEpisodicContent": true,
@@ -7079,7 +7101,8 @@
       "categories": [
         "Historical Epics",
         "Action & Combat"
-      ]
+      ],
+      "desktopTop10Image2x3Url": "https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcRtLoRz7na4N10NIzzZAT4JFVJNHY8z1JFSYvXfDVmo9HembFvzBjRT-yU&s=10"
     }
   ],
   "feeds": [
@@ -7274,7 +7297,7 @@
     "enableHorizontalEpisodes": true,
     "autoplayHoverTrailers": true,
     "ambientGlowIntensity": "high",
-    "dailymotionScriptUrl": "https://geo.dailymotion.com/libs/player/x1o1xe.js",
+    "dailymotionScriptUrl": "https://geo.dailymotion.com/libs/player/x8lr5.js",
     "profilePictureGroups": [
       {
         "id": "group-1793705870581",
@@ -7321,9 +7344,127 @@
     "useCustomLogo": true,
     "customLogoUrl": "https://res.cloudinary.com/hxk2tqpu/image/upload/v1792642595/new-Photoroom.png",
     "showTop10Badges": false,
-    "mobileNavbarStyle": "bottom_fixed",
+    "mobileNavbarStyle": "floating",
     "mobileNavbarShowLabels": false,
-    "mobileRecommendationStyle": "portrait"
+    "mobileRecommendationStyle": "portrait",
+    "top10RankStyle": "modern",
+    "modernTop10RankList": true,
+    "managedGenres": [
+      {
+        "id": "action",
+        "name": "Action",
+        "displayName": "ACTION",
+        "imageUrl": "https://images.unsplash.com/photo-1518837695005-2083093ee35b?auto=format&fit=crop&w=600&q=80",
+        "keywords": [
+          "action",
+          "combat",
+          "warrior",
+          "battle",
+          "adventure"
+        ],
+        "enabled": true
+      },
+      {
+        "id": "comedy",
+        "name": "Comedy",
+        "displayName": "COMEDY",
+        "imageUrl": "https://images.unsplash.com/photo-1517457373958-b7bdd4587205?auto=format&fit=crop&w=600&q=80",
+        "keywords": [
+          "comedy",
+          "humor",
+          "sitcom",
+          "funny",
+          "romantic comedy"
+        ],
+        "enabled": true
+      },
+      {
+        "id": "crime",
+        "name": "Crime",
+        "displayName": "CRIME",
+        "imageUrl": "https://images.unsplash.com/photo-1509198397868-475647b2a1e5?auto=format&fit=crop&w=600&q=80",
+        "keywords": [
+          "crime",
+          "mafia",
+          "detective",
+          "underworld",
+          "police"
+        ],
+        "enabled": true
+      },
+      {
+        "id": "documentaries",
+        "name": "Documentaries",
+        "displayName": "DOCUMENTARIES",
+        "imageUrl": "https://images.unsplash.com/photo-1461360370896-922624d12aa1?auto=format&fit=crop&w=600&q=80",
+        "keywords": [
+          "documentary",
+          "history",
+          "biography",
+          "docuseries",
+          "true story"
+        ],
+        "enabled": true
+      },
+      {
+        "id": "drama",
+        "name": "Drama",
+        "displayName": "DRAMA",
+        "imageUrl": "https://images.unsplash.com/photo-1519501025264-65ba15a82390?auto=format&fit=crop&w=600&q=80",
+        "keywords": [
+          "drama",
+          "emotional",
+          "family saga",
+          "tragedy",
+          "relationships"
+        ],
+        "enabled": true
+      },
+      {
+        "id": "romance",
+        "name": "Romance",
+        "displayName": "ROMANCE",
+        "imageUrl": "https://images.unsplash.com/photo-1518199266791-5375a83190b7?auto=format&fit=crop&w=600&q=80",
+        "keywords": [
+          "romance",
+          "love",
+          "romantic",
+          "passion",
+          "romantic dramas"
+        ],
+        "enabled": true
+      },
+      {
+        "id": "historical",
+        "name": "Historical Epics",
+        "displayName": "HISTORICAL",
+        "imageUrl": "https://images.unsplash.com/photo-1461360370896-922624d12aa1?auto=format&fit=crop&w=600&q=80",
+        "keywords": [
+          "historical",
+          "ottoman",
+          "empire",
+          "ancient",
+          "historical epics"
+        ],
+        "enabled": true
+      },
+      {
+        "id": "thriller",
+        "name": "Thriller",
+        "displayName": "THRILLER",
+        "imageUrl": "https://images.unsplash.com/photo-1478760329108-5c3ed9d495a0?auto=format&fit=crop&w=600&q=80",
+        "keywords": [
+          "thriller",
+          "suspense",
+          "mystery",
+          "psychological",
+          "investigation"
+        ],
+        "enabled": true
+      }
+    ],
+    "useNoPreviewButtonsFor2x3Recommendation": true,
+    "useFullSizeMoreInfoByDefault": true
   },
   "categoriesList": [
     {

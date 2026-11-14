@@ -6,9 +6,12 @@ import {
   Lock,
   ChevronRight,
   Check,
-  ArrowLeft
+  ArrowLeft,
+  Shield,
+  AlertCircle
 } from 'lucide-react';
 import { DiziLogo } from './DiziLogo';
+import { ProfileLockScreen } from './ProfileLockScreen';
 import fullBackupData from '../full_backup.json';
 
 const INITIAL_PROFILE_PICTURE_GROUPS = ((fullBackupData as any)?.profilePictureGroups) || [];
@@ -52,6 +55,19 @@ export const EditProfilePage: React.FC<EditProfilePageProps> = ({
   const [email, setEmail] = useState<string>(userEmail || 'abc@example.com');
   const [whatsapp, setWhatsapp] = useState<string>(userWhatsapp || '+1 (555) 382-9014');
   const [password, setPassword] = useState<string>(userPassword || '••••••••••••');
+
+  // Profile Lock State
+  const [isProfileLockEnabled, setIsProfileLockEnabled] = useState<boolean>(() => {
+    try {
+      return localStorage.getItem('dizi_profile_lock_enabled') === 'true';
+    } catch {
+      return false;
+    }
+  });
+  const [isPinSetupModalOpen, setIsPinSetupModalOpen] = useState<boolean>(false);
+  const [isPinDisablePromptOpen, setIsPinDisablePromptOpen] = useState<boolean>(false);
+  const [disablePinInput, setDisablePinInput] = useState<string>('');
+  const [disablePinError, setDisablePinError] = useState<string>('');
 
   // Prevent double scrollbars: lock body and html scroll when profile page is open
   useEffect(() => {
@@ -524,7 +540,78 @@ export const EditProfilePage: React.FC<EditProfilePageProps> = ({
               </div>
             </div>
 
-            {/* Section 4: Action Buttons */}
+            {/* Section 4: Profile Lock (PIN Protection) */}
+            <div className="space-y-3.5 pt-2">
+              <div>
+                <h2 className="text-xl font-bold text-white tracking-tight flex items-center gap-2">
+                  <Lock className="w-5 h-5 text-red-500" />
+                  <span>Profile Lock</span>
+                </h2>
+                <p className="text-xs sm:text-[13px] text-zinc-400 leading-relaxed mt-1">
+                  Require a 4-digit PIN code to access this profile when visiting {platformName}.
+                </p>
+              </div>
+
+              <div className="border border-white/10 rounded-xl p-4 bg-[#1e1f24] space-y-3.5">
+                <div className="flex items-center justify-between gap-3">
+                  <div className="flex items-center gap-3 min-w-0">
+                    <div className="w-10 h-10 rounded-full bg-white/10 flex items-center justify-center text-white shrink-0">
+                      <Shield className="w-5 h-5 text-red-500" />
+                    </div>
+                    <div className="min-w-0">
+                      <p className="text-sm font-semibold text-white">Require 4-digit PIN</p>
+                      <p className="text-xs text-zinc-400 mt-0.5">
+                        {isProfileLockEnabled ? 'Profile lock is currently enabled' : 'Turn on to require a PIN code on startup'}
+                      </p>
+                    </div>
+                  </div>
+
+                  {/* Toggle Switch */}
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (isProfileLockEnabled) {
+                        setDisablePinInput('');
+                        setDisablePinError('');
+                        setIsPinDisablePromptOpen(true);
+                      } else {
+                        setIsPinSetupModalOpen(true);
+                      }
+                    }}
+                    className={`relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none ${
+                      isProfileLockEnabled ? 'bg-red-600' : 'bg-zinc-700'
+                    }`}
+                    role="switch"
+                    aria-checked={isProfileLockEnabled}
+                  >
+                    <span
+                      aria-hidden="true"
+                      className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow-lg ring-0 transition duration-200 ease-in-out ${
+                        isProfileLockEnabled ? 'translate-x-5' : 'translate-x-0'
+                      }`}
+                    />
+                  </button>
+                </div>
+
+                {isProfileLockEnabled && (
+                  <div className="pt-3 border-t border-white/10 flex items-center justify-between">
+                    <span className="text-xs text-emerald-400 font-semibold flex items-center gap-1.5">
+                      <Check className="w-3.5 h-3.5 stroke-[3]" />
+                      <span>4-Digit PIN Active</span>
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => setIsPinSetupModalOpen(true)}
+                      className="text-xs text-zinc-300 hover:text-white font-semibold underline underline-offset-2 transition-colors cursor-pointer"
+                    >
+                      Change PIN Code
+                    </button>
+                  </div>
+                )}
+              </div>
+            </div>
+
+            {/* Section 5: Action Buttons */}
             <div className="pt-4 space-y-3">
               <button
                 type="submit"
@@ -542,6 +629,89 @@ export const EditProfilePage: React.FC<EditProfilePageProps> = ({
             </div>
           </form>
         </main>
+      )}
+
+      {/* PIN Setup / Change Modal */}
+      {isPinSetupModalOpen && (
+        <ProfileLockScreen
+          userAvatar={avatar}
+          userName={name}
+          platformName={platformName}
+          isSettingUp={true}
+          onUnlockSuccess={() => {}}
+          onPinConfigured={(newPin) => {
+            setIsProfileLockEnabled(true);
+            setIsPinSetupModalOpen(false);
+            setSaveToast('Profile lock enabled with 4-digit PIN');
+            setTimeout(() => setSaveToast(null), 3000);
+          }}
+          onCancelSetup={() => setIsPinSetupModalOpen(false)}
+        />
+      )}
+
+      {/* Disable PIN Prompt Modal */}
+      {isPinDisablePromptOpen && (
+        <div className="fixed inset-0 z-[150] bg-black/85 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="w-full max-w-sm bg-[#161924] border border-zinc-700 rounded-2xl p-5 shadow-2xl space-y-4">
+            <div className="flex items-center gap-2 text-red-500">
+              <Lock className="w-5 h-5 shrink-0" />
+              <h4 className="text-sm font-bold text-white">Disable Profile Lock</h4>
+            </div>
+            <p className="text-xs text-zinc-300 leading-relaxed">
+              Enter your current 4-digit PIN to turn off profile lock.
+            </p>
+            <div>
+              <input
+                type="password"
+                maxLength={4}
+                value={disablePinInput}
+                onChange={(e) => {
+                  const val = e.target.value.replace(/\D/g, '').slice(0, 4);
+                  setDisablePinInput(val);
+                  setDisablePinError('');
+                }}
+                placeholder="4-digit PIN"
+                className="w-full tracking-widest text-center text-lg font-mono bg-zinc-900 border border-zinc-700 focus:border-white text-white rounded-xl py-2 px-3 outline-none"
+              />
+              {disablePinError && (
+                <p className="text-xs text-red-400 font-semibold mt-1.5 flex items-center gap-1">
+                  <AlertCircle className="w-3.5 h-3.5 shrink-0" />
+                  <span>{disablePinError}</span>
+                </p>
+              )}
+            </div>
+            <div className="flex items-center justify-end gap-2.5 pt-1">
+              <button
+                type="button"
+                onClick={() => setIsPinDisablePromptOpen(false)}
+                className="px-4 py-2 rounded-xl bg-zinc-800 hover:bg-zinc-700 text-zinc-300 text-xs font-semibold cursor-pointer"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  const stored = localStorage.getItem('dizi_profile_lock_pin') || '';
+                  if (disablePinInput === stored) {
+                    try {
+                      localStorage.setItem('dizi_profile_lock_enabled', 'false');
+                      localStorage.removeItem('dizi_profile_lock_pin');
+                    } catch {}
+                    setIsProfileLockEnabled(false);
+                    setIsPinDisablePromptOpen(false);
+                    setSaveToast('Profile lock disabled');
+                    setTimeout(() => setSaveToast(null), 3000);
+                  } else {
+                    setDisablePinError('Incorrect PIN. Please try again.');
+                  }
+                }}
+                className="px-4 py-2 rounded-xl bg-red-600 hover:bg-red-500 text-white text-xs font-bold transition-colors cursor-pointer shadow"
+              >
+                Turn Off Lock
+              </button>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );

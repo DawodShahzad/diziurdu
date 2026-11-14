@@ -1,6 +1,7 @@
 import React, { useRef, useState, useEffect } from 'react';
 import { ChevronLeft, ChevronRight } from 'lucide-react';
-import { CategoryItem, Show } from '../types';
+import { CategoryItem, Show, ManagedGenreItem } from '../types';
+import { MediaImage } from './MediaImage';
 
 export interface GenreItem {
   id: string;
@@ -8,6 +9,7 @@ export interface GenreItem {
   displayName: string;
   imageUrl: string;
   keywords: string[];
+  enabled?: boolean;
 }
 
 // Curated high quality square genre cards matching image_616b6384.png
@@ -17,76 +19,86 @@ export const DEFAULT_GENRES: GenreItem[] = [
     name: 'Action',
     displayName: 'ACTION',
     imageUrl: 'https://images.unsplash.com/photo-1518837695005-2083093ee35b?auto=format&fit=crop&w=600&q=80',
-    keywords: ['action', 'combat', 'warrior', 'battle', 'adventure']
+    keywords: ['action', 'combat', 'warrior', 'battle', 'adventure'],
+    enabled: true
   },
   {
     id: 'adult-animation',
     name: 'Adult Animation',
     displayName: 'ADULT ANIMATION',
     imageUrl: 'https://images.unsplash.com/photo-1579783902614-a3fb3927b675?auto=format&fit=crop&w=600&q=80',
-    keywords: ['animation', 'anime', 'cartoon', 'animated', 'adult animation']
+    keywords: ['animation', 'anime', 'cartoon', 'animated', 'adult animation'],
+    enabled: true
   },
   {
     id: 'comedy',
     name: 'Comedy',
     displayName: 'COMEDY',
     imageUrl: 'https://images.unsplash.com/photo-1517457373958-b7bdd4587205?auto=format&fit=crop&w=600&q=80',
-    keywords: ['comedy', 'humor', 'sitcom', 'funny', 'romantic comedy']
+    keywords: ['comedy', 'humor', 'sitcom', 'funny', 'romantic comedy'],
+    enabled: true
   },
   {
     id: 'crime',
     name: 'Crime',
     displayName: 'CRIME',
     imageUrl: 'https://images.unsplash.com/photo-1509198397868-475647b2a1e5?auto=format&fit=crop&w=600&q=80',
-    keywords: ['crime', 'mafia', 'detective', 'underworld', 'police']
+    keywords: ['crime', 'mafia', 'detective', 'underworld', 'police'],
+    enabled: true
   },
   {
     id: 'documentaries',
     name: 'Documentaries',
     displayName: 'DOCUMENTARIES',
     imageUrl: 'https://images.unsplash.com/photo-1461360370896-922624d12aa1?auto=format&fit=crop&w=600&q=80',
-    keywords: ['documentary', 'history', 'biography', 'docuseries', 'true story']
+    keywords: ['documentary', 'history', 'biography', 'docuseries', 'true story'],
+    enabled: true
   },
   {
     id: 'drama',
     name: 'Drama',
     displayName: 'DRAMA',
     imageUrl: 'https://images.unsplash.com/photo-1519501025264-65ba15a82390?auto=format&fit=crop&w=600&q=80',
-    keywords: ['drama', 'emotional', 'family saga', 'tragedy', 'relationships']
+    keywords: ['drama', 'emotional', 'family saga', 'tragedy', 'relationships'],
+    enabled: true
   },
   {
     id: 'romance',
     name: 'Romance',
     displayName: 'ROMANCE',
     imageUrl: 'https://images.unsplash.com/photo-1518199266791-5375a83190b7?auto=format&fit=crop&w=600&q=80',
-    keywords: ['romance', 'love', 'romantic', 'passion', 'romantic dramas']
+    keywords: ['romance', 'love', 'romantic', 'passion', 'romantic dramas'],
+    enabled: true
   },
   {
     id: 'historical',
     name: 'Historical Epics',
     displayName: 'HISTORICAL',
     imageUrl: 'https://images.unsplash.com/photo-1578632767115-351597cf2477?auto=format&fit=crop&w=600&q=80',
-    keywords: ['historical', 'ottoman', 'empire', 'ancient', 'historical epics']
+    keywords: ['historical', 'ottoman', 'empire', 'ancient', 'historical epics'],
+    enabled: true
   },
   {
     id: 'thriller',
     name: 'Thriller',
     displayName: 'THRILLER',
     imageUrl: 'https://images.unsplash.com/photo-1478760329108-5c3ed9d495a0?auto=format&fit=crop&w=600&q=80',
-    keywords: ['thriller', 'suspense', 'mystery', 'psychological', 'investigation']
+    keywords: ['thriller', 'suspense', 'mystery', 'psychological', 'investigation'],
+    enabled: true
   }
 ];
 
 interface BrowseByGenreRowProps {
   categories?: CategoryItem[];
   shows?: Show[];
+  managedGenres?: ManagedGenreItem[];
   onSelectGenre: (genre: GenreItem | CategoryItem) => void;
   className?: string;
 }
 
 export const BrowseByGenreRow: React.FC<BrowseByGenreRowProps> = ({
   categories = [],
-  shows = [],
+  managedGenres,
   onSelectGenre,
   className = ''
 }) => {
@@ -94,9 +106,21 @@ export const BrowseByGenreRow: React.FC<BrowseByGenreRowProps> = ({
   const [canScrollLeft, setCanScrollLeft] = useState(false);
   const [canScrollRight, setCanScrollRight] = useState(true);
 
-  // Merge default genres with any custom categories if available
+  // Use admin-managed genre cards if configured, otherwise fallback to default genres + category artwork
   const displayGenres = React.useMemo(() => {
-    // If categories are passed from admin/backup, map them or complement them
+    if (managedGenres && managedGenres.length > 0) {
+      return managedGenres
+        .filter((g) => g.enabled !== false)
+        .map((g) => ({
+          id: g.id,
+          name: g.name,
+          displayName: g.displayName || g.name.toUpperCase(),
+          imageUrl: g.imageUrl || 'https://images.unsplash.com/photo-1578632767115-351597cf2477?auto=format&fit=crop&w=600&q=80',
+          keywords: g.keywords && g.keywords.length > 0 ? g.keywords : [g.name.toLowerCase()],
+          enabled: g.enabled !== false
+        }));
+    }
+
     const list: GenreItem[] = [...DEFAULT_GENRES];
 
     // Also enrich with any category artwork if matched
@@ -123,7 +147,7 @@ export const BrowseByGenreRow: React.FC<BrowseByGenreRowProps> = ({
     }
 
     return list;
-  }, [categories]);
+  }, [categories, managedGenres]);
 
   const checkScroll = () => {
     if (!scrollRef.current) return;
@@ -169,10 +193,10 @@ export const BrowseByGenreRow: React.FC<BrowseByGenreRowProps> = ({
         {canScrollLeft && (
           <button
             onClick={() => handleScroll('left')}
-            className="hidden md:flex absolute left-2 top-1/2 -translate-y-1/2 z-30 w-10 h-10 rounded-full bg-black/70 hover:bg-black/90 text-white items-center justify-center cursor-pointer shadow-xl border border-white/10 active:scale-95 transition-all opacity-0 group-hover/row:opacity-100"
+            className="hidden md:flex group/nav absolute left-0 top-0 bottom-0 z-30 w-12 sm:w-14 rounded-r-xl rounded-l-none bg-black/60 text-white items-center justify-center cursor-pointer shadow-xl select-none"
             aria-label="Scroll left"
           >
-            <ChevronLeft className="w-6 h-6" />
+            <ChevronLeft className="w-8 h-8 stroke-[2.5] group-active/nav:scale-75 transition-transform duration-100" />
           </button>
         )}
 
@@ -185,28 +209,24 @@ export const BrowseByGenreRow: React.FC<BrowseByGenreRowProps> = ({
             <div
               key={genre.id}
               onClick={() => onSelectGenre(genre)}
-              className="relative aspect-square w-28 xs:w-32 sm:w-40 md:w-48 lg:w-52 shrink-0 rounded-md sm:rounded-lg overflow-hidden bg-[#181818] border border-white/10 cursor-pointer shadow-lg active:scale-95 hover:scale-[1.03] hover:border-white/30 transition-all duration-300 group/card"
+              className="relative aspect-square w-[calc((100vw-2.5rem)/2.38)] sm:w-[calc((100vw-4rem)/3.8)] md:w-[calc((100vw-6rem)/5.5)] lg:w-[calc((100vw-7rem)/6.4)] max-w-[220px] shrink-0 rounded-md sm:rounded-lg overflow-hidden bg-[#181818] cursor-pointer shadow-lg active:scale-95 group/card"
             >
-              {/* Genre artwork image */}
-              <img
+              {/* Genre artwork image (no zoom-in effect) */}
+              <MediaImage
                 src={genre.imageUrl}
-                alt={genre.displayName}
-                referrerPolicy="no-referrer"
+                fallbackTitle={genre.displayName}
+                hideFallback={true}
                 loading="lazy"
-                className="w-full h-full object-cover group-hover/card:scale-105 transition-transform duration-500"
-                onError={(e) => {
-                  (e.target as HTMLImageElement).src =
-                    'https://images.unsplash.com/photo-1578632767115-351597cf2477?auto=format&fit=crop&w=600&q=80';
-                }}
+                className="w-full h-full object-cover"
               />
 
-              {/* Dark atmospheric overlay for bold white text legibility */}
-              <div className="absolute inset-0 bg-black/45 group-hover/card:bg-black/30 transition-colors" />
-              <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/20 to-black/40" />
+              {/* Clean matte dark overlay (glare removed) */}
+              <div className="absolute inset-0 bg-black/50" />
+              <div className="absolute inset-0 bg-gradient-to-t from-black/85 via-black/30 to-black/40" />
 
-              {/* Bold centered uppercase genre name */}
+              {/* Centered uppercase genre name with reduced boldness */}
               <div className="absolute inset-0 flex items-center justify-center p-3 text-center">
-                <span className="text-white font-black text-xs xs:text-sm sm:text-base md:text-lg tracking-wider uppercase drop-shadow-[0_2px_8px_rgba(0,0,0,0.95)] line-clamp-2 leading-tight">
+                <span className="text-white font-bold text-xs xs:text-sm sm:text-base md:text-lg tracking-wider uppercase drop-shadow-[0_2px_8px_rgba(0,0,0,0.95)] line-clamp-2 leading-tight">
                   {genre.displayName}
                 </span>
               </div>
@@ -218,10 +238,10 @@ export const BrowseByGenreRow: React.FC<BrowseByGenreRowProps> = ({
         {canScrollRight && (
           <button
             onClick={() => handleScroll('right')}
-            className="hidden md:flex absolute right-2 top-1/2 -translate-y-1/2 z-30 w-10 h-10 rounded-full bg-black/70 hover:bg-black/90 text-white items-center justify-center cursor-pointer shadow-xl border border-white/10 active:scale-95 transition-all opacity-0 group-hover/row:opacity-100"
+            className="hidden md:flex group/nav absolute right-0 top-0 bottom-0 z-30 w-12 sm:w-14 rounded-l-xl rounded-r-none bg-black/60 text-white items-center justify-center cursor-pointer shadow-xl select-none"
             aria-label="Scroll right"
           >
-            <ChevronRight className="w-6 h-6" />
+            <ChevronRight className="w-8 h-8 stroke-[2.5] group-active/nav:scale-75 transition-transform duration-100" />
           </button>
         )}
       </div>

@@ -19,13 +19,18 @@ const DB_SETTINGS: AdminSettings = (fullBackupData && (fullBackupData as any).ad
       enableHorizontalEpisodes: true,
       autoplayHoverTrailers: true,
       ambientGlowIntensity: 'high',
-      dailymotionScriptUrl: 'https://geo.dailymotion.com/libs/player/x1o1xe.js',
+      dailymotionScriptUrl: 'https://geo.dailymotion.com/libs/player/x8lr5.js',
       mobileNavbarStyle: 'floating',
+      mobileNavbarTheme: 'solid',
       mobileNavbarShowLabels: true,
       mobileRecommendationStyle: 'portrait',
+      useNoPreviewButtonsFor2x3Recommendation: false,
+      useFullSizeMoreInfoByDefault: false,
       backdropDarkness: 35,
       enableStretchableCards: true,
-      showTop10Badges: true
+      showTop10Badges: true,
+      modernTop10RankList: true,
+      top10RankStyle: 'modern'
     };
 
 const DB_CATEGORIES: CategoryItem[] = (fullBackupData && Array.isArray((fullBackupData as any).categoriesList))
@@ -42,6 +47,7 @@ const DB_NOTIFICATIONS: NotificationItem[] = (fullBackupData && Array.isArray((f
 
 import { generateDailyFeeds } from './utils/feedEngine';
 import { Navbar } from './components/Navbar';
+import { DiziLogo } from './components/DiziLogo';
 import { HeroRecommendation } from './components/HeroRecommendation';
 import { FeedStrip } from './components/FeedStrip';
 import { DetailModal } from './components/DetailModal';
@@ -66,8 +72,12 @@ import { MobileBottomNav } from './components/MobileBottomNav';
 import { MobileSearchModal } from './components/MobileSearchModal';
 import { MobileProfileModal } from './components/MobileProfileModal';
 import { MobilePosterActionSheet } from './components/MobilePosterActionSheet';
-import { Film, Tv, Sparkles, Filter, ChevronRight, Bookmark, X } from 'lucide-react';
+import { ShareTitleDesktopPage } from './components/ShareTitleDesktopPage';
+import { ProfileLockScreen } from './components/ProfileLockScreen';
+import { LoginPage } from './components/LoginPage';
+import { Film, Tv, Sparkles, Filter, ChevronRight, ChevronLeft, Bookmark, X, Menu, Bell, Check, Plus } from 'lucide-react';
 import { WatchProgressItem, EpisodeProgressItem } from './utils/watchProgress';
+import { MediaImage } from './components/MediaImage';
 
 function getPinnedOrRotatingRecommendation(pool: Show[], storageKey: string, forceRotate = false): Show | null {
   if (!pool || pool.length === 0) return null;
@@ -480,6 +490,36 @@ export default function App() {
   const [userPassword, setUserPassword] = useState<string>(() => {
     return localStorage.getItem('cineflix_user_password') || '••••••••••••';
   });
+
+  // Profile Lock State (4-digit PIN required on website visit when enabled)
+  const [isProfileLocked, setIsProfileLocked] = useState<boolean>(() => {
+    if (typeof window === 'undefined') return false;
+    try {
+      const isEnabled = localStorage.getItem('dizi_profile_lock_enabled') === 'true';
+      const hasPin = Boolean(localStorage.getItem('dizi_profile_lock_pin'));
+      const isSessionUnlocked = sessionStorage.getItem('dizi_profile_unlocked') === 'true';
+      return isEnabled && hasPin && !isSessionUnlocked;
+    } catch {
+      return false;
+    }
+  });
+
+  // Shared Title Desktop Page state (/share/:slug)
+  const [sharedTitleShow, setSharedTitleShow] = useState<Show | null>(null);
+  const [isLoginPageOpen, setIsLoginPageOpen] = useState<boolean>(false);
+
+  // When user clicks sign out (or Sign In from guest mode), open Login / Create Account page
+  const handleSignOut = () => {
+    try {
+      sessionStorage.removeItem('dizi_profile_unlocked');
+    } catch {}
+    setIsLoggedIn(false);
+    setIsProfileLocked(false);
+    setIsMobileProfileOpen(false);
+    setIsHamburgerDrawerOpen(false);
+    setIsAdminPanelOpen(false);
+    setIsLoginPageOpen(true);
+  };
 
   // Fullscreen Video Player state
   const [playingMedia, setPlayingMedia] = useState<{
@@ -909,6 +949,8 @@ export default function App() {
     return 'all';
   });
   const [searchQuery, setSearchQuery] = useState<string>('');
+  const [isMobileScrolled, setIsMobileScrolled] = useState<boolean>(false);
+  const [mobileHeaderOpacity, setMobileHeaderOpacity] = useState<number>(0);
 
   // Mobile and Tablet layout detection & states
   const [windowWidth, setWindowWidth] = useState<number>(() => {
@@ -936,11 +978,23 @@ export default function App() {
   const [customHeroShow, setCustomHeroShow] = useState<Show | null>(null);
   const [categoriesResetKey, setCategoriesResetKey] = useState<number>(0);
   const [selectedCategoryFromGenre, setSelectedCategoryFromGenre] = useState<CategoryItem | null>(null);
+  const [isHamburgerDrawerOpen, setIsHamburgerDrawerOpen] = useState<boolean>(false);
+  const [drawerDedicatedView, setDrawerDedicatedView] = useState<'top_10_movies' | 'top_10_series' | 'vertical_my_list' | null>(null);
+  const [isNotificationOpen, setIsNotificationOpen] = useState<boolean>(false);
   const lastHomeClickTimeRef = useRef<number>(0);
 
   const handleGoHome = () => {
     // Return to home without changing recommendation (only mobile triple tap reloads/rotates)
+    setDrawerDedicatedView(null);
     setSelectedShowForDetail(null);
+    if (sharedTitleShow) {
+      setSharedTitleShow(null);
+      try {
+        if (window.location.pathname.startsWith('/share/')) {
+          window.history.pushState(null, '', '/');
+        }
+      } catch {}
+    }
     setIsMobileSearchOpen(false);
     setIsMobileProfileOpen(false);
     setSelectedSpecialFeed(null);
@@ -984,7 +1038,8 @@ export default function App() {
     window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
-  const handleMobileSelectTab = (tab: 'home' | 'search' | 'profile') => {
+  const handleMobileSelectTab = (tab: 'home' | 'search' | 'profile' | 'trends') => {
+    if (tab === 'trends') return;
     setActionSheetShow(null);
     if (tab === 'home') {
       setSelectedShowForDetail(null);
@@ -1030,6 +1085,10 @@ export default function App() {
   // preserve the position; otherwise (less than 2 lines scrolled) reset to 0 (loads from top).
   useEffect(() => {
     const handleScroll = () => {
+      const scrollY = window.scrollY;
+      setIsMobileScrolled(scrollY > 10);
+      const opacity = Math.min(0.9, (scrollY / 384) * 0.9);
+      setMobileHeaderOpacity(opacity);
       if (!selectedShowForDetail && !playingMedia && !searchQuery) {
         const current = activeFilterRef.current;
         if (current === 'all' || current === 'series' || current === 'movies') {
@@ -1069,10 +1128,32 @@ export default function App() {
     };
   }, [activeFilter]);
 
-  const handleSelectPage = (target: 'all' | 'series' | 'movies' | 'categories' | 'watchlist') => {
+  // Lock background body scrolling when mobile hamburger menu drawer is open
+  useEffect(() => {
+    if (isHamburgerDrawerOpen) {
+      document.body.style.overflow = 'hidden';
+    } else {
+      document.body.style.overflow = '';
+    }
+    return () => {
+      document.body.style.overflow = '';
+    };
+  }, [isHamburgerDrawerOpen]);
+
+  const handleSelectPage = (target: 'all' | 'series' | 'movies' | 'categories' | 'watchlist' | 'trends') => {
+    setDrawerDedicatedView(null);
+    if (target === 'trends') return;
     if (target === 'all') {
       handleGoHome();
       return;
+    }
+    if (sharedTitleShow) {
+      setSharedTitleShow(null);
+      try {
+        if (window.location.pathname.startsWith('/share/')) {
+          window.history.pushState(null, '', '/');
+        }
+      } catch {}
     }
     if (target === 'categories') {
       setSelectedCategoryFromGenre(null);
@@ -1185,6 +1266,14 @@ export default function App() {
   const handleSearchChange = (query: string) => {
     if (!searchQuery && query) {
       preSearchScrollRef.current = window.scrollY;
+    }
+    if (query.trim() && sharedTitleShow) {
+      setSharedTitleShow(null);
+      try {
+        if (window.location.pathname.startsWith('/share/')) {
+          window.history.pushState(null, '', '/');
+        }
+      } catch {}
     }
     setSearchQuery(query);
     if (query.trim()) {
@@ -1322,7 +1411,7 @@ export default function App() {
     return qs ? `${path}?${qs}` : path;
   };
 
-  // Open Details Modal & update address bar with clean simplified URL
+  // Open Details Modal (or Full Size More Info Page on desktop when enabled by admin) & update address bar
   const handleOpenDetails = (
     show: Show,
     mode: 'trailer' | 'episode' = 'trailer',
@@ -1330,6 +1419,31 @@ export default function App() {
     episodeId?: string | null,
     trailerId?: string | null
   ) => {
+    const slug = show.slug || show.id || show.title.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '');
+    const backdrop = show.backdropUrl || show.posterLandscapeUrl || '';
+    const maturity = show.maturityRating || '16+';
+    const genreList = Array.isArray(show.genres) && show.genres.length > 0 ? show.genres.join(', ') : 'Drama';
+    const year = show.releaseYear || '2025';
+    const durationOrSeasons =
+      show.type === 'series'
+        ? (show.durationOrSeasons || (show.seasons && show.seasons.length > 0 ? `${show.seasons.length} Season${show.seasons.length > 1 ? 's' : ''}` : '1 Season'))
+        : (show.durationOrSeasons || 'Feature Film');
+    const details = show.synopsis || show.description || show.shortDescription || '';
+    const desc = `${maturity} • ${genreList} • ${year} • ${durationOrSeasons}${details ? ` • ${details}` : ''}`;
+    const currentOrigin = typeof window !== 'undefined' ? window.location.origin : 'http://localhost:3000';
+
+    if (!isMobile && adminSettings.useFullSizeMoreInfoByDefault && subView === 'main' && !episodeId && !trailerId) {
+      setSelectedShowForDetail(null);
+      setSharedTitleShow(show);
+      try {
+        const shareUrl = `/share/${slug}`;
+        window.history.pushState({ showId: show.id, slug, fullSizeMoreInfo: true }, '', shareUrl);
+        setMetaTags(`${show.title} - ${platformName}`, desc, show.moreInfoBackdropUrl || backdrop, `${currentOrigin}${shareUrl}`);
+      } catch {}
+      window.scrollTo({ top: 0, behavior: 'instant' });
+      return;
+    }
+
     setDetailVideoMode(mode);
     setDetailSubView(subView);
     setDetailEpisodeId(episodeId || null);
@@ -1337,21 +1451,8 @@ export default function App() {
     setSelectedShowForDetail(show);
 
     try {
-      const slug = show.slug || show.id || show.title.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '');
       const cleanUrl = buildCleanWatchUrl(show, episodeId, { subView, trailerId });
       window.history.pushState({ showId: show.id, slug }, '', cleanUrl);
-
-      const backdrop = show.backdropUrl || show.posterLandscapeUrl || '';
-      const maturity = show.maturityRating || '16+';
-      const genreList = Array.isArray(show.genres) && show.genres.length > 0 ? show.genres.join(', ') : 'Drama';
-      const year = show.releaseYear || '2025';
-      const durationOrSeasons =
-        show.type === 'series'
-          ? (show.durationOrSeasons || (show.seasons && show.seasons.length > 0 ? `${show.seasons.length} Season${show.seasons.length > 1 ? 's' : ''}` : '1 Season'))
-          : (show.durationOrSeasons || 'Feature Film');
-      const details = show.synopsis || show.description || show.shortDescription || '';
-      const desc = `${maturity} • ${genreList} • ${year} • ${durationOrSeasons}${details ? ` • ${details}` : ''}`;
-      const currentOrigin = typeof window !== 'undefined' ? window.location.origin : 'http://localhost:3000';
       const canonicalShareUrl = `${currentOrigin}${cleanUrl}`;
       setMetaTags(`${show.title} - ${platformName}`, desc, backdrop, canonicalShareUrl);
     } catch {}
@@ -1499,6 +1600,48 @@ export default function App() {
         let pathWatchSlug: string | null = null;
         let pathSeasonNumber: number | null = null;
         let pathEpisodeNumber: number | null = null;
+
+        // Check for /share/:slug or ?share=:slug (HBO Max style full-stretch details view on desktop)
+        const shareParam = urlParams.get('share');
+        const shareMatch = pathname.match(/^\/share\/([^/]+)\/?$/i);
+        let pathShareSlug: string | null = null;
+        if (shareMatch) {
+          pathShareSlug = decodeURIComponent(shareMatch[1]);
+        }
+        const effectiveShareTarget = pathShareSlug || shareParam;
+
+        if (effectiveShareTarget) {
+          const matched = shows.find(
+            (s) =>
+              s.id.toLowerCase() === effectiveShareTarget.toLowerCase() ||
+              s.slug?.toLowerCase() === effectiveShareTarget.toLowerCase() ||
+              s.title.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '') === effectiveShareTarget.toLowerCase()
+          );
+          if (matched) {
+            const isMobileScreen = typeof window !== 'undefined' && window.innerWidth <= 768;
+            if (isMobileScreen) {
+              setSelectedShowForDetail(matched);
+              setSharedTitleShow(null);
+            } else {
+              setSharedTitleShow(matched);
+            }
+            const backdrop = matched.moreInfoBackdropUrl || matched.desktopRecommendationBackdropUrl || matched.backdropUrl || matched.posterLandscapeUrl || '';
+            const maturity = matched.maturityRating || '16+';
+            const genreList = Array.isArray(matched.genres) && matched.genres.length > 0 ? matched.genres.join(', ') : 'Drama';
+            const year = matched.releaseYear || '2025';
+            const durationOrSeasons =
+              matched.type === 'series'
+                ? (matched.durationOrSeasons || (matched.seasons && matched.seasons.length > 0 ? `${matched.seasons.length} Season${matched.seasons.length > 1 ? 's' : ''}` : '1 Season'))
+                : (matched.durationOrSeasons || 'Feature Film');
+            const details = matched.synopsis || matched.description || matched.shortDescription || '';
+            const desc = `${maturity} • ${genreList} • ${year} • ${durationOrSeasons}${details ? ` • ${details}` : ''}`;
+            const currentOrigin = typeof window !== 'undefined' ? window.location.origin : 'http://localhost:3000';
+            setMetaTags(`${matched.title} - ${platformName}`, desc, backdrop, `${currentOrigin}/share/${matched.slug || matched.id}`);
+            return;
+          }
+        } else {
+          setSharedTitleShow(null);
+        }
 
         const multiSeasonMatch = pathname.match(/^\/watch\/([^/]+)\/s([0-9]+)\/e([0-9]+)\/?$/i);
         const singleSeasonMatch = pathname.match(/^\/watch\/([^/]+)\/e([0-9]+)\/?$/i);
@@ -1677,9 +1820,14 @@ export default function App() {
     };
   }, []);
 
-  // Play show: plays first episode if episodic content available, else plays trailer clip
-  const handlePlayShow = (show: Show) => {
+  // Play show: plays explicit episode if clicked, else resumes from watch history or plays first episode
+  const handlePlayShow = (show: Show, explicitEpisode?: Episode | null) => {
     handleIncrementPoints(show.id);
+    const hasExplicitEp = Boolean(
+      explicitEpisode &&
+        typeof explicitEpisode === 'object' &&
+        ('episodeNumber' in explicitEpisode || 'id' in explicitEpisode)
+    );
     const hasEpisodes =
       show.type === 'series' &&
       show.hasEpisodicContent !== false &&
@@ -1690,15 +1838,52 @@ export default function App() {
 
     // Check if user has watch history for this show to resume where left off
     const historyItem = watchHistory[show.id];
-    let chosenEp = firstEp;
+    let chosenEp = hasExplicitEp ? explicitEpisode! : firstEp;
     let initialSeekTime = 0;
 
-    if (historyItem) {
+    if (hasExplicitEp && explicitEpisode) {
+      const epKey =
+        explicitEpisode.id ||
+        `s${explicitEpisode.seasonNumber || 1}e${explicitEpisode.episodeNumber}`;
+      const epProgress = historyItem?.episodesProgress?.[epKey];
+      const startSec = parseTimeToSeconds(explicitEpisode.startTime) || 0;
+      const isSameEpisodeAsHistory = Boolean(
+        historyItem &&
+          ((historyItem.episodeId && historyItem.episodeId === explicitEpisode.id) ||
+            (historyItem.episodeNumber &&
+              historyItem.episodeNumber === explicitEpisode.episodeNumber &&
+              (!historyItem.seasonNumber ||
+                historyItem.seasonNumber === (explicitEpisode.seasonNumber || 1))))
+      );
+
+      if (epProgress?.rawVideoTime !== undefined && epProgress.rawVideoTime > 0) {
+        initialSeekTime = epProgress.rawVideoTime;
+      } else if (epProgress?.currentTime && epProgress.currentTime > 0) {
+        initialSeekTime = startSec + epProgress.currentTime;
+      } else if (
+        isSameEpisodeAsHistory &&
+        historyItem?.rawVideoTime !== undefined &&
+        historyItem.rawVideoTime > 0
+      ) {
+        initialSeekTime = historyItem.rawVideoTime;
+      } else if (
+        isSameEpisodeAsHistory &&
+        historyItem?.currentTime &&
+        historyItem.currentTime > 0
+      ) {
+        initialSeekTime = startSec + historyItem.currentTime;
+      } else {
+        initialSeekTime = startSec;
+      }
+    } else if (historyItem) {
       if (show.seasons && show.seasons.length > 0) {
         for (const sea of show.seasons) {
-          const match = sea.episodes.find((e) =>
-            (historyItem.episodeId && e.id === historyItem.episodeId) ||
-            (historyItem.episodeNumber && e.episodeNumber === historyItem.episodeNumber && (!historyItem.seasonNumber || sea.seasonNumber === historyItem.seasonNumber))
+          const match = sea.episodes.find(
+            (e) =>
+              (historyItem.episodeId && e.id === historyItem.episodeId) ||
+              (historyItem.episodeNumber &&
+                e.episodeNumber === historyItem.episodeNumber &&
+                (!historyItem.seasonNumber || sea.seasonNumber === historyItem.seasonNumber))
           );
           if (match) {
             chosenEp = match;
@@ -1707,7 +1892,11 @@ export default function App() {
         }
       }
 
-      const epKey = chosenEp?.id || (chosenEp?.episodeNumber !== undefined ? `s${chosenEp?.seasonNumber || 1}e${chosenEp?.episodeNumber}` : 'movie');
+      const epKey =
+        chosenEp?.id ||
+        (chosenEp?.episodeNumber !== undefined
+          ? `s${chosenEp?.seasonNumber || 1}e${chosenEp?.episodeNumber}`
+          : 'movie');
       const epProgress = historyItem.episodesProgress?.[epKey];
       const startSec = parseTimeToSeconds(chosenEp?.startTime) || 0;
 
@@ -2095,17 +2284,19 @@ export default function App() {
     return pageRecommendations.all || (heroShow && heroShow.is_recommended !== false ? heroShow : pool[0]) || null;
   }, [activeFilter, selectedCategoryFilter, categoryMatchingShows, shows, pageRecommendations, heroShow, customHeroShow]);
 
-  // Only 1 special single feed on desktop homepage
-  const specialFeedShow = useMemo<Show | null>(() => {
-    if (!shows || shows.length === 0) return null;
-    // 1. Look for show explicitly toggled as special single feed eligible in admin panel
-    const explicitlyEligible = shows.find((s) => s.isSpecialSingleFeedEligible === true);
-    if (explicitlyEligible) return explicitlyEligible;
-    // 2. Otherwise pick an eligible show that isn't the hero recommendation
-    const candidate = shows.find(
-      (s) => s.id !== currentHeroShow?.id && s.is_recommended !== false && (s.seasons?.length || s.type === 'series')
+  // 3-4 special single feed titles for carousel on desktop and mobile homepage
+  const specialSingleFeedShows = useMemo<Show[]>(() => {
+    if (!shows || shows.length === 0) return [];
+    // 1. Look for shows explicitly toggled as special single feed eligible in admin panel
+    const explicit = shows.filter((s) => s.isSpecialSingleFeedEligible === true);
+    if (explicit.length >= 3) return explicit.slice(0, 4);
+
+    // 2. Supplement with other high-quality shows not equal to currentHeroShow
+    const others = shows.filter(
+      (s) => !explicit.some((e) => e.id === s.id) && s.id !== currentHeroShow?.id
     );
-    return candidate || shows.find((s) => s.id !== currentHeroShow?.id) || shows[0] || null;
+    const combined = [...explicit, ...others];
+    return combined.slice(0, 4);
   }, [shows, currentHeroShow]);
 
   // Handler for selecting genre card from Browse by Genre row on homepage
@@ -2213,7 +2404,9 @@ export default function App() {
       style={{
         paddingTop: isOffline && !isMobile ? '52px' : undefined
       }}
-      className="min-h-screen bg-[#141414] text-zinc-100 flex flex-col font-sans selection:bg-red-600 selection:text-white"
+      className={`min-h-screen text-zinc-100 flex flex-col font-sans selection:bg-red-600 selection:text-white ${
+        sharedTitleShow && !isMobile ? 'bg-[#181818]' : 'bg-[#141414]'
+      }`}
     >
       {/* Live Internet Connection Offline Alert Bar */}
       <OfflineAlertBar isOffline={isOffline} />
@@ -2245,7 +2438,7 @@ export default function App() {
         userAvatar={userAvatar}
         userName={userName}
         isLoggedIn={isLoggedIn}
-        onToggleAuth={() => setIsLoggedIn(!isLoggedIn)}
+        onToggleAuth={handleSignOut}
         onSelectCategory={handleSelectPage}
         activeFilter={activeFilter}
         searchQuery={searchQuery}
@@ -2259,12 +2452,211 @@ export default function App() {
           if (found) handleOpenDetails(found, 'trailer');
         }}
         isSpecialFeedPage={Boolean(selectedSpecialFeed)}
+        hideMobileLogoBar={isMobile && adminSettings.mobileRecommendationStyle === 'poster_no_preview'}
+        isSharePage={Boolean(sharedTitleShow && !isMobile)}
+        onOpenHamburgerDrawer={() => setIsHamburgerDrawerOpen(true)}
       />
 
       {/* Main Content Area: clearance passing padding on mobile (halved to pb-18) so content completely passes bottom navbar */}
       <main className="flex-1 pb-18 md:pb-0">
-        {/* If user is actively searching, show two feed lines matching user requirement */}
-        {searchQuery.trim() ? (
+        {sharedTitleShow && !isMobile ? (() => {
+          const activeSharedShow = shows.find((s) => s.id === sharedTitleShow.id) || sharedTitleShow;
+          return (
+          <ShareTitleDesktopPage
+            show={activeSharedShow}
+            allShows={shows}
+            adminSettings={adminSettings}
+            isInWatchlist={watchlist.includes(activeSharedShow.id)}
+            watchlist={watchlist}
+            watchProgress={watchHistory[activeSharedShow.id]}
+            onToggleWatchlist={handleToggleWatchlist}
+            onPlayShow={handlePlayShow}
+            onPlayTrailer={(s, trailer) => {
+              if (trailer.videoSourceType === 'external') {
+                window.open(trailer.videoUrl, '_blank', 'noopener,noreferrer');
+                return;
+              }
+              const startSec = parseTimeToSeconds(trailer.startTime) || 0;
+              setPlayingMedia({
+                show: s,
+                videoUrl: trailer.videoUrl,
+                videoSourceType: trailer.videoSourceType || 'direct',
+                title: s.title,
+                subtitle: trailer.title,
+                episodeSubtitle: trailer.title,
+                titleLogoUrl: s.titleLogoUrl,
+                previewThumbnailUrl: trailer.thumbnailUrl || s.posterLandscapeUrl || s.backdropUrl,
+                startTime: trailer.startTime,
+                endTime: trailer.endTime,
+                initialCurrentTime: startSec,
+                isTrailer: true,
+                playerBgImageUrl: trailer.playerBgImageUrl || s.backdropUrl,
+                hasNextEpisode: false,
+                nextEpisodeInfo: null
+              });
+            }}
+            onOpenDetails={(s) => {
+              setSharedTitleShow(s);
+              window.history.pushState({}, '', `/share/${s.slug || s.id}`);
+              window.scrollTo({ top: 0, behavior: 'smooth' });
+            }}
+            onSelectActor={(actor) => handleSelectActorForPool(actor)}
+            onBackToBrowse={() => {
+              setSharedTitleShow(null);
+              window.history.pushState({}, '', '/');
+            }}
+            platformName={platformName}
+            isGlobalMuted={isGlobalMuted}
+            onToggleGlobalMute={handleToggleGlobalMute}
+          />
+          );
+        })() : drawerDedicatedView ? (
+          /* Dedicated Top 10 / Vertical My List View (Matching Image 3) */
+          <div className="pt-16 sm:pt-20 pb-20 min-h-screen bg-[#090b10] text-white animate-in fade-in duration-200">
+            {/* Top Bar with Page Name and Back Button (Image 3) */}
+            <div className="fixed top-0 inset-x-0 z-50 h-14 bg-black px-4 flex items-center justify-between border-b border-white/10 select-none">
+              <div className="flex items-center gap-3">
+                <button
+                  onClick={() => setDrawerDedicatedView(null)}
+                  className="p-1 -ml-1 text-white hover:text-white/80 active:scale-90 transition-transform cursor-pointer"
+                  aria-label="Back to home"
+                >
+                  <ChevronLeft className="w-6 h-6 stroke-[2.5]" />
+                </button>
+                <h1 className="text-lg sm:text-xl font-black text-white tracking-tight">
+                  {drawerDedicatedView === 'top_10_series'
+                    ? 'Top 10 Series'
+                    : drawerDedicatedView === 'top_10_movies'
+                    ? 'Top 10 Movies'
+                    : 'My List'}
+                </h1>
+              </div>
+            </div>
+
+            {/* Vertical List of 4:3 Cards using 16:9 Artwork (Image 3) */}
+            <div className="max-w-xl mx-auto px-4 py-4 space-y-4">
+              {(() => {
+                let listShows: Show[] = [];
+                if (drawerDedicatedView === 'top_10_series') {
+                  listShows = shows.filter((s) => s.type === 'series').sort((a, b) => (b.points || 0) - (a.points || 0)).slice(0, 10);
+                } else if (drawerDedicatedView === 'top_10_movies') {
+                  listShows = shows.filter((s) => s.type === 'movie').sort((a, b) => (b.points || 0) - (a.points || 0)).slice(0, 10);
+                } else {
+                  listShows = userWatchlistShows;
+                }
+
+                if (listShows.length === 0) {
+                  return (
+                    <div className="py-20 text-center text-zinc-400 text-sm">
+                      {drawerDedicatedView === 'vertical_my_list' ? 'Your watchlist is empty.' : 'No titles found.'}
+                    </div>
+                  );
+                }
+
+                return listShows.map((show, idx) => {
+                  const rankStr = String(idx + 1).padStart(2, '0');
+                  const artwork = show.backdropUrl || show.posterLandscapeUrl || show.backdropUrl2;
+                  const isInWatchlist = watchlist.includes(show.id);
+
+                  return (
+                    <div
+                      key={`vertical-${drawerDedicatedView}-${show.id}`}
+                      onClick={() => handleOpenDetails(show, 'trailer')}
+                      className="relative w-full aspect-[4/3] rounded-2xl overflow-hidden bg-[#14151b] border border-white/10 shadow-2xl cursor-pointer select-none group"
+                    >
+                      {/* 16:9 Artwork in 4:3 Card */}
+                      <MediaImage
+                        src={artwork}
+                        fallbackTitle={show.title}
+                        fallbackClassName="absolute inset-0 w-full h-full bg-[#14151b] flex items-center justify-center p-6 text-center select-none"
+                        className="absolute inset-0 w-full h-full object-cover transition-transform duration-300 group-hover:scale-102"
+                      />
+
+                      {/* Outlined Rank Number (Image 3): 01, 02, 03... */}
+                      {drawerDedicatedView !== 'vertical_my_list' && (
+                        <div className="absolute top-1.5 left-2.5 sm:top-2 sm:left-3 z-20 pointer-events-none select-none">
+                          <span
+                            className="text-4xl sm:text-5xl md:text-6xl font-black font-display tracking-tight drop-shadow-[0_4px_12px_rgba(0,0,0,0.9)]"
+                            style={{
+                              WebkitTextStroke: '2px rgba(255, 255, 255, 0.95)',
+                              color: 'transparent',
+                              lineHeight: 1
+                            }}
+                          >
+                            {rankStr}
+                          </span>
+                        </div>
+                      )}
+
+                      {/* Bottom Dark Gradient Scrim */}
+                      <div className="absolute inset-x-0 bottom-0 h-40 bg-gradient-to-t from-black/95 via-black/50 to-transparent pointer-events-none z-10" />
+
+                      {/* PNG Logo in Center Bottom Side (Image 3) */}
+                      <div className="absolute inset-x-4 bottom-12 z-20 flex flex-col items-center justify-end pointer-events-none">
+                        {show.titleLogoUrl ? (
+                          <img
+                            src={show.titleLogoUrl}
+                            alt={show.title}
+                            referrerPolicy="no-referrer"
+                            className="h-12 sm:h-14 md:h-16 w-auto max-w-[80%] object-contain drop-shadow-[0_2px_8px_rgba(0,0,0,0.85)]"
+                          />
+                        ) : (
+                          <span className="text-white font-extrabold text-base sm:text-lg text-center tracking-tight drop-shadow-md">
+                            {show.title}
+                          </span>
+                        )}
+                      </div>
+
+                      {/* Bottom Action Buttons: (▶) Play | (+) My List (Image 3) */}
+                      <div className="absolute inset-x-4 bottom-3 z-30 flex items-center justify-center gap-3 pointer-events-auto">
+                        {/* Play Button */}
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handlePlayShow(show);
+                          }}
+                          className="flex items-center gap-1.5 text-white hover:text-white/80 active:scale-95 transition-transform cursor-pointer"
+                          aria-label={`Play ${show.title}`}
+                        >
+                          <div className="w-6 h-6 rounded-full bg-white text-black flex items-center justify-center shadow-md">
+                            <svg className="w-3.5 h-3.5 fill-current ml-0.5" viewBox="0 0 24 24">
+                              <path d="M7.05 3.6A1.5 1.5 0 0 0 4.75 4.9v14.2a1.5 1.5 0 0 0 2.3 1.3l12.1-7.1a1.5 1.5 0 0 0 0-2.6L7.05 3.6z" />
+                            </svg>
+                          </div>
+                          <span className="text-xs sm:text-sm font-bold text-white tracking-wide">Play</span>
+                        </button>
+
+                        {/* Separator Bar */}
+                        <span className="text-white/40 text-xs">|</span>
+
+                        {/* My List Button */}
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleToggleWatchlist(show.id);
+                          }}
+                          className="flex items-center gap-1.5 text-white hover:text-white/80 active:scale-95 transition-transform cursor-pointer"
+                          aria-label={isInWatchlist ? `Remove ${show.title} from list` : `Add ${show.title} to list`}
+                        >
+                          <div className="w-6 h-6 rounded-full border border-white/80 text-white flex items-center justify-center">
+                            {isInWatchlist ? (
+                              <Check className="w-3.5 h-3.5 text-white" />
+                            ) : (
+                              <Plus className="w-3.5 h-3.5 text-white" />
+                            )}
+                          </div>
+                          <span className="text-xs sm:text-sm font-bold text-white tracking-wide">
+                            {isInWatchlist ? 'In List' : 'My List'}
+                          </span>
+                        </button>
+                      </div>
+                    </div>
+                  );
+                });
+              })()}
+            </div>
+          </div>
+        ) : searchQuery.trim() ? (
           <div className="pt-24 md:pt-28 pb-12 space-y-6 md:space-y-8 animate-in fade-in duration-200">
             {/* Search Header Banner */}
             <div className="w-full px-4 md:px-8 xl:px-12 flex items-center justify-between border-b border-white/10 pb-4">
@@ -2312,6 +2704,8 @@ export default function App() {
               onLongPressShow={(s) => setActionSheetShow(s)}
               enableStretchableCards={adminSettings.enableStretchableCards !== false}
               showTop10Badges={adminSettings.showTop10Badges !== false}
+              modernTop10RankList={adminSettings.modernTop10RankList}
+              top10RankStyle={adminSettings.top10RankStyle}
             />
 
             {/* 2nd Feed Line: Related to Search */}
@@ -2337,6 +2731,8 @@ export default function App() {
               onLongPressShow={(s) => setActionSheetShow(s)}
               enableStretchableCards={adminSettings.enableStretchableCards !== false}
               showTop10Badges={adminSettings.showTop10Badges !== false}
+              modernTop10RankList={adminSettings.modernTop10RankList}
+              top10RankStyle={adminSettings.top10RankStyle}
             />
           </div>
         ) : activeFilter === 'watchlist' ? (
@@ -2373,6 +2769,8 @@ export default function App() {
                     onLongPressShow={(s) => setActionSheetShow(s)}
                     enableStretchableCards={false}
                     showTop10Badges={adminSettings.showTop10Badges !== false}
+                    modernTop10RankList={adminSettings.modernTop10RankList}
+                    top10RankStyle={adminSettings.top10RankStyle}
                   />
                 )}
 
@@ -2402,6 +2800,8 @@ export default function App() {
                     onLongPressShow={(s) => setActionSheetShow(s)}
                     enableStretchableCards={adminSettings.enableStretchableCards !== false}
                     showTop10Badges={adminSettings.showTop10Badges !== false}
+                    modernTop10RankList={adminSettings.modernTop10RankList}
+                    top10RankStyle={adminSettings.top10RankStyle}
                   />
                 )}
               </div>
@@ -2429,34 +2829,93 @@ export default function App() {
           />
         ) : activeFilter === 'categories' && !selectedCategoryFilter ? (
           /* Dedicated Categories View with top mobile filter strip */
-          <div className="w-full">
-            {/* Mobile Filter Strip on Categories page: transparent bar, opaque buttons so buttons & text don't pick up ambient color */}
-            <div className="md:hidden relative z-30 w-full px-4 pt-14 pb-[18px] flex items-center gap-2 overflow-x-auto no-scrollbar select-none">
-              {[
-                { id: 'all' as const, label: 'All' },
-                { id: 'series' as const, label: 'Series' },
-                { id: 'movies' as const, label: 'Movies' },
-                { id: 'categories' as const, label: 'Categories' }
-              ].map((tab) => {
-                const isActive = activeFilter === tab.id;
-                return (
+          <div className={`w-full ${adminSettings.mobileRecommendationStyle === 'poster_no_preview' ? 'pt-14' : ''}`}>
+            {/* Mobile Top Header: show hamburger menu bar if poster_no_preview, else standard tabs */}
+            {adminSettings.mobileRecommendationStyle === 'poster_no_preview' ? (
+              <div
+                style={{
+                  backgroundColor: mobileHeaderOpacity > 0.05 ? `rgba(0, 0, 0, ${mobileHeaderOpacity})` : 'transparent',
+                  backgroundImage:
+                    mobileHeaderOpacity <= 0.05
+                      ? 'linear-gradient(to bottom, rgba(0,0,0,0.65) 0%, rgba(0,0,0,0.2) 60%, transparent 100%)'
+                      : undefined
+                }}
+                className={`md:hidden fixed top-0 inset-x-0 z-50 w-full px-4 h-14 flex items-center justify-between select-none transition-colors duration-150 border-0 ${
+                  mobileHeaderOpacity > 0.05 ? 'shadow-md' : 'shadow-none'
+                }`}
+              >
+                <div className="flex items-center gap-3">
                   <button
-                    key={tab.id}
-                    onClick={() => {
-                      setSelectedCategoryFilter(null);
-                      handleSelectPage(tab.id);
-                    }}
-                    className={`px-4 py-1.5 rounded-full text-xs font-semibold transition-all cursor-pointer shrink-0 ${
-                      isActive
-                        ? 'bg-white text-black shadow-sm'
-                        : 'bg-white/[0.08] hover:bg-white/15 text-white backdrop-blur-none border-0'
-                    }`}
+                    onClick={() => setIsHamburgerDrawerOpen(true)}
+                    className="p-1 -ml-1 text-white hover:text-white/80 active:scale-90 transition-transform cursor-pointer"
+                    aria-label="Open navigation menu"
                   >
-                    {tab.label}
+                    <Menu className="w-6 h-6 text-white" />
                   </button>
-                );
-              })}
-            </div>
+
+                  <div
+                    onClick={handleGoHome}
+                    className="flex items-center gap-1.5 cursor-pointer active:scale-95 transition-transform"
+                  >
+                    {adminSettings.platformIconUrl ? (
+                      <img
+                        src={adminSettings.platformIconUrl}
+                        alt={adminSettings.platformName || 'Platform'}
+                        className="h-6.5 w-auto object-contain"
+                      />
+                    ) : adminSettings.customLogoUrl ? (
+                      <img
+                        src={adminSettings.customLogoUrl}
+                        alt={adminSettings.platformName || 'Platform'}
+                        className="h-6.5 w-auto object-contain"
+                      />
+                    ) : (
+                      <span className="text-white font-black text-lg tracking-wider font-sans">
+                        HBO <span className="font-light text-zinc-300">max</span>
+                      </span>
+                    )}
+                  </div>
+                </div>
+
+                <div className="flex items-center gap-3">
+                  <button
+                    onClick={() => setIsNotificationOpen((prev) => !prev)}
+                    className="relative p-1 text-white hover:text-white/80 active:scale-90 transition-transform cursor-pointer"
+                    aria-label="Notifications"
+                  >
+                    <Bell className="w-5.5 h-5.5 text-white" />
+                    <span className="absolute top-1 right-1 w-2 h-2 rounded-full bg-red-600" />
+                  </button>
+                </div>
+              </div>
+            ) : (
+              <div className="md:hidden relative z-30 w-full px-4 pt-14 pb-[18px] flex items-center gap-2 overflow-x-auto no-scrollbar select-none">
+                {[
+                  { id: 'all' as const, label: 'All' },
+                  { id: 'series' as const, label: 'Series' },
+                  { id: 'movies' as const, label: 'Movies' },
+                  { id: 'categories' as const, label: 'Categories' }
+                ].map((tab) => {
+                  const isActive = activeFilter === tab.id;
+                  return (
+                    <button
+                      key={tab.id}
+                      onClick={() => {
+                        setSelectedCategoryFilter(null);
+                        handleSelectPage(tab.id);
+                      }}
+                      className={`px-4 py-1.5 rounded-full text-xs font-semibold transition-all cursor-pointer shrink-0 ${
+                        isActive
+                          ? 'bg-white text-black shadow-sm'
+                          : 'bg-white/[0.08] hover:bg-white/15 text-white backdrop-blur-none border-0'
+                      }`}
+                    >
+                      {tab.label}
+                    </button>
+                  );
+                })}
+              </div>
+            )}
             <CategoriesView
               shows={shows}
               categories={categoriesList}
@@ -2472,33 +2931,96 @@ export default function App() {
           </div>
         ) : (
           <>
-            {/* Mobile Filter Strip: Natural transparent bar, buttons transparent as before with equal space below as above */}
-            <div className="md:hidden relative z-30 w-full px-4 pt-14 pb-[18px] flex items-center gap-2 overflow-x-auto no-scrollbar select-none">
-              {[
-                { id: 'all' as const, label: 'All' },
-                { id: 'series' as const, label: 'Series' },
-                { id: 'movies' as const, label: 'Movies' },
-                { id: 'categories' as const, label: 'Categories' }
-              ].map((tab) => {
-                const isActive = !searchQuery.trim() && !selectedCategoryFilter && activeFilter === tab.id;
-                return (
+            {/* Mobile Top Header / Filter Strip */}
+            {adminSettings.mobileRecommendationStyle === 'poster_no_preview' ? (
+              /* Mobile Header: Hamburger Menu + Platform Icon on left, Notification Bell on right (without profile icon) */
+              <div
+                style={{
+                  backgroundColor: mobileHeaderOpacity > 0.05 ? `rgba(0, 0, 0, ${mobileHeaderOpacity})` : 'transparent',
+                  backgroundImage:
+                    mobileHeaderOpacity <= 0.05
+                      ? 'linear-gradient(to bottom, rgba(0,0,0,0.65) 0%, rgba(0,0,0,0.2) 60%, transparent 100%)'
+                      : undefined
+                }}
+                className={`md:hidden fixed top-0 inset-x-0 z-50 w-full px-4 h-14 flex items-center justify-between select-none transition-colors duration-150 border-0 ${
+                  mobileHeaderOpacity > 0.05 ? 'shadow-md' : 'shadow-none'
+                }`}
+              >
+                {/* Left: Hamburger menu icon + Platform icon/logo */}
+                <div className="flex items-center gap-3">
                   <button
-                    key={tab.id}
-                    onClick={() => {
-                      setSelectedCategoryFilter(null);
-                      handleSelectPage(tab.id);
-                    }}
-                    className={`px-4 py-1.5 rounded-full text-xs font-semibold transition-all cursor-pointer shrink-0 ${
-                      isActive
-                        ? 'bg-white text-black shadow-sm'
-                        : 'bg-white/[0.08] hover:bg-white/15 text-white backdrop-blur-none border-0'
-                    }`}
+                    onClick={() => setIsHamburgerDrawerOpen(true)}
+                    className="p-1 -ml-1 text-white hover:text-white/80 active:scale-90 transition-transform cursor-pointer"
+                    aria-label="Open navigation menu"
                   >
-                    {tab.label}
+                    <Menu className="w-6 h-6 text-white" />
                   </button>
-                );
-              })}
-            </div>
+
+                  <div
+                    onClick={handleGoHome}
+                    className="flex items-center gap-1.5 cursor-pointer active:scale-95 transition-transform"
+                  >
+                    {adminSettings.platformIconUrl ? (
+                      <img
+                        src={adminSettings.platformIconUrl}
+                        alt={adminSettings.platformName || 'Platform'}
+                        className="h-6.5 w-auto object-contain"
+                      />
+                    ) : adminSettings.customLogoUrl ? (
+                      <img
+                        src={adminSettings.customLogoUrl}
+                        alt={adminSettings.platformName || 'Platform'}
+                        className="h-6.5 w-auto object-contain"
+                      />
+                    ) : (
+                      <span className="text-white font-black text-lg tracking-wider font-sans">
+                        HBO <span className="font-light text-zinc-300">max</span>
+                      </span>
+                    )}
+                  </div>
+                </div>
+
+                {/* Right: Notification Bell button ONLY (without profile icon) */}
+                <div className="flex items-center gap-3">
+                  <button
+                    onClick={() => setIsNotificationOpen((prev) => !prev)}
+                    className="relative p-1 text-white hover:text-white/80 active:scale-90 transition-transform cursor-pointer"
+                    aria-label="Notifications"
+                  >
+                    <Bell className="w-5.5 h-5.5 text-white" />
+                    <span className="absolute top-1 right-1 w-2 h-2 rounded-full bg-red-600" />
+                  </button>
+                </div>
+              </div>
+            ) : (
+              /* Standard Mobile Filter Strip: Natural transparent bar with tabs */
+              <div className="md:hidden relative z-30 w-full px-4 pt-14 pb-[18px] flex items-center gap-2 overflow-x-auto no-scrollbar select-none">
+                {[
+                  { id: 'all' as const, label: 'All' },
+                  { id: 'series' as const, label: 'Series' },
+                  { id: 'movies' as const, label: 'Movies' },
+                  { id: 'categories' as const, label: 'Categories' }
+                ].map((tab) => {
+                  const isActive = !searchQuery.trim() && !selectedCategoryFilter && activeFilter === tab.id;
+                  return (
+                    <button
+                      key={tab.id}
+                      onClick={() => {
+                        setSelectedCategoryFilter(null);
+                        handleSelectPage(tab.id);
+                      }}
+                      className={`px-4 py-1.5 rounded-full text-xs font-semibold transition-all cursor-pointer shrink-0 ${
+                        isActive
+                          ? 'bg-white text-black shadow-sm'
+                          : 'bg-white/[0.08] hover:bg-white/15 text-white backdrop-blur-none border-0'
+                      }`}
+                    >
+                      {tab.label}
+                    </button>
+                  );
+                })}
+              </div>
+            )}
 
             {/* 2. Hero Recommendation with Ambient Glow (Placed below the filter strip) */}
             {currentHeroShow ? (
@@ -2529,6 +3051,7 @@ export default function App() {
                 onToggleGlobalMute={handleToggleGlobalMute}
                 isMobile={isMobile && !isTablet}
                 mobileRecommendationStyle={adminSettings.mobileRecommendationStyle || 'portrait'}
+                useNoPreviewButtonsFor2x3Recommendation={Boolean(adminSettings.useNoPreviewButtonsFor2x3Recommendation)}
               />
             ) : shows.length === 0 ? (
               <div className="min-h-[55vh] flex flex-col items-center justify-center px-4 py-16 text-center select-none">
@@ -2573,7 +3096,7 @@ export default function App() {
 
             {/* 3. Shows Display: If in selected category, display 3 in a row 2:3 cards on mobile, 4 per line on desktop */}
             {selectedCategoryFilter ? (
-              <div className="relative z-20 w-full px-3 sm:px-4 md:px-8 xl:px-12 mt-4 md:mt-6 pb-16">
+              <div className="relative z-20 w-full px-2.5 sm:px-4 md:px-8 xl:px-12 mt-4 md:mt-6 pb-16">
                 {/* Mobile Layout (< sm): 3 in a row, 2:3 aspect ratio cards */}
                 <div className="grid sm:hidden grid-cols-3 gap-2 sm:gap-2.5">
                   {categoryMatchingShows.map((s) => (
@@ -2582,10 +3105,10 @@ export default function App() {
                       onClick={() => handleOpenDetails(s, 'trailer')}
                       className="aspect-[2/3] rounded-md overflow-hidden bg-black shadow cursor-pointer group active:scale-95 transition-transform"
                     >
-                      <img
+                      <MediaImage
                         src={s.posterVerticalUrl || s.posterUrl || s.posterLandscapeUrl}
-                        alt={s.title}
-                        referrerPolicy="no-referrer"
+                        fallbackTitle={s.title}
+                        fallbackClassName="w-full h-full bg-[#181818] flex items-center justify-center p-2.5 text-center select-none"
                         className="w-full h-full object-cover group-hover:scale-105 transition-transform"
                       />
                     </div>
@@ -2631,6 +3154,7 @@ export default function App() {
                         specialLogoUrl: row.specialLogoUrl,
                         specialTagline: row.specialTagline,
                         specialExploreText: row.specialExploreText,
+                        specialShowActionButton: row.specialShowActionButton,
                         specialExploreAction: row.specialExploreAction,
                         specialExploreCategory: row.specialExploreCategory,
                         specialBgImageUrl: row.specialBgImageUrl,
@@ -2656,14 +3180,23 @@ export default function App() {
                       onLongPressShow={(s) => setActionSheetShow(s)}
                       enableStretchableCards={adminSettings.enableStretchableCards !== false}
                       showTop10Badges={adminSettings.showTop10Badges !== false}
+                      modernTop10RankList={adminSettings.modernTop10RankList}
+                      top10RankStyle={adminSettings.top10RankStyle}
                     />
 
-                    {/* Special Single Feed Desktop Section: Exactly 1 single feed banner on desktop homepage */}
-                    {idx === 1 && activeFilter === 'all' && !selectedCategoryFilter && !searchQuery.trim() && specialFeedShow && (
+                    {/* Special Single Feed Section: Rendered on Desktop & Mobile homepage */}
+                    {idx === 1 && activeFilter === 'all' && !selectedCategoryFilter && !searchQuery.trim() && specialSingleFeedShows.length > 0 && (
                       <SpecialSingleFeed
-                        show={specialFeedShow}
+                        shows={specialSingleFeedShows}
                         onPlay={handlePlayShow}
                         onOpenDetails={(s) => handleOpenDetails(s, 'trailer')}
+                        watchlist={watchlist}
+                        onToggleWatchlist={handleToggleWatchlist}
+                        isGlobalMuted={isGlobalMuted}
+                        onToggleGlobalMute={handleToggleGlobalMute}
+                        isMobile={isMobile && !isTablet}
+                        isPaused={Boolean(playingMedia || selectedShowForDetail)}
+                        isAnyOtherCardHovered={isFeedCardHovered}
                       />
                     )}
 
@@ -2672,6 +3205,7 @@ export default function App() {
                       <BrowseByGenreRow
                         categories={categoriesList}
                         shows={shows}
+                        managedGenres={adminSettings.managedGenres}
                         onSelectGenre={handleSelectGenreFromFeed}
                       />
                     )}
@@ -2681,16 +3215,24 @@ export default function App() {
                 {/* If feeds list has fewer than 2 rows, guarantee SpecialSingleFeed and BrowseByGenreRow are shown on homepage */}
                 {dailyFeeds.length < 2 && activeFilter === 'all' && !selectedCategoryFilter && !searchQuery.trim() && (
                   <>
-                    {specialFeedShow && (
+                    {specialSingleFeedShows.length > 0 && (
                       <SpecialSingleFeed
-                        show={specialFeedShow}
+                        shows={specialSingleFeedShows}
                         onPlay={handlePlayShow}
                         onOpenDetails={(s) => handleOpenDetails(s, 'trailer')}
+                        watchlist={watchlist}
+                        onToggleWatchlist={handleToggleWatchlist}
+                        isGlobalMuted={isGlobalMuted}
+                        onToggleGlobalMute={handleToggleGlobalMute}
+                        isMobile={isMobile && !isTablet}
+                        isPaused={Boolean(playingMedia || selectedShowForDetail)}
+                        isAnyOtherCardHovered={isFeedCardHovered}
                       />
                     )}
                     <BrowseByGenreRow
                       categories={categoriesList}
                       shows={shows}
+                      managedGenres={adminSettings.managedGenres}
                       onSelectGenre={handleSelectGenreFromFeed}
                     />
                   </>
@@ -2699,6 +3241,7 @@ export default function App() {
                   <BrowseByGenreRow
                     categories={categoriesList}
                     shows={shows}
+                    managedGenres={adminSettings.managedGenres}
                     onSelectGenre={handleSelectGenreFromFeed}
                   />
                 )}
@@ -2715,7 +3258,7 @@ export default function App() {
           onRequestContent={() => setIsRequestContentModalOpen(true)}
           onOpenCategories={() => handleSelectPage('categories')}
           platformName={platformName}
-          isMyListPage={activeFilter === 'watchlist'}
+          isMyListPage={activeFilter === 'watchlist' || Boolean(sharedTitleShow && !isMobile)}
         />
       </main>
 
@@ -2893,7 +3436,13 @@ export default function App() {
           onClose={handleCloseActorPool}
           onSelectShow={(s) => {
             handleCloseActorPool();
-            handleOpenDetails(s, 'trailer');
+            if (sharedTitleShow && !isMobile) {
+              setSharedTitleShow(s);
+              window.history.pushState({}, '', `/share/${s.slug || s.id}`);
+              window.scrollTo({ top: 0, behavior: 'smooth' });
+            } else {
+              handleOpenDetails(s, 'trailer');
+            }
           }}
           onPlayShow={(s) => {
             handleCloseActorPool();
@@ -3175,7 +3724,7 @@ export default function App() {
           setIsMobileProfileOpen(false);
           setIsAdminPanelOpen(true);
         }}
-        onToggleAuth={() => setIsLoggedIn(!isLoggedIn)}
+        onToggleAuth={handleSignOut}
         isLoggedIn={isLoggedIn}
         onSelectAvatar={(avatarUrl) => {
           setUserAvatar(avatarUrl);
@@ -3240,7 +3789,7 @@ export default function App() {
       />
 
       {/* Mobile Floating / Bottom-Fixed Navigation Bar: hidden when popups / sheets / player are active */}
-      {isMobile && !isTablet && !actionSheetShow && !isMobileSeasonPickerOpen && !isMobileProfileEditOpen && !isMobileInfoSheetOpen && !playingMedia && (
+      {isMobile && !isTablet && !actionSheetShow && !isMobileSeasonPickerOpen && !isMobileProfileEditOpen && !isMobileInfoSheetOpen && !playingMedia && !isHamburgerDrawerOpen && !isProfileLocked && !isLoginPageOpen && (
         <MobileBottomNav
           activeTab={isMobileSearchOpen ? 'search' : isMobileProfileOpen ? 'profile' : 'home'}
           onSelectTab={handleMobileSelectTab}
@@ -3248,12 +3797,270 @@ export default function App() {
           userAvatar={userAvatar}
           platformName={platformName}
           navbarStyle={adminSettings.mobileNavbarStyle || 'floating'}
+          navbarTheme={adminSettings.mobileNavbarTheme || 'solid'}
           showLabels={adminSettings.mobileNavbarShowLabels !== false}
         />
       )}
 
+      {/* Mobile Hamburger Drawer: translucent dark overlay without blur matching reference (Image 2) */}
+      {isHamburgerDrawerOpen && (
+        <div className="fixed inset-0 z-[200] bg-black/75 backdrop-blur-none animate-in fade-in duration-150 flex flex-col select-none">
+          {/* Top Bar of Drawer: EXACT height and pixel coordinates as closed state so logo and icon do not move */}
+          <div className="w-full px-4 md:px-8 xl:px-12 py-3.5 flex items-center justify-between shrink-0">
+            <div className="flex items-center gap-4">
+              <button
+                onClick={() => setIsHamburgerDrawerOpen(false)}
+                className="p-1.5 -ml-1.5 text-white hover:text-white/80 active:scale-90 transition-transform cursor-pointer"
+                aria-label="Close menu"
+              >
+                <X className="w-6 h-6 text-white" />
+              </button>
+
+              <button
+                onClick={() => {
+                  setIsHamburgerDrawerOpen(false);
+                  handleGoHome();
+                }}
+                className="flex items-center gap-1 group cursor-pointer text-left shrink-0 max-w-[95px] sm:max-w-[110px] md:max-w-[125px]"
+                aria-label="Dizi Home"
+              >
+                {adminSettings.customLogoUrl ? (
+                  <img
+                    src={adminSettings.customLogoUrl}
+                    alt={adminSettings.platformName || 'Platform'}
+                    referrerPolicy="no-referrer"
+                    className="h-6.5 sm:h-7.5 md:h-8.5 w-auto max-w-[92px] sm:max-w-[108px] md:max-w-[120px] object-contain"
+                  />
+                ) : (
+                  <DiziLogo variant="red" size="md" className="max-w-[92px] sm:max-w-[108px] md:max-w-[120px] h-7 sm:h-[32px] md:h-[35px]" />
+                )}
+              </button>
+            </div>
+
+            {/* Right: notifications if not on share direct page */}
+            {!(sharedTitleShow && !isMobile) && (
+              <div className="flex items-center gap-3">
+                <button
+                  onClick={() => {
+                    setIsHamburgerDrawerOpen(false);
+                    setIsNotificationOpen(true);
+                  }}
+                  className="relative p-1 text-white hover:text-white/80 active:scale-90 transition-transform cursor-pointer"
+                  aria-label="Notifications"
+                >
+                  <Bell className="w-5.5 h-5.5 text-white" />
+                  <span className="absolute top-1 right-1 w-2 h-2 rounded-full bg-red-600" />
+                </button>
+              </div>
+            )}
+          </div>
+
+          {/* Drawer Links: Home, Series, Movies, Top 10 Movies, Top 10 Series, My List, Continue Watching (NO genres) */}
+          <div className="flex-1 overflow-y-auto px-6 py-6 space-y-6">
+            <button
+              onClick={() => {
+                setIsHamburgerDrawerOpen(false);
+                setSharedTitleShow(null);
+                handleGoHome();
+              }}
+              className="block w-full text-left text-xl font-bold text-white hover:text-white/80 cursor-pointer active:translate-x-1 transition-transform"
+            >
+              Home
+            </button>
+
+            <button
+              onClick={() => {
+                setIsHamburgerDrawerOpen(false);
+                setSharedTitleShow(null);
+                handleSelectPage('series');
+              }}
+              className="block w-full text-left text-xl font-bold text-white hover:text-white/80 cursor-pointer active:translate-x-1 transition-transform"
+            >
+              Series
+            </button>
+
+            <button
+              onClick={() => {
+                setIsHamburgerDrawerOpen(false);
+                setSharedTitleShow(null);
+                handleSelectPage('movies');
+              }}
+              className="block w-full text-left text-xl font-bold text-white hover:text-white/80 cursor-pointer active:translate-x-1 transition-transform"
+            >
+              Movies
+            </button>
+
+            {/* Top 10 Lists: omitted on share direct page per user request ("don't add top 10 list there") */}
+            {!(sharedTitleShow && !isMobile) && (
+              <>
+                <button
+                  onClick={() => {
+                    setIsHamburgerDrawerOpen(false);
+                    setDrawerDedicatedView('top_10_movies');
+                  }}
+                  className="block w-full text-left text-xl font-bold text-white hover:text-white/80 cursor-pointer active:translate-x-1 transition-transform"
+                >
+                  Top 10 Movies
+                </button>
+
+                <button
+                  onClick={() => {
+                    setIsHamburgerDrawerOpen(false);
+                    setDrawerDedicatedView('top_10_series');
+                  }}
+                  className="block w-full text-left text-xl font-bold text-white hover:text-white/80 cursor-pointer active:translate-x-1 transition-transform"
+                >
+                  Top 10 Series
+                </button>
+              </>
+            )}
+
+            <button
+              onClick={() => {
+                setIsHamburgerDrawerOpen(false);
+                setDrawerDedicatedView('vertical_my_list');
+              }}
+              className="block w-full text-left text-xl font-bold text-white hover:text-white/80 cursor-pointer active:translate-x-1 transition-transform"
+            >
+              My List
+            </button>
+
+            <button
+              onClick={() => {
+                setIsHamburgerDrawerOpen(false);
+                handleSelectPage('watchlist');
+              }}
+              className="block w-full text-left text-xl font-bold text-white hover:text-white/80 cursor-pointer active:translate-x-1 transition-transform"
+            >
+              Continue Watching
+            </button>
+          </div>
+
+          {/* Profile Section moved to bottom left with avatar and user name */}
+          <div
+            onClick={() => {
+              setIsHamburgerDrawerOpen(false);
+              setIsMobileProfileOpen(true);
+            }}
+            className="mt-auto px-6 py-5 border-t border-white/10 flex items-center gap-3.5 cursor-pointer active:bg-white/5 transition-colors select-none shrink-0"
+          >
+            <div className="w-10 h-10 rounded-full overflow-hidden border border-white/20 shrink-0">
+              <img
+                src={userAvatar || 'https://images.unsplash.com/photo-1553284965-83fd3e82fa5a?auto=format&fit=crop&w=120&q=80'}
+                alt="Profile"
+                className="w-full h-full object-cover"
+              />
+            </div>
+            <div className="flex flex-col text-left min-w-0">
+              <span className="text-white font-bold text-base truncate">{userName || 'Good'}</span>
+              <span className="text-xs text-zinc-400">Switch / Edit Profile</span>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Notification Sheet / Popover */}
+      {isNotificationOpen && (
+        <div
+          onClick={() => setIsNotificationOpen(false)}
+          className="fixed inset-0 z-[210] bg-black/60 backdrop-blur-xs flex items-start justify-center pt-20 px-4"
+        >
+          <div
+            onClick={(e) => e.stopPropagation()}
+            className="relative w-full max-w-sm rounded-2xl bg-[#1a1b22] border border-white/10 p-5 shadow-2xl text-left animate-in fade-in zoom-in-95 duration-150"
+          >
+            <div className="flex items-center justify-between pb-3 border-b border-white/10">
+              <div className="flex items-center gap-2">
+                <Bell className="w-5 h-5 text-red-500" />
+                <h3 className="text-white font-bold text-base">Notifications</h3>
+              </div>
+              <button
+                onClick={() => setIsNotificationOpen(false)}
+                className="p-1 text-zinc-400 hover:text-white cursor-pointer"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+            <div className="py-4 space-y-3">
+              <div className="p-3.5 rounded-xl bg-white/5 border border-white/5 space-y-1">
+                <p className="text-xs font-bold text-white flex items-center gap-1.5">
+                  <span className="w-2 h-2 rounded-full bg-emerald-400" />
+                  You're all caught up!
+                </p>
+                <p className="text-[11px] text-zinc-400 leading-relaxed">
+                  New episodes, series announcements, and watchlist updates will be notified here.
+                </p>
+              </div>
+            </div>
+            <button
+              onClick={() => setIsNotificationOpen(false)}
+              className="w-full py-2.5 rounded-lg bg-white/10 hover:bg-white/20 text-white font-semibold text-xs transition-colors cursor-pointer"
+            >
+              Dismiss
+            </button>
+          </div>
+        </div>
+      )}
+
       {/* Universal Top-Layer Custom Pointer Tooltip */}
       <GlobalTooltip />
+
+      {/* Login / Create Account Screen (Triggered on Sign Out or Guest Sign In) */}
+      {isLoginPageOpen && (
+        <LoginPage
+          shows={shows}
+          platformName={platformName}
+          customLogoUrl={adminSettings.customLogoUrl}
+          initialEmail={userEmail}
+          isGlobalMuted={isGlobalMuted}
+          onToggleGlobalMute={(muted) => {
+            setIsGlobalMuted(muted);
+            try {
+              localStorage.setItem('cineflix_global_muted', String(muted));
+            } catch {}
+          }}
+          onAuthSuccess={({ email, password }) => {
+            try {
+              localStorage.setItem('cineflix_user_email', email);
+              localStorage.setItem('cineflix_user_password', password);
+              if (!localStorage.getItem('dizi_profile_lock_pin')) {
+                localStorage.setItem('dizi_profile_lock_pin', '1234');
+              }
+              localStorage.setItem('dizi_profile_lock_enabled', 'true');
+              sessionStorage.removeItem('dizi_profile_unlocked');
+            } catch {}
+            setUserEmail(email);
+            setUserPassword(password);
+            setIsLoggedIn(true);
+            setIsLoginPageOpen(false);
+            setIsProfileLocked(true);
+          }}
+          onBrowseFree={() => {
+            setIsLoggedIn(false);
+            setIsLoginPageOpen(false);
+            setIsProfileLocked(false);
+          }}
+        />
+      )}
+
+      {/* Profile Lock Screen: 4-digit PIN required on website visit or after Login */}
+      {isProfileLocked && !isLoginPageOpen && (
+        <ProfileLockScreen
+          userAvatar={userAvatar}
+          userName={userName}
+          platformName={platformName}
+          customLogoUrl={adminSettings.customLogoUrl}
+          onUnlockSuccess={() => {
+            setIsProfileLocked(false);
+            try {
+              sessionStorage.setItem('dizi_profile_unlocked', 'true');
+            } catch {}
+          }}
+          onResetLock={() => {
+            setIsProfileLocked(false);
+          }}
+        />
+      )}
     </div>
   );
 }

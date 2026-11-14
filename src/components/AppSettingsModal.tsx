@@ -22,6 +22,8 @@ interface AppSettingsModalProps {
   onClearWatchlist?: () => void;
   onClearWatchHistory?: () => void;
   platformName?: string;
+  enableBiggerCards?: boolean;
+  onToggleBiggerCards?: (enabled: boolean) => void;
 }
 
 export const AppSettingsModal: React.FC<AppSettingsModalProps> = ({
@@ -29,8 +31,29 @@ export const AppSettingsModal: React.FC<AppSettingsModalProps> = ({
   onClose,
   onClearWatchlist,
   onClearWatchHistory,
-  platformName = 'Dizi Urdu'
+  platformName = 'Dizi Urdu',
+  enableBiggerCards: propBiggerCards,
+  onToggleBiggerCards
 }) => {
+  const [biggerCards, setBiggerCards] = useState<boolean>(() => {
+    if (propBiggerCards !== undefined) return propBiggerCards;
+    try {
+      return localStorage.getItem('cineflix_bigger_cards') === 'true';
+    } catch {
+      return false;
+    }
+  });
+
+  const handleToggleBiggerCards = () => {
+    const next = !biggerCards;
+    setBiggerCards(next);
+    try {
+      localStorage.setItem('cineflix_bigger_cards', String(next));
+      window.dispatchEvent(new Event('cineflix_bigger_cards_changed'));
+    } catch {}
+    if (onToggleBiggerCards) onToggleBiggerCards(next);
+  };
+
   const [cellularData, setCellularData] = useState<'automatic' | 'save' | 'max'>('automatic');
   const [videoQuality, setVideoQuality] = useState<'low' | 'medium' | 'high'>('high');
   const [autoplayNext, setAutoplayNext] = useState<boolean>(true);
@@ -121,6 +144,14 @@ export const AppSettingsModal: React.FC<AppSettingsModalProps> = ({
                 <p className="text-xs text-zinc-400 mt-0.5">Play video previews while browsing feeds</p>
               </div>
               <AndroidSwitch checked={autoplayPreviews} onChange={() => setAutoplayPreviews(!autoplayPreviews)} />
+            </div>
+
+            <div className="px-5 py-3 flex items-center justify-between">
+              <div className="pr-4">
+                <p className="text-sm font-medium text-white">Bigger feed cards</p>
+                <p className="text-xs text-zinc-400 mt-0.5">Display 2 cards and edge of 3rd on mobile; 3 cards and edge of 4th on desktop</p>
+              </div>
+              <AndroidSwitch checked={biggerCards} onChange={handleToggleBiggerCards} />
             </div>
 
             <div className="px-5 py-3 flex items-center justify-between">
@@ -375,6 +406,29 @@ export const AppSettingsModal: React.FC<AppSettingsModalProps> = ({
           {/* TAB 1: VIDEO PLAYBACK */}
           {activeTab === 'playback' && (
             <div className="space-y-6">
+              {/* Bigger Feed Cards Switch */}
+              <div className="flex items-center justify-between p-3.5 rounded-xl bg-[#181920] border border-white/5">
+                <div>
+                  <span className="font-bold text-white text-sm block">Bigger Feed Cards</span>
+                  <span className="text-zinc-400 text-xs">
+                    Display 3 cards and edge of 4th on desktop; 2 cards and edge of 3rd on mobile
+                  </span>
+                </div>
+                <button
+                  type="button"
+                  onClick={handleToggleBiggerCards}
+                  className={`w-11 h-6 rounded-full transition-colors relative cursor-pointer ${
+                    biggerCards ? 'bg-red-600' : 'bg-zinc-700'
+                  }`}
+                >
+                  <div
+                    className={`w-4 h-4 rounded-full bg-white absolute top-1 transition-transform ${
+                      biggerCards ? 'left-6' : 'left-1'
+                    }`}
+                  />
+                </button>
+              </div>
+
               {/* Cellular Data Usage */}
               <div className="space-y-2">
                 <label className="text-white font-bold block text-sm">Cellular Data Usage</label>

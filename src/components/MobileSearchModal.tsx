@@ -1,6 +1,7 @@
 import React, { useState, useMemo, useEffect, useRef } from 'react';
 import { Show } from '../types';
 import { Search, X, ChevronRight, Play, Film, Clock } from 'lucide-react';
+import { MediaImage } from './MediaImage';
 
 interface MobileSearchModalProps {
   isOpen: boolean;
@@ -200,12 +201,15 @@ export const MobileSearchModal: React.FC<MobileSearchModalProps> = ({
                   }}
                   className="flex items-center gap-3 p-2 rounded-xl bg-white/[0.04] hover:bg-white/[0.08] cursor-pointer transition-all active:scale-[0.99]"
                 >
-                  <img
-                    src={show.posterLandscapeUrl || show.backdropUrl}
-                    alt={show.title}
-                    referrerPolicy="no-referrer"
-                    className="w-24 h-14 rounded-md object-cover shrink-0 bg-zinc-800"
-                  />
+                  <div className="w-24 h-14 rounded-md overflow-hidden shrink-0 bg-zinc-800">
+                    <MediaImage
+                      src={show.posterLandscapeUrl || show.backdropUrl}
+                      fallbackTitle={show.title}
+                      fallbackClassName="w-full h-full bg-[#181818] flex items-center justify-center p-1.5 text-center select-none"
+                      fallbackTextClassName="text-white/95 font-semibold text-[11px] leading-tight line-clamp-2 break-words font-sans"
+                      className="w-full h-full object-cover"
+                    />
+                  </div>
                   <div className="flex-1 min-w-0">
                     <p className="text-sm font-semibold text-white truncate">{show.title}</p>
                     <p className="text-xs text-zinc-400 mt-0.5">
@@ -231,10 +235,11 @@ export const MobileSearchModal: React.FC<MobileSearchModalProps> = ({
               >
                 {/* 16:9 Thumbnail with subtle badge */}
                 <div className="relative w-24 sm:w-28 h-14 sm:h-16 rounded-md overflow-hidden bg-zinc-800 shrink-0">
-                  <img
+                  <MediaImage
                     src={show.posterLandscapeUrl || show.backdropUrl}
-                    alt={show.title}
-                    referrerPolicy="no-referrer"
+                    fallbackTitle={show.title}
+                    fallbackClassName="w-full h-full bg-[#181818] flex items-center justify-center p-1.5 text-center select-none"
+                    fallbackTextClassName="text-white/95 font-semibold text-[11px] leading-tight line-clamp-2 break-words font-sans"
                     className="w-full h-full object-cover"
                   />
                 </div>

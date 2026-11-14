@@ -647,6 +647,7 @@ export const MobileProfileModal: React.FC<MobileProfileModalProps> = ({
           </div>
 
           {/* Continue Watching Section matching image_74bcd37d.png */}
+          {/* Continue Watching Section matching image_74bcd37d.png */}
           {continueWatchingShows.length > 0 && (
             <div className="space-y-2.5 pt-1">
               <div className="flex items-center justify-between px-1">
@@ -662,7 +663,7 @@ export const MobileProfileModal: React.FC<MobileProfileModalProps> = ({
                   <ChevronRight className="w-3.5 h-3.5 stroke-[2.5]" />
                 </button>
               </div>
-              <div className="flex items-center gap-3 overflow-x-auto no-scrollbar scroll-smooth py-1">
+              <div className="flex items-center gap-2.5 overflow-x-auto no-scrollbar scroll-smooth py-1 -mx-3 px-3">
                 {continueWatchingShows.map((show) => {
                   const prog = watchHistory ? watchHistory[show.id] : undefined;
                   const progPercent = prog?.progressPercent && prog.progressPercent > 0 ? prog.progressPercent : 35;
@@ -673,7 +674,7 @@ export const MobileProfileModal: React.FC<MobileProfileModalProps> = ({
                   return (
                     <div
                       key={`cw-${show.id}`}
-                      className="shrink-0 w-[220px] sm:w-[250px] select-none"
+                      className="shrink-0 w-[185px] sm:w-[215px] select-none"
                     >
                       {/* 16:9 Thumbnail with bottom progress bar inside */}
                       <div
@@ -726,6 +727,7 @@ export const MobileProfileModal: React.FC<MobileProfileModalProps> = ({
                     </div>
                   );
                 })}
+                <div className="shrink-0 w-2" />
               </div>
             </div>
           )}
@@ -746,7 +748,7 @@ export const MobileProfileModal: React.FC<MobileProfileModalProps> = ({
                   <ChevronRight className="w-3.5 h-3.5 stroke-[2.5]" />
                 </button>
               </div>
-              <div className="flex items-center gap-2.5 overflow-x-auto no-scrollbar scroll-smooth py-1">
+              <div className="flex items-center gap-2 overflow-x-auto no-scrollbar scroll-smooth py-1 -mx-3 px-3">
                 {watchlistShows.map((show) => (
                   <div
                     key={`wl-${show.id}`}
@@ -754,7 +756,7 @@ export const MobileProfileModal: React.FC<MobileProfileModalProps> = ({
                       onClose();
                       onOpenDetails(show);
                     }}
-                    className="relative shrink-0 w-[105px] sm:w-[120px] aspect-[2/3] rounded-xl overflow-hidden bg-[#181920] border-0 cursor-pointer shadow-md active:scale-98 transition-transform"
+                    className="relative shrink-0 w-[102px] sm:w-[118px] aspect-[2/3] rounded-xl overflow-hidden bg-[#181920] border-0 cursor-pointer shadow-md active:scale-98 transition-transform"
                   >
                     <img
                       src={show.posterVerticalUrl || show.posterLandscapeUrl}
@@ -764,6 +766,7 @@ export const MobileProfileModal: React.FC<MobileProfileModalProps> = ({
                     {/* Title text overlay omitted on card as requested */}
                   </div>
                 ))}
+                <div className="shrink-0 w-2" />
               </div>
             </div>
           )}

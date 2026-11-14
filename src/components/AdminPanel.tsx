@@ -661,6 +661,91 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                     >
                       16:9 Wide
                     </button>
+                    <button
+                      type="button"
+                      onClick={() =>
+                        onUpdateSettings({ ...adminSettings, mobileRecommendationStyle: 'poster_no_preview' })
+                      }
+                      className={`px-2.5 py-1 rounded text-xs font-semibold cursor-pointer ${
+                        adminSettings.mobileRecommendationStyle === 'poster_no_preview'
+                          ? 'bg-red-600 text-white'
+                          : 'text-zinc-400 hover:text-white'
+                      }`}
+                    >
+                      Poster Hero
+                    </button>
+                  </div>
+                </div>
+
+                {/* 4. 2:3 Recommendation Button Style */}
+                <div className="flex items-center justify-between gap-3">
+                  <div>
+                    <h5 className="text-xs font-bold text-zinc-200">2:3 Recommendation Buttons Style</h5>
+                    <p className="text-[11px] text-zinc-400">Use Watch S1 E1 pill + circular + button on 2:3 mobile card</p>
+                  </div>
+                  <div className="flex items-center gap-1 bg-zinc-800 p-1 rounded-lg border border-zinc-700 shrink-0">
+                    <button
+                      type="button"
+                      onClick={() =>
+                        onUpdateSettings({ ...adminSettings, useNoPreviewButtonsFor2x3Recommendation: false })
+                      }
+                      className={`px-2.5 py-1 rounded text-xs font-semibold cursor-pointer ${
+                        !adminSettings.useNoPreviewButtonsFor2x3Recommendation
+                          ? 'bg-red-600 text-white'
+                          : 'text-zinc-400 hover:text-white'
+                      }`}
+                    >
+                      Default Pills
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() =>
+                        onUpdateSettings({ ...adminSettings, useNoPreviewButtonsFor2x3Recommendation: true })
+                      }
+                      className={`px-2.5 py-1 rounded text-xs font-semibold cursor-pointer ${
+                        adminSettings.useNoPreviewButtonsFor2x3Recommendation
+                          ? 'bg-red-600 text-white'
+                          : 'text-zinc-400 hover:text-white'
+                      }`}
+                    >
+                      Poster Hero Style
+                    </button>
+                  </div>
+                </div>
+
+                {/* 5. Default Desktop More Info Page */}
+                <div className="flex items-center justify-between gap-3">
+                  <div>
+                    <h5 className="text-xs font-bold text-zinc-200">Desktop Details Page Mode</h5>
+                    <p className="text-[11px] text-zinc-400">Open Full Size More Info Page by default on desktop</p>
+                  </div>
+                  <div className="flex items-center gap-1 bg-zinc-800 p-1 rounded-lg border border-zinc-700 shrink-0">
+                    <button
+                      type="button"
+                      onClick={() =>
+                        onUpdateSettings({ ...adminSettings, useFullSizeMoreInfoByDefault: false })
+                      }
+                      className={`px-2.5 py-1 rounded text-xs font-semibold cursor-pointer ${
+                        !adminSettings.useFullSizeMoreInfoByDefault
+                          ? 'bg-red-600 text-white'
+                          : 'text-zinc-400 hover:text-white'
+                      }`}
+                    >
+                      Normal Modal
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() =>
+                        onUpdateSettings({ ...adminSettings, useFullSizeMoreInfoByDefault: true })
+                      }
+                      className={`px-2.5 py-1 rounded text-xs font-semibold cursor-pointer ${
+                        adminSettings.useFullSizeMoreInfoByDefault
+                          ? 'bg-red-600 text-white'
+                          : 'text-zinc-400 hover:text-white'
+                      }`}
+                    >
+                      Full Size Page
+                    </button>
                   </div>
                 </div>
               </div>

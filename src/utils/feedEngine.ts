@@ -17,6 +17,7 @@ export interface FeedRow {
   specialLogoUrl?: string;
   specialTagline?: string;
   specialExploreText?: string;
+  specialShowActionButton?: boolean;
   specialExploreAction?: 'showcase' | 'category';
   specialExploreCategory?: string;
   specialBgImageUrl?: string;
@@ -681,6 +682,7 @@ export function generateDailyFeeds(
           specialLogoUrl: af.specialLogoUrl,
           specialTagline: af.specialTagline,
           specialExploreText: af.specialExploreText,
+          specialShowActionButton: af.specialShowActionButton,
           specialExploreAction: af.specialExploreAction,
           specialExploreCategory: af.specialExploreCategory,
           specialBgImageUrl: af.specialBgImageUrl,

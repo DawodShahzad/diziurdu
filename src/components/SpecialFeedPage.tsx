@@ -1,6 +1,7 @@
 import React, { useEffect } from 'react';
 import { Show, FeedConfig } from '../types';
 import { ShowCard } from './ShowCard';
+import { MediaImage } from './MediaImage';
 
 interface SpecialFeedPageProps {
   feed: FeedConfig;
@@ -56,9 +57,10 @@ export const SpecialFeedPage: React.FC<SpecialFeedPageProps> = ({
       */}
       <div className="relative w-full aspect-[16/9] lg:aspect-auto lg:h-screen lg:min-h-[600px] lg:max-h-[1080px] overflow-hidden select-none">
         {/* Full-bleed Hero Image extending directly under the transparent navbar */}
-        <img
+        <MediaImage
           src={heroBackdrop}
-          alt={feed.title}
+          fallbackTitle={feed.title}
+          fallbackClassName="w-full h-full bg-[#141414] flex items-center justify-center p-6 text-center select-none"
           className="w-full h-full object-cover object-center"
         />
 
@@ -113,9 +115,10 @@ export const SpecialFeedPage: React.FC<SpecialFeedPageProps> = ({
               onClick={() => onOpenDetails(show)}
               className="relative aspect-[2/3] rounded-lg overflow-hidden bg-[#16171d] shadow-md cursor-pointer border border-white/5 active:scale-95 transition-transform"
             >
-              <img
+              <MediaImage
                 src={show.posterVerticalUrl || show.posterUrl || show.posterLandscapeUrl || ''}
-                alt={show.title}
+                fallbackTitle={show.title}
+                fallbackClassName="w-full h-full bg-[#16171d] flex items-center justify-center p-2.5 text-center select-none"
                 className="w-full h-full object-cover"
                 loading="lazy"
               />

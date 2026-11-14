@@ -4,6 +4,7 @@ import { ShowTitleLogo } from './ShowTitleLogo';
 import { ShareModal } from './ShareModal';
 import { normalizeActorKey } from '../utils/actorIndex';
 import { attachHlsVideo } from '../utils/hlsHelper';
+import { MediaImage } from './MediaImage';
 import {
   X,
   Play,
@@ -151,9 +152,16 @@ export const DetailModal: React.FC<DetailModalProps> = ({
   const [copyFeedback, setCopyFeedback] = useState<boolean>(false);
   const [isSeasonDropdownOpen, setIsSeasonDropdownOpen] = useState<boolean>(false);
   const [isTitleShrunk, setIsTitleShrunk] = useState<boolean>(false);
+  const desktopBackdrop = show.moreInfoBackdropUrl || show.backdropUrl || show.posterLandscapeUrl || '';
+  const mobileBackdrop = show.mobileMoreInfoBackdropUrl || show.moreInfoBackdropUrl || show.backdropUrl || show.posterLandscapeUrl || '';
   const [modalBackdropSrc, setModalBackdropSrc] = useState<string>(
-    show.backdropUrl || show.posterLandscapeUrl || ''
+    isMobileLayout ? mobileBackdrop : desktopBackdrop
   );
+
+  useEffect(() => {
+    setModalBackdropSrc(isMobileLayout ? mobileBackdrop : desktopBackdrop);
+  }, [isMobileLayout, mobileBackdrop, desktopBackdrop]);
+
   const [shouldLoadPreview, setShouldLoadPreview] = useState<boolean>(false);
   const [isVideoPlaying, setIsVideoPlaying] = useState<boolean>(false);
   const [videoError, setVideoError] = useState<boolean>(false);
@@ -1273,7 +1281,7 @@ export const DetailModal: React.FC<DetailModalProps> = ({
         <div
           className="relative w-full md:max-w-[780px] bg-[#181818] border-0 rounded-none md:rounded-2xl overflow-hidden shadow-2xl animate-modal-content select-none pointer-events-auto min-h-screen md:min-h-0 pb-0 flex flex-col"
           style={{
-            boxShadow: `0 25px 60px -15px rgba(0,0,0,0.95), 0 0 40px ${show.ambientColor}35`
+            boxShadow: '0 25px 60px -15px rgba(0,0,0,0.95)'
           }}
           onClick={(e) => e.stopPropagation()}
         >
@@ -1408,10 +1416,10 @@ export const DetailModal: React.FC<DetailModalProps> = ({
                 <div className="max-w-3xl mx-auto py-8 space-y-6">
                   {/* Hero Editorial Image */}
                   <div className="aspect-[21/9] w-full rounded-2xl overflow-hidden bg-black border border-white/10 shadow-2xl">
-                    <img
+                    <MediaImage
                       src={show.blog.heroImage}
-                      alt={show.title}
-                      referrerPolicy="no-referrer"
+                      fallbackTitle={show.title}
+                      fallbackClassName="w-full h-full bg-[#181818] flex items-center justify-center p-4 text-center select-none"
                       className="w-full h-full object-cover"
                     />
                   </div>
@@ -1459,10 +1467,12 @@ export const DetailModal: React.FC<DetailModalProps> = ({
               data-no-tooltip="true"
             >
             {/* Primary Base Layer: Backdrop Image (Guaranteed visible immediately upon opening modal) */}
-            <img
+            <MediaImage
               src={modalBackdropSrc}
-              alt={show.title}
-              referrerPolicy="no-referrer"
+              fallbackTitle={show.title}
+              hideFallback={isVideoPlaying && !isPausedByScroll && !isPreviewEnded}
+              fallbackClassName="absolute inset-0 w-full h-full bg-[#181818] flex items-center justify-center p-6 text-center select-none"
+              fallbackTextClassName="text-white/85 font-bold text-xl sm:text-2xl font-sans"
               data-no-tooltip="true"
               onError={() => {
                 if (show.posterLandscapeUrl && modalBackdropSrc !== show.posterLandscapeUrl) {
@@ -1870,10 +1880,11 @@ export const DetailModal: React.FC<DetailModalProps> = ({
 
                       {/* Episode Thumbnail */}
                       <div className="w-28 sm:w-36 md:w-44 aspect-video rounded-md overflow-hidden relative shrink-0 bg-black shadow-md group/thumb">
-                        <img
+                        <MediaImage
                           src={ep.thumbnailUrl}
-                          alt={ep.title}
-                          referrerPolicy="no-referrer"
+                          fallbackTitle={ep.title || `Episode ${ep.episodeNumber}`}
+                          fallbackClassName="w-full h-full bg-[#181818] flex items-center justify-center p-2 text-center select-none"
+                          fallbackTextClassName="text-white/95 font-semibold text-xs leading-tight line-clamp-2 break-words font-sans"
                           className="w-full h-full object-cover"
                         />
                         <div className="absolute inset-0 bg-black/30 flex items-center justify-center opacity-0 group-hover/thumb:opacity-100 transition-opacity">
@@ -1946,10 +1957,10 @@ export const DetailModal: React.FC<DetailModalProps> = ({
                 >
                   <div className="aspect-video w-full rounded-md overflow-hidden bg-black relative shadow-md">
                     {/* Poster thumbnail without zoom */}
-                    <img
+                    <MediaImage
                       src={trailer.thumbnailUrl}
-                      alt={trailer.title}
-                      referrerPolicy="no-referrer"
+                      fallbackTitle={trailer.title}
+                      fallbackClassName="w-full h-full bg-[#181818] flex items-center justify-center p-3 text-center select-none"
                       className="w-full h-full object-cover"
                     />
                     {/* Centered Circular White Ring Play Button */}
@@ -1994,10 +2005,10 @@ export const DetailModal: React.FC<DetailModalProps> = ({
                     >
                       {/* Card Thumbnail - No hover zoom, no title PNG/text overlaid */}
                       <div className="aspect-video w-full bg-black relative overflow-hidden">
-                        <img
-                          src={relShow.posterLandscapeUrl}
-                          alt={relShow.title}
-                          referrerPolicy="no-referrer"
+                        <MediaImage
+                          src={relShow.posterLandscapeUrl || relShow.backdropUrl}
+                          fallbackTitle={relShow.title}
+                          fallbackClassName="w-full h-full bg-[#181818] flex items-center justify-center p-3 text-center select-none"
                           className="w-full h-full object-cover"
                         />
                         {/* Season / episode / duration badge: increased font size, reduced boldness, zero blur */}
@@ -2088,22 +2099,21 @@ export const DetailModal: React.FC<DetailModalProps> = ({
               onClick={handleMobilePlayerTap}
               className="relative aspect-video w-full bg-black overflow-hidden select-none cursor-pointer shrink-0"
             >
-              {/* Back button inside video thumbnail: slight background opacity, no blur */}
+              {/* Back button inside video thumbnail: transparent when trailer is playing, no border */}
               <button
                 onClick={(e) => {
                   e.stopPropagation();
                   onClose();
                 }}
-                className="absolute top-3 left-3 z-30 w-9 h-9 rounded-full bg-black/25 hover:bg-black/40 backdrop-blur-none text-white flex items-center justify-center cursor-pointer active:scale-95 transition-all shadow-md border border-white/10"
+                className={`absolute top-3 left-3 z-30 w-9 h-9 rounded-full backdrop-blur-none text-white flex items-center justify-center cursor-pointer active:scale-95 transition-all ${
+                  hasStartedTrailer && !isMobileTrailerEnded
+                    ? 'bg-transparent hover:bg-transparent shadow-none'
+                    : 'bg-black/25 hover:bg-black/40 shadow-md'
+                }`}
                 aria-label="Back"
               >
                 <ArrowLeft className="w-5 h-5 text-white drop-shadow" />
               </button>
-
-              {/* Bottom fade out gradient: only shown when poster is showing, NOT when trailer is playing */}
-              {(!hasStartedTrailer || isMobileTrailerEnded) && (
-                <div className="absolute inset-x-0 bottom-0 h-14 sm:h-20 bg-gradient-to-t from-[#181818] via-[#181818]/60 to-transparent pointer-events-none z-20" />
-              )}
               {/* Mobile Trailer Video Element */}
               <video
                 ref={mobileVideoRef}
@@ -2150,10 +2160,10 @@ export const DetailModal: React.FC<DetailModalProps> = ({
                   onClick={handleStartMobileTrailer}
                   className="absolute inset-0 w-full h-full cursor-pointer z-10"
                 >
-                  <img
+                  <MediaImage
                     src={modalBackdropSrc}
-                    alt={show.title}
-                    referrerPolicy="no-referrer"
+                    fallbackTitle={show.title}
+                    fallbackClassName="w-full h-full bg-[#181818] flex items-center justify-center p-4 text-center select-none"
                     className="w-full h-full object-cover"
                   />
                   {/* Clean white play button with exact recommendation cinema play symbol - shadow removed, reduced glare */}
@@ -2178,16 +2188,21 @@ export const DetailModal: React.FC<DetailModalProps> = ({
                   onClick={handleMobileTrailerReplay}
                   className="absolute inset-0 w-full h-full cursor-pointer z-20"
                 >
-                  <img
+                  <MediaImage
                     src={modalBackdropSrc}
-                    alt={show.title}
-                    referrerPolicy="no-referrer"
+                    fallbackTitle={show.title}
+                    fallbackClassName="w-full h-full bg-[#181818] flex items-center justify-center p-4 text-center select-none"
                     className="w-full h-full object-cover"
                   />
                   <div className="absolute inset-0 bg-black/25 flex items-center justify-center">
                     <RotateCcw className="w-10 h-10 text-white" />
                   </div>
                 </div>
+              )}
+
+              {/* Bottom fade out gradient: only shown when poster/replay is showing, NOT when trailer is playing */}
+              {(!hasStartedTrailer || isMobileTrailerEnded) && (
+                <div className="absolute inset-x-0 bottom-0 h-14 sm:h-20 bg-gradient-to-t from-[#181818] via-[#181818]/60 to-transparent pointer-events-none z-25" />
               )}
 
               {/* Centered Play / Pause Button (No shadow, no animation):
@@ -2333,22 +2348,22 @@ export const DetailModal: React.FC<DetailModalProps> = ({
               </div>
             </div>
 
-            {/* Watch Progress Indicator above Resume Button on Mobile (Matching Image 3) */}
+            {/* Watch Progress Line Indicator above Resume Button on Mobile */}
             {watchProgress && (watchProgress.progressPercent > 0 || watchProgress.isNextEpisodePrompt) && (
-              <div className="px-4 pt-1 pb-1 flex flex-col gap-1">
+              <div className="w-full px-4 pt-1 pb-1 flex flex-col gap-1 select-none">
                 {watchProgress.episodeNumber && (
-                  <div className="text-white font-bold text-xs tracking-tight truncate">
+                  <div className="text-white/90 text-xs font-semibold truncate">
                     S{watchProgress.seasonNumber || 1}:E{watchProgress.episodeNumber} {watchProgress.episodeTitle ? `"${watchProgress.episodeTitle}"` : ''}
                   </div>
                 )}
-                <div className="flex items-center gap-3">
-                  <div className="w-28 sm:w-36 h-1 bg-white/25 rounded-full overflow-hidden">
+                <div className="flex items-center gap-2.5">
+                  <div className="flex-1 h-[2.5px] bg-white/25 rounded-full overflow-hidden">
                     <div
                       className="h-full bg-[#e50914] rounded-full"
                       style={{ width: `${Math.min(100, Math.max(0, watchProgress.progressPercent))}%` }}
                     />
                   </div>
-                  <span className="text-white/80 font-bold text-xs tracking-tight">
+                  <span className="text-zinc-300 font-medium text-xs whitespace-nowrap leading-none">
                     {formatProgressTime(watchProgress.currentTime, watchProgress.duration)}
                   </span>
                 </div>
@@ -2360,7 +2375,7 @@ export const DetailModal: React.FC<DetailModalProps> = ({
               <div className="flex items-center justify-between w-full min-w-[330px] gap-2.5 sm:gap-4">
                 <button
                   onClick={handlePlayButton}
-                  className="pl-5 pr-6 py-2.5 sm:py-3 rounded-full bg-white hover:bg-white/90 active:scale-95 text-black font-bold text-base flex items-center gap-1.5 shadow-xl cursor-pointer transition-transform shrink-0"
+                  className="pl-4 pr-5 sm:pl-5 sm:pr-6 py-2.5 sm:py-3 rounded-full bg-white hover:bg-white/90 active:scale-95 text-black font-bold text-base flex items-center gap-1.5 shadow-xl cursor-pointer transition-transform shrink-0"
                   aria-label={`${watchProgress && (watchProgress.progressPercent > 0 || watchProgress.isNextEpisodePrompt) ? 'Resume' : 'Play'} ${show.title}`}
                 >
                   <svg className="w-6 h-6 shrink-0 fill-current" viewBox="0 0 24 24">
@@ -2505,10 +2520,11 @@ export const DetailModal: React.FC<DetailModalProps> = ({
 
                         {/* Thumbnail with red progress line running along bottom for watched episode (Image 4) */}
                         <div className="w-32 sm:w-36 aspect-video rounded-md overflow-hidden relative shrink-0 bg-black shadow-md">
-                          <img
+                          <MediaImage
                             src={ep.thumbnailUrl}
-                            alt={ep.title}
-                            referrerPolicy="no-referrer"
+                            fallbackTitle={ep.title || `Episode ${ep.episodeNumber}`}
+                            fallbackClassName="w-full h-full bg-[#181818] flex items-center justify-center p-2 text-center select-none"
+                            fallbackTextClassName="text-white/95 font-semibold text-xs leading-tight line-clamp-2 break-words font-sans"
                             className="w-full h-full object-cover"
                           />
                           {(() => {
@@ -2556,10 +2572,10 @@ export const DetailModal: React.FC<DetailModalProps> = ({
                       className="cursor-pointer space-y-2 group"
                     >
                       <div className="aspect-video w-full rounded-md overflow-hidden bg-black relative shadow-md">
-                        <img
+                        <MediaImage
                           src={trailer.thumbnailUrl}
-                          alt={trailer.title}
-                          referrerPolicy="no-referrer"
+                          fallbackTitle={trailer.title}
+                          fallbackClassName="w-full h-full bg-[#181818] flex items-center justify-center p-3 text-center select-none"
                           className="w-full h-full object-cover"
                         />
                         <div className="absolute inset-0 bg-black/25 flex items-center justify-center">
@@ -2611,19 +2627,19 @@ export const DetailModal: React.FC<DetailModalProps> = ({
 
             {/* 5. Tab Content: More Like This */}
             {mobileActiveTab === 'moreLikeThis' && (
-              <div className="px-4 py-4">
+              <div className="px-2.5 sm:px-4 py-4">
                 <h3 className="text-lg font-bold text-white font-display mb-3">More Like This</h3>
-                <div className="grid grid-cols-3 gap-2.5">
+                <div className="grid grid-cols-3 gap-2 sm:gap-2.5">
                   {matchingRelatedShows.map((relShow) => (
                     <div
                       key={relShow.id}
                       onClick={() => handleSelectRelatedShow(relShow)}
                       className="aspect-[2/3] rounded-md overflow-hidden bg-black shadow cursor-pointer group active:scale-95 transition-transform"
                     >
-                      <img
+                      <MediaImage
                         src={relShow.posterVerticalUrl || relShow.posterUrl || relShow.posterLandscapeUrl}
-                        alt={relShow.title}
-                        referrerPolicy="no-referrer"
+                        fallbackTitle={relShow.title}
+                        fallbackClassName="w-full h-full bg-[#181818] flex items-center justify-center p-2.5 text-center select-none"
                         className="w-full h-full object-cover group-hover:scale-105 transition-transform"
                       />
                     </div>
@@ -2695,7 +2711,7 @@ export const DetailModal: React.FC<DetailModalProps> = ({
           {show.cast && show.cast.length > 0 && (
             <div className="space-y-2">
               <p className="text-xs text-zinc-400 font-semibold uppercase tracking-wider">Cast</p>
-              <div className="flex items-start gap-4 overflow-x-auto no-scrollbar py-1">
+              <div className="flex items-start gap-3 overflow-x-auto no-scrollbar py-1">
                 {show.cast.map((actor) => (
                   <div
                     key={actor.id}
@@ -2703,15 +2719,15 @@ export const DetailModal: React.FC<DetailModalProps> = ({
                       setIsMobileInfoPageOpen(false);
                       onSelectActor?.(actor);
                     }}
-                    className="flex flex-col items-center text-center w-16 shrink-0 cursor-pointer group"
+                    className="flex flex-col items-center text-center w-[calc((100vw-3rem)/3.42)] max-w-[105px] shrink-0 cursor-pointer group"
                   >
                     <img
                       src={actor.profileUrl}
                       alt={actor.name}
                       referrerPolicy="no-referrer"
-                      className="w-14 h-14 rounded-full object-cover ring-2 ring-white/10 group-hover:ring-white/40 transition-all shadow-md"
+                      className="w-20 h-20 rounded-full object-cover shadow-md active:scale-95 transition-transform"
                     />
-                    <span className="text-[11px] font-bold text-white mt-1.5 leading-tight line-clamp-2">
+                    <span className="text-xs font-bold text-white mt-1.5 leading-tight line-clamp-2 px-1">
                       {actor.name}
                     </span>
                   </div>

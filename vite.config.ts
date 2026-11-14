@@ -87,7 +87,13 @@ function socialShareCrawlerPlugin(): Plugin {
       try {
         const urlStr = ctx.originalUrl || (ctx as any).url || '';
         let slug = '';
-        if (urlStr.includes('/watch/')) {
+        if (urlStr.includes('/share/')) {
+          const match = urlStr.match(/\/share\/([a-zA-Z0-9_-]+)/);
+          if (match) slug = match[1];
+        } else if (urlStr.includes('share=')) {
+          const match = urlStr.match(/[?&]share=([a-zA-Z0-9_-]+)/);
+          if (match) slug = match[1];
+        } else if (urlStr.includes('/watch/')) {
           const match = urlStr.match(/\/watch\/([a-zA-Z0-9_-]+)/);
           if (match) slug = match[1];
         } else if (urlStr.includes('watch=')) {

@@ -42,6 +42,7 @@ export interface WhereToWatch {
   url: string;
   iconType?: string;
   logoUrl?: string;
+  squareLogoUrl?: string; // Square rounded logo for full size more info page
   bgColor?: string;
   textColor?: string;
   textBefore?: string; // Text before image, e.g. "Watch on"
@@ -136,6 +137,84 @@ export interface Show {
   shortDescription: string;
   description?: string; // Generic description alias
   ambientColor: string; // Hex color for hero/card ambient glow e.g. '#b45309'
+  portraitAmbientColor?: string; // Optional ambient glow color override for 9:16 portrait cards
+  verticalBackdropAmbientColor?: string; // Optional ambient glow for 9:16 vertical backdrop
+  posterLandscapeAmbientColor?: string; // Optional ambient glow for 16:9 poster
+  posterVerticalAmbientColor?: string; // Optional ambient glow for 2:3 vertical poster
+  poster1x2AmbientColor?: string; // Optional ambient glow for 1:2 ultra-tall poster
+
+  // Granular Desktop Layout Images & Individual Ambiance Colors
+  desktopRecommendationBackdropUrl?: string; // Desktop recommendation hero backdrop (16:9, 1920x1080)
+  desktopRecommendationBackdropAmbiance?: string; // Desktop recommendation backdrop ambiance
+  desktopNormalFeed16x9Url?: string; // 16:9 Normal feed in desktop (1280x720) - also used for Continue Watching & My List
+  desktopNormalFeed16x9Ambiance?: string; // 16:9 Normal feed ambiance
+  desktopTop10Image2x3Url?: string; // 2:3 Top 10 list image (640x960)
+  desktopTop10Image2x3Ambiance?: string; // 2:3 Top 10 list ambiance
+  desktopTop10BackdropUrl?: string; // 16:9 Top 10 feed backdrop image (1920x1080)
+  desktopTop10BackdropAmbiance?: string; // Top 10 backdrop ambiance
+  moreInfoBackdropUrl?: string; // More info page backdrop image (16:9, 1920x1080) - paired with Desktop Recommendation
+  moreInfoBackdropAmbiance?: string; // More info backdrop ambiance
+  stretchableFeedPoster9x16Url?: string; // 9:16 Stretchable feed poster with title art (720x1280) - paired with hover backdrop
+  stretchableFeedPoster9x16Ambiance?: string; // 9:16 Stretchable feed poster ambiance
+  stretchableFeedBackdropUrl?: string; // 16:9 Landscape stretchable feed backdrop image on hover (1920x1080 / 1280x720) - paired with poster
+  stretchableFeedBackdropAmbiance?: string; // 16:9 Stretchable feed backdrop ambiance
+  desktopSpecialSingleFeedUrl?: string; // Image for single special feed in desktop (16:9, 1920x1080)
+  desktopSpecialSingleFeedAmbiance?: string; // Single special feed ambiance
+  fullSizeMoreInfoFixedWidthPoster?: boolean; // Full Size More Info Page: constrain poster to right 58% with left glare matching Single Special Feed
+  fullSizeMoreInfoFixedWidthVideo?: boolean; // Full Size More Info Page: constrain video preview to right 58% with left glare matching Single Special Feed
+
+  // Paired Artwork Collections (Desktop Rec + More Info, and Stretchable Poster + Hover Backdrop)
+  desktopRecAndMoreInfoPairs?: {
+    id: string;
+    recBackdropUrl: string;
+    moreInfoBackdropUrl: string;
+    ambianceColor: string;
+  }[];
+  activeRecPairIndex?: number;
+
+  stretchableFeedPairs?: {
+    id: string;
+    posterUrl: string;
+    hoverBackdropUrl: string; // 16:9 Landscape hover backdrop image
+    ambianceColor: string;
+  }[];
+  activeStretchPairIndex?: number;
+
+  // Granular Mobile Layout Images & Individual Ambiance Colors
+  mobileRecommendation9x16BackdropUrl?: string; // Vertical recommendation backdrop (9:16, 720x1280)
+  mobileRecommendation9x16BackdropAmbiance?: string; // Mobile recommendation 9:16 backdrop ambiance
+  mobileRecommendation16x9BackdropUrl?: string; // Horizontal recommendation backdrop (16:9, 1280x720)
+  mobileRecommendation16x9BackdropAmbiance?: string; // Mobile recommendation 16:9 backdrop ambiance
+  mobileNoPreviewPosterHeroUrl?: string; // Style 1: Full-Bleed 9:14 Poster Hero (No-Preview Mobile Rec)
+  mobileNoPreviewPosterHeroAmbiance?: string; // Style 1 Ambiance
+  mobileNoPreviewCard2x3Url?: string; // Style 2: Floating 2:3 Portrait Card Hero (No-Preview Mobile Rec)
+  mobileNoPreviewCard2x3Ambiance?: string; // Style 2 Ambiance
+  mobileNormalFeed2x3Url?: string; // Mobile normal feed 2:3 poster (640x960)
+  mobileNormalFeed2x3Ambiance?: string; // Mobile normal feed 2:3 poster ambiance
+  mobileSpecialSingleFeedUrl?: string; // Single special feed backdrop in mobile (16:9 / 9:16)
+  mobileSpecialSingleFeedAmbiance?: string;
+  mobileMoreInfoBackdropUrl?: string; // Mobile more info page backdrop image (16:9 / 9:16)
+  mobileMoreInfoBackdropAmbiance?: string; // Mobile more info backdrop ambiance
+  mobileTallStretchPosterUrl?: string; // Tall stretchable feed poster (9:16 / 1:2, 400x800)
+  mobileTallStretchPosterAmbiance?: string;
+  mobile1x2PosterUrl?: string; // Mobile 1:2 ultra-tall poster image
+  mobile1x2PosterAmbiance?: string; // Mobile 1:2 poster ambiance
+
+  // Online Social Sharing / Link Preview Images (WhatsApp, Twitter, Facebook, iMessage)
+  shareLinkPreviewImage191x100Url?: string; // 1.91:1 Landscape (1200x630) social share card image
+  shareLinkPreviewImage1x1Url?: string; // 1:1 Square (600x600) square share preview image
+  shareLinkPreviewImage4x3Url?: string; // 4:3 (800x600) preview card image
+  preferredSharePreviewAspect?: '1.91:1' | '1:1' | '4:3'; // Preferred aspect ratio for link preview
+  shareTitle?: string; // Custom share title (defaults to show title)
+  shareDescription?: string; // Custom share description (defaults to show synopsis)
+
+  // Categories & Genre Images & Individual Ambiance Colors
+  category16x9ImageUrl?: string; // Categories card 16:9 image
+  category16x9Ambiance?: string; // Categories card 16:9 ambiance
+  category9x16ImageUrl?: string; // Categories card 9:16 image
+  category9x16Ambiance?: string; // Categories card 9:16 ambiance
+  genre1x1ImageUrl?: string; // Genre card 1:1 square image
+  genre1x1Ambiance?: string; // Genre card 1:1 square ambiance
   ambientGlowRgb: string; // e.g. '180, 83, 9'
   recommendationBackdropColor?: string; // Custom backdrop glow color override
   backdropDarkness?: number; // Custom backdrop darkness percentage (0 - 100)
@@ -227,6 +306,7 @@ export interface FeedConfig {
   isStretchableFeed?: boolean; // Optional stretchable feed row where cards expand from 2:3 to 16:9 on hover
   specialLogoUrl?: string;
   specialTagline?: string;
+  specialShowActionButton?: boolean; // Optional admin toggle to display action pill button on desktop Special Feed
   specialExploreText?: string;
   specialExploreAction?: 'showcase' | 'category'; // Action when user clicks Explore All
   specialExploreCategory?: string; // Target category key if specialExploreAction is 'category'
@@ -247,6 +327,15 @@ export interface ProfilePictureGroup {
   displayOrder?: number;
 }
 
+export interface ManagedGenreItem {
+  id: string;
+  name: string;
+  displayName: string;
+  imageUrl: string;
+  keywords: string[];
+  enabled?: boolean;
+}
+
 export interface AdminSettings {
   enableWhereToWatch: boolean;
   enableHorizontalEpisodes: boolean;
@@ -260,11 +349,17 @@ export interface AdminSettings {
   enableStretchableCards?: boolean; // Hover expands portrait poster into 16:9 landscape with logo and preview
   profilePictureGroups?: ProfilePictureGroup[];
 
-  // Mobile Layout Options (Mobile view only)
+  platformIconUrl?: string; // Custom platform icon/logo displayed in header and drawer
   mobileNavbarStyle?: 'floating' | 'bottom_fixed'; // Floating pill island vs full-width fixed bottom dock
+  mobileNavbarTheme?: 'solid' | 'glass'; // Solid dark vs Liquid Glass translucent frosted UI
   mobileNavbarShowLabels?: boolean; // Show or hide text labels under mobile navbar buttons
-  mobileRecommendationStyle?: 'portrait' | 'landscape'; // 2:3 portrait card vs 16:9 widescreen preview
+  mobileRecommendationStyle?: 'portrait' | 'landscape' | 'poster_no_preview'; // 2:3 portrait card vs 16:9 widescreen vs poster hero with top bar & drawer
+  useNoPreviewButtonsFor2x3Recommendation?: boolean; // Use the no-preview poster hero button style (Watch + circular +) for 2:3 recommendation
+  useFullSizeMoreInfoByDefault?: boolean; // Open Full Size More Info Page by default on desktop when browsing normally (in addition to /share links)
   showTop10Badges?: boolean; // Toggle displaying red TOP 10 badges on cards and details
+  modernTop10RankList?: boolean; // Legacy boolean for Top 10 rank list
+  top10RankStyle?: 'classic' | 'modern' | 'inside_card'; // 3 rank styles: classic portrait/badge, modern outlined side number, or solid inside-card number
+  managedGenres?: ManagedGenreItem[]; // Admin-configured genre cards shown in Browse by Genre row
 }
 
 export interface WatchHistoryItem {

@@ -1,6 +1,7 @@
 import React from 'react';
 import { Show } from '../types';
 import { X, Bookmark, Play, Trash2, Star, Sparkles } from 'lucide-react';
+import { MediaImage } from './MediaImage';
 
 interface WatchlistModalProps {
   isOpen: boolean;
@@ -75,10 +76,10 @@ export const WatchlistModal: React.FC<WatchlistModalProps> = ({
                     }}
                     className="relative aspect-video w-full overflow-hidden cursor-pointer bg-black"
                   >
-                    <img
-                      src={show.posterLandscapeUrl}
-                      alt={show.title}
-                      referrerPolicy="no-referrer"
+                    <MediaImage
+                      src={show.posterLandscapeUrl || show.backdropUrl}
+                      fallbackTitle={show.title}
+                      fallbackClassName="w-full h-full bg-[#181818] flex items-center justify-center p-4 text-center select-none"
                       className="w-full h-full object-cover"
                     />
                     <div className="absolute inset-0 bg-gradient-to-t from-black/85 via-black/25 to-transparent" />

@@ -13,7 +13,8 @@ import {
   CategoryItem,
   UserProfile,
   ProfilePictureGroup,
-  NotificationItem
+  NotificationItem,
+  ManagedGenreItem
 } from '../types';
 import {
   Film,
@@ -61,10 +62,15 @@ import {
   Bell
 } from 'lucide-react';
 import { DiziLogo } from './DiziLogo';
+import { AdminArtworkManager } from './AdminArtworkManager';
+import { AdminLivePreviewEngine } from './AdminLivePreviewEngine';
+import { DEFAULT_GENRES } from './BrowseByGenreRow';
 import fullBackupData from '../full_backup.json';
 
 const INITIAL_CATEGORIES = ((fullBackupData as any)?.categoriesList as CategoryItem[]) || [];
 const INITIAL_PROFILE_PICTURE_GROUPS = ((fullBackupData as any)?.profilePictureGroups as ProfilePictureGroup[]) || [];
+
+export type AdminTab = 'overview' | 'shows' | 'feeds' | 'categories' | 'profiles' | 'notifications' | 'image_health' | 'video_health' | 'settings' | 'export_import';
 
 interface AdminDashboardPageProps {
   shows: Show[];
@@ -93,8 +99,8 @@ export const AdminDashboardPage: React.FC<AdminDashboardPageProps> = ({
   onUpdateNotifications,
   onExitAdmin
 }) => {
-  type AdminTab = 'overview' | 'shows' | 'feeds' | 'categories' | 'profiles' | 'notifications' | 'image_health' | 'video_health' | 'settings' | 'export_import';
-  const [activeTab, setActiveTab] = useState<AdminTab>(initialEditingFeedId ? 'feeds' : (initialTab || 'overview'));
+  // Admin panel always loads to the content (shows) page by default
+  const [activeTab, setActiveTab] = useState<AdminTab>(initialEditingFeedId ? 'feeds' : 'shows');
 
   // Always load admin panel from the top on mount and tab changes
   useEffect(() => {
@@ -116,7 +122,8 @@ export const AdminDashboardPage: React.FC<AdminDashboardPageProps> = ({
   const [modalMode, setModalMode] = useState<'none' | 'show' | 'movie'>('none');
   const [formData, setFormData] = useState<Show | null>(null);
   const [isEditingExisting, setIsEditingExisting] = useState<boolean>(false);
-  const [activeFormTab, setActiveFormTab] = useState<'metadata' | 'media' | 'where_to_watch' | 'episodes_stream' | 'blog'>('metadata');
+  const [activeFormTab, setActiveFormTab] = useState<'metadata' | 'media' | 'where_to_watch' | 'episodes_stream' | 'blog' | 'live_preview'>('metadata');
+  const [livePreviewTab, setLivePreviewTab] = useState<'desktop' | 'mobile' | 'categories'>('desktop');
 
   // TMDB fetch state
   const [tmdbLoading, setTmdbLoading] = useState<boolean>(false);
@@ -153,6 +160,7 @@ export const AdminDashboardPage: React.FC<AdminDashboardPageProps> = ({
   const [specialLogoUrl, setSpecialLogoUrl] = useState<string>('');
   const [specialTagline, setSpecialTagline] = useState<string>('');
   const [specialExploreText, setSpecialExploreText] = useState<string>('Explore All');
+  const [specialShowActionButton, setSpecialShowActionButton] = useState<boolean>(false);
   const [specialExploreAction, setSpecialExploreAction] = useState<'showcase' | 'category'>('showcase');
   const [specialExploreCategory, setSpecialExploreCategory] = useState<string>('historical-ottoman');
   const [specialBgImageUrl, setSpecialBgImageUrl] = useState<string>('');
@@ -286,6 +294,80 @@ export const AdminDashboardPage: React.FC<AdminDashboardPageProps> = ({
 
   // Dynamic categories available across portal when adding shows/movies
   const AVAILABLE_CATEGORIES = categoriesList.map((c) => c.name);
+
+  // Homepage Genre Cards ("Browse by Genre" row) Management State
+  const managedGenresList: ManagedGenreItem[] = useMemo(() => {
+    if (adminSettings.managedGenres && adminSettings.managedGenres.length > 0) {
+      return adminSettings.managedGenres;
+    }
+    return DEFAULT_GENRES.map((g) => ({
+      id: g.id,
+      name: g.name,
+      displayName: g.displayName,
+      imageUrl: g.imageUrl,
+      keywords: g.keywords,
+      enabled: g.enabled !== false
+    }));
+  }, [adminSettings.managedGenres]);
+
+  const updateManagedGenres = (nextGenres: ManagedGenreItem[]) => {
+    const updated = {
+      ...adminSettings,
+      managedGenres: nextGenres
+    };
+    onUpdateSettings(updated);
+    try {
+      localStorage.setItem('cineflix_settings', JSON.stringify(updated));
+    } catch {}
+  };
+
+  const [newGenreName, setNewGenreName] = useState('');
+  const [newGenreDisplayName, setNewGenreDisplayName] = useState('');
+  const [newGenreImage, setNewGenreImage] = useState('');
+  const [newGenreKeywords, setNewGenreKeywords] = useState('');
+
+  const [editingGenre, setEditingGenre] = useState<ManagedGenreItem | null>(null);
+  const [editGenreName, setEditGenreName] = useState('');
+  const [editGenreDisplayName, setEditGenreDisplayName] = useState('');
+  const [editGenreImage, setEditGenreImage] = useState('');
+  const [editGenreKeywords, setEditGenreKeywords] = useState('');
+
+  const handleStartEditGenre = (g: ManagedGenreItem) => {
+    setEditingGenre(g);
+    setEditGenreName(g.name);
+    setEditGenreDisplayName(g.displayName || g.name.toUpperCase());
+    setEditGenreImage(g.imageUrl);
+    setEditGenreKeywords((g.keywords || []).join(', '));
+  };
+
+  const handleSaveGenreEdit = () => {
+    if (!editingGenre) return;
+    if (!editGenreName.trim()) {
+      notify('Genre name is required');
+      return;
+    }
+    const keywordsArr = editGenreKeywords
+      .split(',')
+      .map((k) => k.trim().toLowerCase())
+      .filter(Boolean);
+    const updatedImg =
+      editGenreImage.trim() ||
+      'https://images.unsplash.com/photo-1578632767115-351597cf2477?auto=format&fit=crop&w=600&q=80';
+    const nextList = managedGenresList.map((item) =>
+      item.id === editingGenre.id
+        ? {
+            ...item,
+            name: editGenreName.trim(),
+            displayName: (editGenreDisplayName.trim() || editGenreName.trim()).toUpperCase(),
+            imageUrl: updatedImg,
+            keywords: keywordsArr.length > 0 ? keywordsArr : [editGenreName.trim().toLowerCase()]
+          }
+        : item
+    );
+    updateManagedGenres(nextList);
+    notify(`Saved genre card "${editGenreName.trim()}"!`);
+    setEditingGenre(null);
+  };
 
   // User Profiles Management State (profiles with name, profile pictures, and assigned movies/series)
   const [userProfiles, setUserProfiles] = useState<UserProfile[]>(() => {
@@ -523,6 +605,8 @@ export const AdminDashboardPage: React.FC<AdminDashboardPageProps> = ({
     announcementPill: type === 'series' ? 'Season 1 Streaming Now' : 'Premiere Feature Film',
     is_recommended: true,
     isSpecialSingleFeedEligible: false,
+    fullSizeMoreInfoFixedWidthPoster: false,
+    fullSizeMoreInfoFixedWidthVideo: false,
     categories: ['Historical Epics', 'Action & Combat'],
     supportingTitles: [],
 
@@ -535,7 +619,7 @@ export const AdminDashboardPage: React.FC<AdminDashboardPageProps> = ({
     posterVerticalUrl: 'https://images.unsplash.com/photo-1579783902614-a3fb3927b675?auto=format&fit=crop&w=640&q=80',
     posterVerticalUrl2: '',
     posterVerticalUrls: [],
-    poster9x16Url: '',
+    poster9x16Url: 'https://images.unsplash.com/photo-1579783902614-a3fb3927b675?auto=format&fit=crop&w=720&q=80',
     poster9x16Urls: [],
     poster1x2Url: '',
     poster1x2Urls: [],
@@ -547,6 +631,66 @@ export const AdminDashboardPage: React.FC<AdminDashboardPageProps> = ({
     embedBackdropUrl: '',
     embedBackdropDarkness: 35,
     embedBackdropBlur: 0,
+
+    // Granular Desktop Artwork & Individual Ambiance
+    desktopRecommendationBackdropUrl: 'https://images.unsplash.com/photo-1578632767115-351597cf2477?auto=format&fit=crop&w=1920&q=80',
+    desktopRecommendationBackdropAmbiance: '#b45309',
+    desktopNormalFeed16x9Url: 'https://images.unsplash.com/photo-1579783902614-a3fb3927b675?auto=format&fit=crop&w=1280&q=80',
+    desktopNormalFeed16x9Ambiance: '#b45309',
+    desktopTop10Image2x3Url: 'https://images.unsplash.com/photo-1579783902614-a3fb3927b675?auto=format&fit=crop&w=640&q=80',
+    desktopTop10Image2x3Ambiance: '#b45309',
+    desktopTop10BackdropUrl: 'https://images.unsplash.com/photo-1578632767115-351597cf2477?auto=format&fit=crop&w=1920&q=80',
+    desktopTop10BackdropAmbiance: '#b45309',
+    moreInfoBackdropUrl: 'https://images.unsplash.com/photo-1578632767115-351597cf2477?auto=format&fit=crop&w=1920&q=80',
+    moreInfoBackdropAmbiance: '#b45309',
+    stretchableFeedPoster9x16Url: 'https://images.unsplash.com/photo-1579783902614-a3fb3927b675?auto=format&fit=crop&w=720&q=80',
+    stretchableFeedPoster9x16Ambiance: '#b45309',
+    stretchableFeedBackdropUrl: 'https://images.unsplash.com/photo-1578632767115-351597cf2477?auto=format&fit=crop&w=720&q=80',
+    stretchableFeedBackdropAmbiance: '#0d9488',
+    desktopSpecialSingleFeedUrl: 'https://images.unsplash.com/photo-1578632767115-351597cf2477?auto=format&fit=crop&w=1920&q=80',
+    desktopSpecialSingleFeedAmbiance: '#0d9488',
+
+    desktopRecAndMoreInfoPairs: [],
+    activeRecPairIndex: 0,
+    stretchableFeedPairs: [],
+    activeStretchPairIndex: 0,
+
+    // Granular Mobile Artwork & Individual Ambiance
+    mobileRecommendation9x16BackdropUrl: 'https://images.unsplash.com/photo-1578632767115-351597cf2477?auto=format&fit=crop&w=720&q=80',
+    mobileRecommendation9x16BackdropAmbiance: '#0d9488',
+    mobileRecommendation16x9BackdropUrl: 'https://images.unsplash.com/photo-1579783902614-a3fb3927b675?auto=format&fit=crop&w=1280&q=80',
+    mobileRecommendation16x9BackdropAmbiance: '#b45309',
+    mobileNormalFeed2x3Url: 'https://images.unsplash.com/photo-1579783902614-a3fb3927b675?auto=format&fit=crop&w=640&q=80',
+    mobileNormalFeed2x3Ambiance: '#b45309',
+    mobileSpecialSingleFeedUrl: 'https://images.unsplash.com/photo-1578632767115-351597cf2477?auto=format&fit=crop&w=1280&q=80',
+    mobileSpecialSingleFeedAmbiance: '#0d9488',
+    mobileMoreInfoBackdropUrl: 'https://images.unsplash.com/photo-1579783902614-a3fb3927b675?auto=format&fit=crop&w=1280&q=80',
+    mobileMoreInfoBackdropAmbiance: '#b45309',
+    mobileTallStretchPosterUrl: '',
+    mobileTallStretchPosterAmbiance: '#b45309',
+    mobile1x2PosterUrl: '',
+    mobile1x2PosterAmbiance: '#b45309',
+    mobileNoPreviewPosterHeroUrl: 'https://images.unsplash.com/photo-1579783902614-a3fb3927b675?auto=format&fit=crop&w=720&q=80',
+    mobileNoPreviewPosterHeroAmbiance: '#b45309',
+    mobileNoPreviewCard2x3Url: 'https://images.unsplash.com/photo-1579783902614-a3fb3927b675?auto=format&fit=crop&w=640&q=80',
+    mobileNoPreviewCard2x3Ambiance: '#b45309',
+
+    // Social Sharing Link Preview (WhatsApp / Twitter / Facebook)
+    shareLinkPreviewImage191x100Url: 'https://images.unsplash.com/photo-1579783902614-a3fb3927b675?auto=format&fit=crop&w=1200&q=80',
+    shareLinkPreviewImage1x1Url: 'https://images.unsplash.com/photo-1579783902614-a3fb3927b675?auto=format&fit=crop&w=600&q=80',
+    shareLinkPreviewImage4x3Url: 'https://images.unsplash.com/photo-1579783902614-a3fb3927b675?auto=format&fit=crop&w=800&q=80',
+    preferredSharePreviewAspect: '1.91:1',
+    shareTitle: '',
+    shareDescription: '',
+
+    // Categories & Genre Artwork & Individual Ambiance
+    category16x9ImageUrl: 'https://images.unsplash.com/photo-1579783902614-a3fb3927b675?auto=format&fit=crop&w=1280&q=80',
+    category16x9Ambiance: '#b45309',
+    category9x16ImageUrl: 'https://images.unsplash.com/photo-1579783902614-a3fb3927b675?auto=format&fit=crop&w=720&q=80',
+    category9x16Ambiance: '#b45309',
+    genre1x1ImageUrl: 'https://images.unsplash.com/photo-1579783902614-a3fb3927b675?auto=format&fit=crop&w=500&q=80',
+    genre1x1Ambiance: '#b45309',
+
     trailerUrl: 'https://vjs.zencdn.net/v/oceans.mp4',
     hoverPreviewUrl: 'https://vjs.zencdn.net/v/oceans.mp4',
     popoutPreviewUrl: 'https://vjs.zencdn.net/v/oceans.mp4',
@@ -853,9 +997,9 @@ export const AdminDashboardPage: React.FC<AdminDashboardPageProps> = ({
     setSpecialLogoUrl(feed.specialLogoUrl || '');
     setSpecialTagline(feed.specialTagline || '');
     setSpecialExploreText(feed.specialExploreText || 'Explore All');
+    setSpecialShowActionButton(Boolean(feed.specialShowActionButton));
     setSpecialExploreAction(feed.specialExploreAction || 'showcase');
     setSpecialExploreCategory(feed.specialExploreCategory || 'historical-ottoman');
-    setSpecialBgImageUrl(feed.specialBgImageUrl || '');
     setSpecialBgImageUrl(feed.specialBgImageUrl || '');
     setSpecialBgDarkness(feed.specialBgDarkness ?? 45);
     setIsStretchableFeed(Boolean(feed.isStretchableFeed));
@@ -886,6 +1030,7 @@ export const AdminDashboardPage: React.FC<AdminDashboardPageProps> = ({
     setSpecialLogoUrl('');
     setSpecialTagline('');
     setSpecialExploreText('Explore All');
+    setSpecialShowActionButton(false);
     setSpecialExploreAction('showcase');
     setSpecialExploreCategory('historical-ottoman');
     setSpecialBgImageUrl('');
@@ -927,6 +1072,7 @@ export const AdminDashboardPage: React.FC<AdminDashboardPageProps> = ({
           specialLogoUrl: specialLogoUrl.trim() || undefined,
           specialTagline: specialTagline.trim() || undefined,
           specialExploreText: specialExploreText.trim() || 'Explore All',
+          specialShowActionButton: isSpecialFeed ? specialShowActionButton : undefined,
           specialExploreAction: isSpecialFeed ? specialExploreAction : undefined,
           specialExploreCategory: isSpecialFeed && specialExploreAction === 'category' ? specialExploreCategory : undefined,
           specialBgImageUrl: specialBgImageUrl.trim() || undefined,
@@ -964,6 +1110,7 @@ export const AdminDashboardPage: React.FC<AdminDashboardPageProps> = ({
       specialLogoUrl: specialLogoUrl.trim() || undefined,
       specialTagline: specialTagline.trim() || undefined,
       specialExploreText: specialExploreText.trim() || 'Explore All',
+      specialShowActionButton: isSpecialFeed ? specialShowActionButton : undefined,
       specialExploreAction: isSpecialFeed ? specialExploreAction : undefined,
       specialExploreCategory: isSpecialFeed && specialExploreAction === 'category' ? specialExploreCategory : undefined,
       specialBgImageUrl: specialBgImageUrl.trim() || undefined,
@@ -1845,101 +1992,48 @@ export const AdminDashboardPage: React.FC<AdminDashboardPageProps> = ({
                 </div>
               </div>
 
-              {/* Shows List */}
-              <div className="space-y-3">
-                {filteredShows.length === 0 ? (
-                  <div className="p-12 text-center bg-zinc-900/40 rounded-xl border border-zinc-800/60 text-zinc-400 text-xs">
-                    No catalog items found matching your filters.
-                  </div>
-                ) : (
-                  filteredShows.map((show) => {
-                    const plays24h = get24HourPlays(show);
+              {/* Shows 16:9 Big Cards Grid: 4 per row without any information */}
+              {filteredShows.length === 0 ? (
+                <div className="p-12 text-center bg-zinc-900/40 rounded-xl border border-zinc-800/60 text-zinc-400 text-xs">
+                  No catalog items found matching your filters.
+                </div>
+              ) : (
+                <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4 sm:gap-5">
+                  {filteredShows.map((show) => {
+                    const cardImg = show.desktopNormalFeed16x9Url || show.posterLandscapeUrl || show.backdropUrl || show.posterVerticalUrl;
                     return (
                       <div
                         key={show.id}
-                        className="p-4 rounded-xl bg-zinc-900/70 border border-zinc-800 flex flex-col md:flex-row md:items-center justify-between gap-4 hover:border-zinc-700 transition-colors"
+                        onClick={() => handleOpenEditModal(show)}
+                        className="group/catalogcard relative aspect-video w-full rounded-xl overflow-hidden bg-zinc-900 border border-zinc-800 hover:border-zinc-500 transition-all duration-300 cursor-pointer shadow-lg hover:shadow-2xl hover:scale-[1.02]"
                       >
-                        <div className="flex items-start sm:items-center gap-4 min-w-0">
-                          {/* Poster Thumbnail */}
-                          <div className="w-20 sm:w-24 h-14 rounded-lg overflow-hidden bg-black shrink-0 relative border border-white/10">
-                            <img
-                              src={show.posterLandscapeUrl}
-                              alt={show.title}
-                              referrerPolicy="no-referrer"
-                              className="w-full h-full object-cover"
-                            />
-                            <span className="absolute bottom-1 right-1 px-1 py-0.2 rounded bg-black/80 text-white text-[9px] font-mono font-bold uppercase">
-                              {show.type}
-                            </span>
-                          </div>
-
-                          {/* Info */}
-                          <div className="min-w-0 flex-1">
-                            <div className="flex items-center gap-2 flex-wrap">
-                              <h3 className="text-sm font-bold text-white tracking-tight">{show.title}</h3>
-                              {show.turkishTitle && (
-                                <span className="text-xs text-zinc-400 italic">
-                                  ({show.turkishTitle})
-                                </span>
-                              )}
-                              {show.is_recommended && (
-                                <span className="text-[10px] px-1.5 py-0.2 rounded bg-amber-950 text-amber-400 border border-amber-800/80 font-mono">
-                                  Recommended Hero
-                                </span>
-                              )}
-                              {show.isSpecialSingleFeedEligible && (
-                                <span className="text-[10px] px-1.5 py-0.2 rounded bg-purple-950 text-purple-300 border border-purple-800/80 font-mono">
-                                  Special Single Feed
-                                </span>
-                              )}
-                              {show.tmdbId && (
-                                <span className="text-[10px] px-1.5 py-0.2 rounded bg-blue-950 text-blue-300 border border-blue-800/80 font-mono">
-                                  TMDB #{show.tmdbId}
-                                </span>
-                              )}
-                            </div>
-
-                            <div className="flex items-center gap-2 text-xs text-zinc-400 mt-1 flex-wrap font-mono">
-                              <span className="text-amber-400 font-bold">{plays24h} plays (24h)</span>
-                              <span>•</span>
-                              <span>{(show.all_time_score || show.points).toLocaleString()} total score</span>
-                              <span>•</span>
-                              <span>{show.durationOrSeasons}</span>
-                              <span>•</span>
-                              <span className="text-zinc-500">/watch/{show.slug || show.id}</span>
-                            </div>
-
-                            <div className="flex items-center gap-1.5 mt-1.5 flex-wrap">
-                              {show.genres.slice(0, 3).map((g) => (
-                                <span
-                                  key={g}
-                                  className="text-[10px] px-2 py-0.5 rounded-full bg-zinc-800 text-zinc-300"
-                                >
-                                  {g}
-                                </span>
-                              ))}
-                              {show.announcementPill && (
-                                <span className="text-[10px] px-2 py-0.5 rounded-full bg-red-950/80 text-red-300 border border-red-800/60">
-                                  📣 {show.announcementPill}
-                                </span>
-                              )}
-                            </div>
-                          </div>
-                        </div>
-
-                        {/* Actions */}
-                        <div className="flex items-center gap-2 self-end md:self-center shrink-0">
+                        <img
+                          src={cardImg}
+                          alt=""
+                          referrerPolicy="no-referrer"
+                          className="w-full h-full object-cover"
+                        />
+                        {/* Pure Clean Artwork: No title or text information displayed on the card */}
+                        {/* On Hover: Action overlay with Edit & Delete */}
+                        <div className="absolute inset-0 bg-black/60 opacity-0 group-hover/catalogcard:opacity-100 transition-opacity duration-200 flex items-center justify-center gap-3 p-4">
                           <button
-                            onClick={() => handleOpenEditModal(show)}
-                            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-zinc-800 hover:bg-zinc-700 text-white text-xs font-semibold transition-colors cursor-pointer"
+                            type="button"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handleOpenEditModal(show);
+                            }}
+                            className="px-4 py-2 rounded-lg bg-white hover:bg-zinc-200 text-black font-bold text-xs flex items-center gap-1.5 shadow-lg active:scale-95 transition-transform cursor-pointer"
                           >
                             <Edit className="w-3.5 h-3.5" />
-                            <span>Edit Form</span>
+                            <span>Edit</span>
                           </button>
-
                           <button
-                            onClick={() => handleDeleteShow(show.id, show.title)}
-                            className="p-2 rounded-lg bg-zinc-800 hover:bg-red-950 text-zinc-400 hover:text-red-400 transition-colors cursor-pointer"
+                            type="button"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handleDeleteShow(show.id, show.title);
+                            }}
+                            className="p-2 rounded-lg bg-red-600/80 hover:bg-red-600 text-white transition-colors cursor-pointer"
                             title="Delete title"
                           >
                             <Trash2 className="w-4 h-4" />
@@ -1947,9 +2041,9 @@ export const AdminDashboardPage: React.FC<AdminDashboardPageProps> = ({
                         </div>
                       </div>
                     );
-                  })
-                )}
-              </div>
+                  })}
+                </div>
+              )}
             </div>
           )}
 
@@ -2337,10 +2431,27 @@ export const AdminDashboardPage: React.FC<AdminDashboardPageProps> = ({
                         />
                       </div>
 
-                      {/* Explore All Click Destination Setting */}
-                      <div className="p-3 bg-[#191919] rounded-lg border border-[#2a2a2a] space-y-2">
-                        <label className="block text-[11px] font-semibold text-zinc-300">
-                          When user clicks &quot;Explore All&quot;, lead to:
+                      {/* Action Button Toggle & Destination Setting */}
+                      <div className="p-3 bg-[#191919] rounded-lg border border-[#2a2a2a] space-y-2.5">
+                        <label className="flex items-center gap-2.5 cursor-pointer select-none">
+                          <input
+                            type="checkbox"
+                            checked={specialShowActionButton}
+                            onChange={(e) => setSpecialShowActionButton(e.target.checked)}
+                            className="w-4 h-4 rounded accent-red-600"
+                          />
+                          <div>
+                            <div className="text-xs font-bold text-white">
+                              Show Action Button on Special Feed
+                            </div>
+                            <div className="text-[10px] text-zinc-400">
+                              Toggle pill action button (&quot;{specialExploreText || 'Explore All'}&quot;) on desktop Special Feed banner. Off by default for clean Apple TV style.
+                            </div>
+                          </div>
+                        </label>
+
+                        <label className="block text-[11px] font-semibold text-zinc-300 pt-1">
+                          When user clicks &quot;{specialExploreText || 'Explore All'}&quot;, lead to:
                         </label>
                         <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs">
                           <label className={`p-2.5 rounded-lg border flex items-center gap-2 cursor-pointer transition-colors ${
@@ -2982,6 +3093,353 @@ export const AdminDashboardPage: React.FC<AdminDashboardPageProps> = ({
                   </div>
                 </div>
               )}
+
+              {/* ===================================================================== */}
+              {/* HOMEPAGE GENRE CARDS (BROWSE BY GENRE SQUARE ROW) MANAGEMENT          */}
+              {/* ===================================================================== */}
+              <div className="pt-6 border-t border-zinc-800 space-y-5">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                  <div>
+                    <h2 className="text-xl font-bold text-white tracking-tight flex items-center gap-2">
+                      <Layers className="w-5 h-5 text-red-500" />
+                      <span>Homepage Genre Cards (Browse by Genre)</span>
+                    </h2>
+                    <p className="text-xs text-zinc-400 mt-1">
+                      Customize the square genre cards displayed on the homepage. Toggle visibility, change card images, add new genres, or edit filter keywords.
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const defaults = DEFAULT_GENRES.map((g) => ({
+                        id: g.id,
+                        name: g.name,
+                        displayName: g.displayName,
+                        imageUrl: g.imageUrl,
+                        keywords: g.keywords,
+                        enabled: true
+                      }));
+                      updateManagedGenres(defaults);
+                      notify('Reset homepage genre cards to default set!');
+                    }}
+                    className="px-3.5 py-2 rounded-lg bg-zinc-800 hover:bg-zinc-700 text-zinc-300 hover:text-white text-xs font-semibold transition-colors cursor-pointer border border-zinc-700 flex items-center gap-1.5 self-start sm:self-auto"
+                  >
+                    <RefreshCw className="w-3.5 h-3.5" />
+                    <span>Reset Defaults</span>
+                  </button>
+                </div>
+
+                {/* Add New Genre Card Box */}
+                <div className="p-5 rounded-2xl bg-zinc-900 border border-zinc-800 space-y-4">
+                  <h3 className="text-sm font-bold text-white flex items-center gap-2">
+                    <Plus className="w-4 h-4 text-red-500" />
+                    <span>Add Homepage Genre Card</span>
+                  </h3>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+                    <div>
+                      <label className="block text-[11px] text-zinc-400 font-semibold mb-1">
+                        Genre Name *
+                      </label>
+                      <input
+                        type="text"
+                        placeholder="e.g. Mystery & Suspense"
+                        value={newGenreName}
+                        onChange={(e) => setNewGenreName(e.target.value)}
+                        className="w-full bg-zinc-800 border border-zinc-700 rounded-lg px-3 py-2 text-xs text-white outline-none focus:border-red-500"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="block text-[11px] text-zinc-400 font-semibold mb-1">
+                        Card Label (Centered Text)
+                      </label>
+                      <input
+                        type="text"
+                        placeholder="e.g. MYSTERY"
+                        value={newGenreDisplayName}
+                        onChange={(e) => setNewGenreDisplayName(e.target.value)}
+                        className="w-full bg-zinc-800 border border-zinc-700 rounded-lg px-3 py-2 text-xs text-white uppercase outline-none focus:border-red-500"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="block text-[11px] text-zinc-400 font-semibold mb-1">
+                        Square Card Image URL *
+                      </label>
+                      <input
+                        type="text"
+                        placeholder="https://images.unsplash.com/..."
+                        value={newGenreImage}
+                        onChange={(e) => setNewGenreImage(e.target.value)}
+                        className="w-full bg-zinc-800 border border-zinc-700 rounded-lg px-3 py-2 text-xs text-white font-mono outline-none focus:border-red-500"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="block text-[11px] text-zinc-400 font-semibold mb-1">
+                        Match Keywords (comma-separated)
+                      </label>
+                      <input
+                        type="text"
+                        placeholder="e.g. mystery, detective, crime"
+                        value={newGenreKeywords}
+                        onChange={(e) => setNewGenreKeywords(e.target.value)}
+                        className="w-full bg-zinc-800 border border-zinc-700 rounded-lg px-3 py-2 text-xs text-white outline-none focus:border-red-500"
+                      />
+                    </div>
+                  </div>
+
+                  <div className="flex items-center justify-between pt-2">
+                    {newGenreImage ? (
+                      <div className="flex items-center gap-2">
+                        <span className="text-[11px] text-zinc-400">1:1 Preview:</span>
+                        <img
+                          src={newGenreImage}
+                          alt=""
+                          className="h-10 w-10 object-cover rounded border border-zinc-700"
+                        />
+                      </div>
+                    ) : <div />}
+
+                    <button
+                      type="button"
+                      onClick={() => {
+                        if (!newGenreName.trim()) {
+                          notify('Genre name is required');
+                          return;
+                        }
+                        const keywordsArr = newGenreKeywords
+                          .split(',')
+                          .map((k) => k.trim().toLowerCase())
+                          .filter(Boolean);
+                        const fallbackImg =
+                          newGenreImage.trim() ||
+                          'https://images.unsplash.com/photo-1578632767115-351597cf2477?auto=format&fit=crop&w=600&q=80';
+                        const newItem: ManagedGenreItem = {
+                          id: `genre-${Date.now()}`,
+                          name: newGenreName.trim(),
+                          displayName: (newGenreDisplayName.trim() || newGenreName.trim()).toUpperCase(),
+                          imageUrl: fallbackImg,
+                          keywords: keywordsArr.length > 0 ? keywordsArr : [newGenreName.trim().toLowerCase()],
+                          enabled: true
+                        };
+                        updateManagedGenres([...managedGenresList, newItem]);
+                        setNewGenreName('');
+                        setNewGenreDisplayName('');
+                        setNewGenreImage('');
+                        setNewGenreKeywords('');
+                        notify(`Added genre card "${newItem.displayName}"!`);
+                      }}
+                      className="px-4 py-2 rounded-lg bg-red-600 hover:bg-red-500 text-white text-xs font-bold transition-colors cursor-pointer flex items-center gap-1.5"
+                    >
+                      <Plus className="w-4 h-4" />
+                      <span>Add Genre Card</span>
+                    </button>
+                  </div>
+                </div>
+
+                {/* Square Genre Cards Grid */}
+                <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4">
+                  {managedGenresList.map((genre) => {
+                    const isEnabled = genre.enabled !== false;
+                    return (
+                      <div
+                        key={genre.id}
+                        className={`p-3 bg-zinc-900 rounded-xl border flex flex-col justify-between gap-2.5 overflow-hidden group transition-colors ${
+                          isEnabled ? 'border-zinc-800 hover:border-zinc-700' : 'border-zinc-800/50 opacity-55'
+                        }`}
+                      >
+                        <div className="space-y-2">
+                          <div className="relative aspect-square w-full rounded-lg overflow-hidden bg-black border border-white/10">
+                            <img
+                              src={genre.imageUrl}
+                              alt={genre.displayName}
+                              referrerPolicy="no-referrer"
+                              className="w-full h-full object-cover"
+                            />
+                            <div className="absolute inset-0 bg-black/45 pointer-events-none" />
+                            <div className="absolute inset-0 flex items-center justify-center p-2 text-center pointer-events-none">
+                              <span className="text-xs font-bold text-white uppercase tracking-wider drop-shadow line-clamp-2">
+                                {genre.displayName}
+                              </span>
+                            </div>
+
+                            {/* Quick Visibility Pill */}
+                            <button
+                              type="button"
+                              onClick={() => {
+                                const next = managedGenresList.map((item) =>
+                                  item.id === genre.id ? { ...item, enabled: !isEnabled } : item
+                                );
+                                updateManagedGenres(next);
+                                notify(`${isEnabled ? 'Hidden' : 'Shown'} "${genre.displayName}" on homepage`);
+                              }}
+                              className={`absolute top-2 left-2 p-1.5 rounded-md text-white transition-colors cursor-pointer backdrop-blur-sm ${
+                                isEnabled ? 'bg-black/70 hover:bg-zinc-800' : 'bg-red-600/85 hover:bg-red-500'
+                              }`}
+                              title={isEnabled ? 'Hide from homepage' : 'Show on homepage'}
+                            >
+                              {isEnabled ? <Eye className="w-3.5 h-3.5" /> : <EyeOff className="w-3.5 h-3.5" />}
+                            </button>
+                          </div>
+
+                          <div className="text-[11px] text-zinc-400 truncate" title={(genre.keywords || []).join(', ')}>
+                            Keys: {(genre.keywords || []).join(', ')}
+                          </div>
+                        </div>
+
+                        <div className="flex items-center justify-between pt-2 border-t border-zinc-800 text-[11px]">
+                          <button
+                            type="button"
+                            onClick={() => handleStartEditGenre(genre)}
+                            className="flex items-center gap-1 px-2.5 py-1 rounded bg-zinc-800 hover:bg-zinc-700 text-zinc-300 hover:text-white text-[11px] font-semibold transition-colors cursor-pointer border border-zinc-700"
+                          >
+                            <Pencil className="w-3 h-3 text-amber-400" />
+                            <span>Edit</span>
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              updateManagedGenres(managedGenresList.filter((item) => item.id !== genre.id));
+                              notify(`Deleted genre card "${genre.displayName}"`);
+                            }}
+                            className="text-zinc-500 hover:text-red-400 transition-colors p-1 cursor-pointer"
+                            title="Delete genre card"
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </button>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+
+                {/* Edit Genre Card Modal */}
+                {editingGenre && (
+                  <div
+                    className="fixed inset-0 z-50 bg-black/85 backdrop-blur-sm flex items-center justify-center p-4 animate-in fade-in duration-150"
+                    onClick={() => setEditingGenre(null)}
+                  >
+                    <div
+                      className="bg-[#181818] border border-zinc-700 rounded-2xl w-full max-w-md overflow-hidden shadow-2xl animate-in zoom-in-95 duration-150"
+                      onClick={(e) => e.stopPropagation()}
+                    >
+                      <div className="flex items-center justify-between p-5 border-b border-zinc-800 bg-zinc-900/50">
+                        <div className="flex items-center gap-2.5">
+                          <div className="w-9 h-9 rounded-xl bg-amber-500/20 text-amber-400 flex items-center justify-center">
+                            <Pencil className="w-4 h-4" />
+                          </div>
+                          <div>
+                            <h3 className="text-base font-bold text-white tracking-tight">
+                              Edit Genre Card
+                            </h3>
+                            <p className="text-xs text-zinc-400">
+                              Updating square card for &quot;{editingGenre.name}&quot;
+                            </p>
+                          </div>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => setEditingGenre(null)}
+                          className="w-8 h-8 rounded-full bg-zinc-800 hover:bg-zinc-700 text-zinc-400 hover:text-white flex items-center justify-center transition-colors cursor-pointer"
+                          aria-label="Close"
+                        >
+                          <X className="w-4 h-4" />
+                        </button>
+                      </div>
+
+                      <div className="p-5 space-y-4 max-h-[75vh] overflow-y-auto">
+                        <div className="flex justify-center">
+                          <div className="relative aspect-square w-36 rounded-xl overflow-hidden bg-black border border-white/10 shadow-lg">
+                            <img
+                              src={editGenreImage || 'https://images.unsplash.com/photo-1578632767115-351597cf2477?auto=format&fit=crop&w=600&q=80'}
+                              alt={editGenreDisplayName}
+                              referrerPolicy="no-referrer"
+                              className="w-full h-full object-cover"
+                            />
+                            <div className="absolute inset-0 bg-black/50" />
+                            <div className="absolute inset-0 flex items-center justify-center p-2 text-center">
+                              <span className="text-sm font-bold text-white uppercase tracking-wider">
+                                {editGenreDisplayName || editGenreName || 'GENRE'}
+                              </span>
+                            </div>
+                          </div>
+                        </div>
+
+                        <div>
+                          <label className="block text-[11px] text-zinc-300 font-bold uppercase tracking-wider mb-1.5 font-mono">
+                            Square Card Image URL *
+                          </label>
+                          <input
+                            type="text"
+                            value={editGenreImage}
+                            onChange={(e) => setEditGenreImage(e.target.value)}
+                            placeholder="https://images.unsplash.com/..."
+                            className="w-full bg-zinc-900 border border-zinc-700 rounded-lg px-3.5 py-2.5 text-xs text-white font-mono outline-none focus:border-red-500"
+                          />
+                        </div>
+
+                        <div className="grid grid-cols-2 gap-3">
+                          <div>
+                            <label className="block text-[11px] text-zinc-300 font-bold uppercase tracking-wider mb-1.5 font-mono">
+                              Genre Name *
+                            </label>
+                            <input
+                              type="text"
+                              value={editGenreName}
+                              onChange={(e) => setEditGenreName(e.target.value)}
+                              className="w-full bg-zinc-900 border border-zinc-700 rounded-lg px-3 py-2 text-xs text-white outline-none focus:border-red-500"
+                            />
+                          </div>
+                          <div>
+                            <label className="block text-[11px] text-zinc-300 font-bold uppercase tracking-wider mb-1.5 font-mono">
+                              Card Label
+                            </label>
+                            <input
+                              type="text"
+                              value={editGenreDisplayName}
+                              onChange={(e) => setEditGenreDisplayName(e.target.value)}
+                              className="w-full bg-zinc-900 border border-zinc-700 rounded-lg px-3 py-2 text-xs text-white uppercase outline-none focus:border-red-500"
+                            />
+                          </div>
+                        </div>
+
+                        <div>
+                          <label className="block text-[11px] text-zinc-300 font-bold uppercase tracking-wider mb-1.5 font-mono">
+                            Match Keywords (comma-separated)
+                          </label>
+                          <input
+                            type="text"
+                            value={editGenreKeywords}
+                            onChange={(e) => setEditGenreKeywords(e.target.value)}
+                            placeholder="action, adventure, warrior"
+                            className="w-full bg-zinc-900 border border-zinc-700 rounded-lg px-3 py-2 text-xs text-white outline-none focus:border-red-500"
+                          />
+                        </div>
+                      </div>
+
+                      <div className="p-4 bg-zinc-900/80 border-t border-zinc-800 flex items-center justify-end gap-2.5">
+                        <button
+                          type="button"
+                          onClick={() => setEditingGenre(null)}
+                          className="px-4 py-2 rounded-lg bg-zinc-800 hover:bg-zinc-700 text-zinc-300 text-xs font-semibold transition-colors cursor-pointer"
+                        >
+                          Cancel
+                        </button>
+                        <button
+                          type="button"
+                          onClick={handleSaveGenreEdit}
+                          className="px-4 py-2 rounded-lg bg-red-600 hover:bg-red-500 text-white text-xs font-bold transition-colors cursor-pointer flex items-center gap-1.5 shadow-md"
+                        >
+                          <Save className="w-3.5 h-3.5" />
+                          <span>Save Genre Card</span>
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                )}
+              </div>
             </div>
           )}
 
@@ -4541,14 +4999,14 @@ export const AdminDashboardPage: React.FC<AdminDashboardPageProps> = ({
                   <div className="flex items-center gap-2 pt-1">
                     <input
                       type="text"
-                      value={adminSettings.dailymotionScriptUrl || 'https://geo.dailymotion.com/libs/player/x1o1xe.js'}
+                      value={adminSettings.dailymotionScriptUrl || 'https://geo.dailymotion.com/libs/player/x8lr5.js'}
                       onChange={(e) =>
                         onUpdateSettings({
                           ...adminSettings,
                           dailymotionScriptUrl: e.target.value
                         })
                       }
-                      placeholder="https://geo.dailymotion.com/libs/player/x1o1xe.js"
+                      placeholder="https://geo.dailymotion.com/libs/player/x8lr5.js"
                       className="flex-1 bg-zinc-800 border border-zinc-700 rounded-lg px-3 py-2 text-xs text-white font-mono outline-none focus:border-red-500"
                     />
                     <button
@@ -4556,7 +5014,7 @@ export const AdminDashboardPage: React.FC<AdminDashboardPageProps> = ({
                       onClick={() =>
                         onUpdateSettings({
                           ...adminSettings,
-                          dailymotionScriptUrl: 'https://geo.dailymotion.com/libs/player/x1o1xe.js'
+                          dailymotionScriptUrl: 'https://geo.dailymotion.com/libs/player/x8lr5.js'
                         })
                       }
                       className="px-3 py-2 rounded-lg bg-zinc-800 hover:bg-zinc-700 text-zinc-300 hover:text-white text-xs font-semibold cursor-pointer shrink-0"
@@ -4678,6 +5136,39 @@ export const AdminDashboardPage: React.FC<AdminDashboardPageProps> = ({
                   )}
                 </div>
 
+                {/* Platform Header Icon / Brand Icon */}
+                <div className="p-4 rounded-xl bg-zinc-900 border border-zinc-800 space-y-2">
+                  <h4 className="text-sm font-bold text-white">
+                    Platform Header Icon / Brand Icon (Mobile Header & Drawer)
+                  </h4>
+                  <p className="text-xs text-zinc-400">
+                    Displayed next to hamburger menu in mobile header and inside drawer (e.g. HBO Max / Brand mark).
+                  </p>
+                  <div className="flex items-center gap-3 pt-1">
+                    <input
+                      type="text"
+                      value={adminSettings.platformIconUrl || ''}
+                      onChange={(e) =>
+                        onUpdateSettings({
+                          ...adminSettings,
+                          platformIconUrl: e.target.value
+                        })
+                      }
+                      placeholder="https://example.com/platform-icon.png"
+                      className="flex-1 bg-zinc-800 border border-zinc-700 rounded-lg px-3 py-2 text-xs text-white font-mono outline-none focus:border-red-500"
+                    />
+                    {adminSettings.platformIconUrl && (
+                      <div className="p-1.5 bg-black/60 rounded border border-zinc-700 h-9 flex items-center justify-center shrink-0">
+                        <img
+                          src={adminSettings.platformIconUrl}
+                          alt="Platform Icon"
+                          className="h-6 w-auto max-w-[80px] object-contain"
+                        />
+                      </div>
+                    )}
+                  </div>
+                </div>
+
                 {/* Show Top 10 Badges toggle */}
                 <div className="p-4 rounded-xl bg-zinc-900 border border-zinc-800 flex items-center justify-between gap-4">
                   <div>
@@ -4788,6 +5279,62 @@ export const AdminDashboardPage: React.FC<AdminDashboardPageProps> = ({
                       </div>
                     </div>
 
+                    {/* Option 1b: Mobile Navbar Theme (Solid vs Glass UI) */}
+                    <div className="p-4 rounded-xl bg-zinc-900/90 border border-zinc-800 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                      <div>
+                        <h4 className="text-sm font-bold text-white">
+                          Mobile Navbar Theme (Solid vs Glass UI)
+                        </h4>
+                        <p className="text-xs text-zinc-400">
+                          Switch between classic solid dark pill or translucent frosted Apple Liquid Glass look with active pill lens highlights.
+                        </p>
+                      </div>
+
+                      <div className="flex items-center gap-1.5 bg-zinc-800/90 p-1 rounded-xl border border-zinc-700 shrink-0">
+                        <button
+                          type="button"
+                          onClick={() => {
+                            const updated = {
+                              ...adminSettings,
+                              mobileNavbarTheme: 'solid' as const
+                            };
+                            onUpdateSettings(updated);
+                            try {
+                              localStorage.setItem('cineflix_settings', JSON.stringify(updated));
+                            } catch {}
+                          }}
+                          className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+                            (adminSettings.mobileNavbarTheme || 'solid') === 'solid'
+                              ? 'bg-red-600 text-white shadow'
+                              : 'text-zinc-400 hover:text-white'
+                          }`}
+                        >
+                          Solid Dark
+                        </button>
+
+                        <button
+                          type="button"
+                          onClick={() => {
+                            const updated = {
+                              ...adminSettings,
+                              mobileNavbarTheme: 'glass' as const
+                            };
+                            onUpdateSettings(updated);
+                            try {
+                              localStorage.setItem('cineflix_settings', JSON.stringify(updated));
+                            } catch {}
+                          }}
+                          className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+                            adminSettings.mobileNavbarTheme === 'glass'
+                              ? 'bg-red-600 text-white shadow'
+                              : 'text-zinc-400 hover:text-white'
+                          }`}
+                        >
+                          Glass UI
+                        </button>
+                      </div>
+                    </div>
+
                     {/* Option 2: Mobile Navbar Button Text Labels */}
                     <div className="p-4 rounded-xl bg-zinc-900/90 border border-zinc-800 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
                       <div>
@@ -4851,11 +5398,11 @@ export const AdminDashboardPage: React.FC<AdminDashboardPageProps> = ({
                           Mobile Hero Recommendation Style
                         </h4>
                         <p className="text-xs text-zinc-400">
-                          Switch between current 2:3 vertical poster card (no background autoplay) or a 16:9 widescreen card (3s backdrop delay before preview, no play/more info buttons, tap opens details, zero black screen).
+                          Choose mobile hero style: 2:3 portrait preview card, 16:9 widescreen card, or poster recommendation without preview (with hamburger menu & platform icon, HBO Max style).
                         </p>
                       </div>
 
-                      <div className="flex items-center gap-1.5 bg-zinc-800/90 p-1 rounded-xl border border-zinc-700 shrink-0">
+                      <div className="flex items-center gap-1.5 bg-zinc-800/90 p-1 rounded-xl border border-zinc-700 shrink-0 flex-wrap sm:flex-nowrap">
                         <button
                           type="button"
                           onClick={() => {
@@ -4874,7 +5421,7 @@ export const AdminDashboardPage: React.FC<AdminDashboardPageProps> = ({
                               : 'text-zinc-400 hover:text-white'
                           }`}
                         >
-                          2:3 Portrait Card
+                          2:3 Portrait
                         </button>
 
                         <button
@@ -4896,6 +5443,226 @@ export const AdminDashboardPage: React.FC<AdminDashboardPageProps> = ({
                           }`}
                         >
                           16:9 Widescreen
+                        </button>
+
+                        <button
+                          type="button"
+                          onClick={() => {
+                            const updated = {
+                              ...adminSettings,
+                              mobileRecommendationStyle: 'poster_no_preview' as const
+                            };
+                            onUpdateSettings(updated);
+                            try {
+                              localStorage.setItem('cineflix_settings', JSON.stringify(updated));
+                            } catch {}
+                          }}
+                          className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+                            adminSettings.mobileRecommendationStyle === 'poster_no_preview'
+                              ? 'bg-red-600 text-white shadow'
+                              : 'text-zinc-400 hover:text-white'
+                          }`}
+                        >
+                          Poster (No Preview)
+                        </button>
+                      </div>
+                    </div>
+
+                    {/* Option 4: Top 10 Rank List Style (Modern Outlined, Inside Card Number, Classic Portrait) */}
+                    <div className="p-4 rounded-xl bg-zinc-900/90 border border-zinc-800 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                      <div>
+                        <h4 className="text-sm font-bold text-white">
+                          Top 10 Rank List Style
+                        </h4>
+                        <p className="text-xs text-zinc-400">
+                          Choose Top 10 display style: crisp outlined side numbers beside 2:3 cards, solid white gradient rank numbers inside top-left of 2:3 cards (hides on hover), or classic portrait badges.
+                        </p>
+                      </div>
+
+                      {(() => {
+                        const activeRankStyle =
+                          adminSettings.top10RankStyle ||
+                          (adminSettings.modernTop10RankList === false ? 'classic' : 'modern');
+                        return (
+                          <div className="flex items-center gap-1.5 bg-zinc-800/90 p-1 rounded-xl border border-zinc-700 shrink-0 flex-wrap sm:flex-nowrap">
+                            <button
+                              type="button"
+                              onClick={() => {
+                                const updated = {
+                                  ...adminSettings,
+                                  top10RankStyle: 'modern' as const,
+                                  modernTop10RankList: true
+                                };
+                                onUpdateSettings(updated);
+                                try {
+                                  localStorage.setItem('cineflix_settings', JSON.stringify(updated));
+                                } catch {}
+                              }}
+                              className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+                                activeRankStyle === 'modern'
+                                  ? 'bg-red-600 text-white shadow'
+                                  : 'text-zinc-400 hover:text-white'
+                              }`}
+                            >
+                              Modern Outlined
+                            </button>
+
+                            <button
+                              type="button"
+                              onClick={() => {
+                                const updated = {
+                                  ...adminSettings,
+                                  top10RankStyle: 'inside_card' as const,
+                                  modernTop10RankList: true
+                                };
+                                onUpdateSettings(updated);
+                                try {
+                                  localStorage.setItem('cineflix_settings', JSON.stringify(updated));
+                                } catch {}
+                              }}
+                              className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+                                activeRankStyle === 'inside_card'
+                                  ? 'bg-red-600 text-white shadow'
+                                  : 'text-zinc-400 hover:text-white'
+                              }`}
+                            >
+                              Inside Card Number
+                            </button>
+
+                            <button
+                              type="button"
+                              onClick={() => {
+                                const updated = {
+                                  ...adminSettings,
+                                  top10RankStyle: 'classic' as const,
+                                  modernTop10RankList: false
+                                };
+                                onUpdateSettings(updated);
+                                try {
+                                  localStorage.setItem('cineflix_settings', JSON.stringify(updated));
+                                } catch {}
+                              }}
+                              className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+                                activeRankStyle === 'classic'
+                                  ? 'bg-red-600 text-white shadow'
+                                  : 'text-zinc-400 hover:text-white'
+                              }`}
+                            >
+                              Classic Portrait
+                            </button>
+                          </div>
+                        );
+                      })()}
+                    </div>
+
+                    {/* Option 5: Default Desktop More Info Page Mode */}
+                    <div className="p-4 rounded-xl bg-zinc-900/90 border border-zinc-800 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                      <div>
+                        <h4 className="text-sm font-bold text-white">
+                          Default Desktop More Info Page Style
+                        </h4>
+                        <p className="text-xs text-zinc-400">
+                          Choose whether clicking titles during normal desktop browsing opens the classic More Info modal or the Full Size More Info Page (already used for shared links).
+                        </p>
+                      </div>
+
+                      <div className="flex items-center gap-1.5 bg-zinc-800/90 p-1 rounded-xl border border-zinc-700 shrink-0">
+                        <button
+                          type="button"
+                          onClick={() => {
+                            const updated = {
+                              ...adminSettings,
+                              useFullSizeMoreInfoByDefault: false
+                            };
+                            onUpdateSettings(updated);
+                            try {
+                              localStorage.setItem('cineflix_settings', JSON.stringify(updated));
+                            } catch {}
+                          }}
+                          className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+                            !adminSettings.useFullSizeMoreInfoByDefault
+                              ? 'bg-red-600 text-white shadow'
+                              : 'text-zinc-400 hover:text-white'
+                          }`}
+                        >
+                          Normal Modal
+                        </button>
+
+                        <button
+                          type="button"
+                          onClick={() => {
+                            const updated = {
+                              ...adminSettings,
+                              useFullSizeMoreInfoByDefault: true
+                            };
+                            onUpdateSettings(updated);
+                            try {
+                              localStorage.setItem('cineflix_settings', JSON.stringify(updated));
+                            } catch {}
+                          }}
+                          className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+                            adminSettings.useFullSizeMoreInfoByDefault
+                              ? 'bg-red-600 text-white shadow'
+                              : 'text-zinc-400 hover:text-white'
+                          }`}
+                        >
+                          Full Size More Info Page
+                        </button>
+                      </div>
+                    </div>
+
+                    {/* Option 6: 2:3 Mobile Recommendation Buttons Style */}
+                    <div className="p-4 rounded-xl bg-zinc-900/90 border border-zinc-800 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                      <div>
+                        <h4 className="text-sm font-bold text-white">
+                          2:3 Mobile Recommendation Buttons Style
+                        </h4>
+                        <p className="text-xs text-zinc-400">
+                          Choose whether the 2:3 portrait recommendation uses side-by-side Play & My List pills or the No-Preview Poster buttons style (Watch pill + circular + button).
+                        </p>
+                      </div>
+
+                      <div className="flex items-center gap-1.5 bg-zinc-800/90 p-1 rounded-xl border border-zinc-700 shrink-0">
+                        <button
+                          type="button"
+                          onClick={() => {
+                            const updated = {
+                              ...adminSettings,
+                              useNoPreviewButtonsFor2x3Recommendation: false
+                            };
+                            onUpdateSettings(updated);
+                            try {
+                              localStorage.setItem('cineflix_settings', JSON.stringify(updated));
+                            } catch {}
+                          }}
+                          className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+                            !adminSettings.useNoPreviewButtonsFor2x3Recommendation
+                              ? 'bg-red-600 text-white shadow'
+                              : 'text-zinc-400 hover:text-white'
+                          }`}
+                        >
+                          Play + My List Pills
+                        </button>
+
+                        <button
+                          type="button"
+                          onClick={() => {
+                            const updated = {
+                              ...adminSettings,
+                              useNoPreviewButtonsFor2x3Recommendation: true
+                            };
+                            onUpdateSettings(updated);
+                            try {
+                              localStorage.setItem('cineflix_settings', JSON.stringify(updated));
+                            } catch {}
+                          }}
+                          className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+                            adminSettings.useNoPreviewButtonsFor2x3Recommendation
+                              ? 'bg-red-600 text-white shadow'
+                              : 'text-zinc-400 hover:text-white'
+                          }`}
+                        >
+                          No-Preview Poster Buttons
                         </button>
                       </div>
                     </div>
@@ -5038,11 +5805,11 @@ export const AdminDashboardPage: React.FC<AdminDashboardPageProps> = ({
       {modalMode !== 'none' && formData && (
         <div className="fixed inset-0 z-60 bg-black/85 backdrop-blur-md flex items-center justify-center p-3 sm:p-6 overflow-y-auto animate-in fade-in duration-200">
           <div className="w-full max-w-4xl bg-[#12141d] border border-zinc-700 rounded-2xl shadow-2xl overflow-hidden my-4 max-h-[92vh] flex flex-col">
-            {/* Modal Top Header */}
-            <div className="p-5 border-b border-zinc-800 bg-[#161924] flex items-center justify-between">
-              <div className="flex items-center gap-3">
+            {/* Modal Top Header: Sticky, high-contrast, with direct Save Changes button accessible from any tab */}
+            <div className="sticky top-0 z-50 px-4 sm:px-6 py-3.5 border-b border-zinc-700/80 bg-[#161924] flex items-center justify-between gap-3 shadow-md">
+              <div className="flex items-center gap-3 min-w-0">
                 <div
-                  className={`w-9 h-9 rounded-lg flex items-center justify-center font-bold text-sm ${
+                  className={`w-9 h-9 rounded-xl flex items-center justify-center font-bold text-sm shrink-0 ${
                     formData.type === 'movie'
                       ? 'bg-amber-950 border border-amber-800 text-amber-400'
                       : 'bg-red-950 border border-red-800 text-red-400'
@@ -5050,29 +5817,49 @@ export const AdminDashboardPage: React.FC<AdminDashboardPageProps> = ({
                 >
                   {formData.type === 'movie' ? <Film className="w-5 h-5" /> : <Tv className="w-5 h-5" />}
                 </div>
-                <div>
-                  <h3 className="text-base font-bold text-white">
+                <div className="min-w-0">
+                  <h3 className="text-sm sm:text-base font-bold text-white truncate">
                     {isEditingExisting
                       ? `Edit ${formData.type === 'movie' ? 'Movie' : 'Show'}: ${formData.title}`
                       : formData.type === 'movie'
                       ? 'Add New Feature Film'
                       : 'Add New Television Series'}
                   </h3>
-                  <span className="text-[11px] text-zinc-400 font-mono">
-                    ID: {formData.id} · Type: {formData.type.toUpperCase()}
+                  <span className="text-[10.5px] text-zinc-400 font-mono flex items-center gap-2">
+                    <span>ID: {formData.id}</span>
+                    <span>•</span>
+                    <span className="uppercase text-amber-400 font-bold">{formData.type}</span>
                   </span>
                 </div>
               </div>
 
-              <button
-                onClick={() => {
-                  setModalMode('none');
-                  setFormData(null);
-                }}
-                className="w-8 h-8 rounded-full bg-zinc-800 hover:bg-zinc-700 text-zinc-300 hover:text-white flex items-center justify-center cursor-pointer"
-              >
-                <X className="w-4 h-4" />
-              </button>
+              {/* Action Buttons in Top Header */}
+              <div className="flex items-center gap-2 sm:gap-3 shrink-0">
+                {/* Save Changes directly from Top Bar */}
+                <button
+                  type="button"
+                  onClick={handleSaveFormData}
+                  className="flex items-center gap-1.5 sm:gap-2 px-3.5 sm:px-5 py-2 rounded-xl bg-red-600 hover:bg-red-500 active:scale-95 text-white text-xs sm:text-sm font-bold shadow-lg shadow-red-950/40 transition-all cursor-pointer border border-red-400/30"
+                  title="Save title updates immediately"
+                >
+                  <Save className="w-4 h-4 stroke-[2.5]" />
+                  <span className="hidden xs:inline">Save Changes</span>
+                  <span className="xs:hidden">Save</span>
+                </button>
+
+                {/* Close / Discard */}
+                <button
+                  type="button"
+                  onClick={() => {
+                    setModalMode('none');
+                    setFormData(null);
+                  }}
+                  className="w-9 h-9 rounded-xl bg-zinc-800/90 hover:bg-zinc-700 border border-zinc-700 text-zinc-300 hover:text-white flex items-center justify-center cursor-pointer transition-colors"
+                  title="Close form"
+                >
+                  <X className="w-4 h-4" />
+                </button>
+              </div>
             </div>
 
             {/* Modal Navigation Tabs */}
@@ -5126,6 +5913,17 @@ export const AdminDashboardPage: React.FC<AdminDashboardPageProps> = ({
                 }`}
               >
                 5. Editorial Article
+              </button>
+              <button
+                onClick={() => setActiveFormTab('live_preview')}
+                className={`py-3 border-b-2 transition-colors cursor-pointer shrink-0 flex items-center gap-1.5 ${
+                  activeFormTab === 'live_preview'
+                    ? 'border-amber-500 text-amber-300 font-bold'
+                    : 'border-transparent text-zinc-400 hover:text-zinc-200'
+                }`}
+              >
+                <Sparkles className="w-3.5 h-3.5 text-amber-400" />
+                <span>6. Live Artwork Preview</span>
               </button>
             </div>
 
@@ -5347,6 +6145,45 @@ export const AdminDashboardPage: React.FC<AdminDashboardPageProps> = ({
                     </label>
                   </div>
 
+                  {/* Full Size More Info Page: Fixed Width Poster & Fixed Width Video */}
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    <div className="p-3.5 rounded-xl bg-zinc-900 border border-zinc-800 flex items-center justify-between gap-3">
+                      <div>
+                        <h5 className="text-xs font-bold text-white">Full Size More Info: Fixed Width Poster</h5>
+                        <p className="text-[11px] text-zinc-400">
+                          Fits full 16:9 poster width to window height on the right side with left seam merge &amp; empty left space.
+                        </p>
+                      </div>
+                      <label className="relative inline-flex items-center cursor-pointer shrink-0">
+                        <input
+                          type="checkbox"
+                          checked={formData.fullSizeMoreInfoFixedWidthPoster ?? false}
+                          onChange={(e) => setFormData({ ...formData, fullSizeMoreInfoFixedWidthPoster: e.target.checked })}
+                          className="sr-only peer"
+                        />
+                        <div className="w-11 h-6 bg-zinc-700 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-zinc-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-red-600"></div>
+                      </label>
+                    </div>
+
+                    <div className="p-3.5 rounded-xl bg-zinc-900 border border-zinc-800 flex items-center justify-between gap-3">
+                      <div>
+                        <h5 className="text-xs font-bold text-white">Full Size More Info: Fixed Width Video</h5>
+                        <p className="text-[11px] text-zinc-400">
+                          Fits full 16:9 preview video width to window height on the right side with left seam merge &amp; empty left space.
+                        </p>
+                      </div>
+                      <label className="relative inline-flex items-center cursor-pointer shrink-0">
+                        <input
+                          type="checkbox"
+                          checked={formData.fullSizeMoreInfoFixedWidthVideo ?? false}
+                          onChange={(e) => setFormData({ ...formData, fullSizeMoreInfoFixedWidthVideo: e.target.checked })}
+                          className="sr-only peer"
+                        />
+                        <div className="w-11 h-6 bg-zinc-700 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-zinc-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-red-600"></div>
+                      </label>
+                    </div>
+                  </div>
+
                   {/* Category Checkboxes */}
                   <div>
                     <label className="block text-zinc-400 font-semibold mb-2">Category Checkboxes</label>
@@ -5451,597 +6288,11 @@ export const AdminDashboardPage: React.FC<AdminDashboardPageProps> = ({
               {/* TAB 2: MEDIA & ASSET LINKS */}
               {activeFormTab === 'media' && (
                 <div className="space-y-4">
-                  {/* ========================================================================= */}
-                  {/* MULTI-IMAGE ARTWORK MANAGER (ALL ASPECT RATIOS)                            */}
-                  {/* ========================================================================= */}
-                  <div className="p-4 rounded-xl bg-gradient-to-br from-zinc-900 to-zinc-950 border border-zinc-800 space-y-5">
-                    <div>
-                      <div className="flex items-center gap-2">
-                        <span className="px-2 py-0.5 rounded text-[10px] font-bold tracking-wider uppercase bg-red-600/20 text-red-400 border border-red-500/30">
-                          Multi-Image Artwork
-                        </span>
-                        <h4 className="text-sm font-bold text-white">Title Posters, Backdrops & Logos</h4>
-                      </div>
-                      <p className="text-[11px] text-zinc-400 mt-1">
-                        Add multiple images for every aspect ratio (not limited to 2). The system supports primary art plus unlimited variants for discovery rotation, A/B testing, and layout responsiveness.
-                      </p>
-                    </div>
-
-                    {/* 1. 16:9 LANDSCAPE TITLE-INCLUDED POSTERS */}
-                    <div className="p-3.5 rounded-xl bg-zinc-900/80 border border-zinc-800/80 space-y-2.5">
-                      <div className="flex items-center justify-between">
-                        <div>
-                          <label className="text-xs font-bold text-white flex items-center gap-2">
-                            <span>16:9 Landscape Title-Included Posters</span>
-                            <span className="text-[10px] font-mono px-1.5 py-0.2 rounded bg-zinc-800 text-zinc-400">16:9 Card Feed</span>
-                          </label>
-                          <p className="text-[10px] text-zinc-400">Standard feed carousels, mobile 16:9 continue watching, and landscape cards.</p>
-                        </div>
-                        <button
-                          type="button"
-                          onClick={() => {
-                            const prev = formData.posterLandscapeUrls || [];
-                            setFormData({ ...formData, posterLandscapeUrls: [...prev, ''] });
-                          }}
-                          className="px-2.5 py-1 rounded bg-zinc-800 hover:bg-zinc-700 text-zinc-200 text-xs font-semibold flex items-center gap-1 cursor-pointer transition-colors"
-                        >
-                          <Plus className="w-3.5 h-3.5" />
-                          <span>Add Image URL</span>
-                        </button>
-                      </div>
-
-                      {/* Primary 16:9 Poster */}
-                      <div>
-                        <span className="text-[10px] text-zinc-400 font-semibold block mb-0.5">Primary 16:9 Poster (Default)</span>
-                        <input
-                          type="text"
-                          value={formData.posterLandscapeUrl || ''}
-                          onChange={(e) => setFormData({ ...formData, posterLandscapeUrl: e.target.value })}
-                          className="w-full bg-zinc-800 border border-zinc-700 rounded-lg px-3 py-1.5 text-white outline-none focus:border-red-500 font-mono text-xs"
-                          placeholder="https://images.unsplash.com/... (Primary 16:9 poster)"
-                        />
-                      </div>
-
-                      {/* Additional 16:9 Posters */}
-                      {(formData.posterLandscapeUrls || []).map((url, idx) => (
-                        <div key={`pl-url-${idx}`} className="flex items-center gap-2">
-                          <input
-                            type="text"
-                            value={url}
-                            onChange={(e) => {
-                              const updated = [...(formData.posterLandscapeUrls || [])];
-                              updated[idx] = e.target.value;
-                              setFormData({ ...formData, posterLandscapeUrls: updated });
-                            }}
-                            className="flex-1 bg-zinc-800 border border-zinc-700 rounded-lg px-3 py-1.5 text-white outline-none focus:border-red-500 font-mono text-xs"
-                            placeholder={`Variant ${idx + 2} 16:9 Image URL...`}
-                          />
-                          <button
-                            type="button"
-                            onClick={() => {
-                              const updated = (formData.posterLandscapeUrls || []).filter((_, i) => i !== idx);
-                              setFormData({ ...formData, posterLandscapeUrls: updated });
-                            }}
-                            className="p-1.5 rounded hover:bg-red-950 text-zinc-400 hover:text-red-400 transition-colors"
-                            title="Delete image"
-                          >
-                            <Trash2 className="w-3.5 h-3.5" />
-                          </button>
-                        </div>
-                      ))}
-                    </div>
-
-                    {/* 2. 16:9 LANDSCAPE BACKDROPS */}
-                    <div className="p-3.5 rounded-xl bg-zinc-900/80 border border-zinc-800/80 space-y-2.5">
-                      <div className="flex items-center justify-between">
-                        <div>
-                          <label className="text-xs font-bold text-white flex items-center gap-2">
-                            <span>16:9 Landscape Backdrops</span>
-                            <span className="text-[10px] font-mono px-1.5 py-0.2 rounded bg-zinc-800 text-zinc-400">16:9 Hero / Player</span>
-                          </label>
-                          <p className="text-[10px] text-zinc-400">Desktop video player, hero banner background, and ambient desktop recommendation screen.</p>
-                        </div>
-                        <button
-                          type="button"
-                          onClick={() => {
-                            const prev = formData.backdropUrls || [];
-                            setFormData({ ...formData, backdropUrls: [...prev, ''] });
-                          }}
-                          className="px-2.5 py-1 rounded bg-zinc-800 hover:bg-zinc-700 text-zinc-200 text-xs font-semibold flex items-center gap-1 cursor-pointer transition-colors"
-                        >
-                          <Plus className="w-3.5 h-3.5" />
-                          <span>Add Image URL</span>
-                        </button>
-                      </div>
-
-                      {/* Primary Backdrop */}
-                      <div>
-                        <span className="text-[10px] text-zinc-400 font-semibold block mb-0.5">Primary 16:9 Backdrop (Default)</span>
-                        <input
-                          type="text"
-                          value={formData.backdropUrl || ''}
-                          onChange={(e) => setFormData({ ...formData, backdropUrl: e.target.value })}
-                          className="w-full bg-zinc-800 border border-zinc-700 rounded-lg px-3 py-1.5 text-white outline-none focus:border-red-500 font-mono text-xs"
-                          placeholder="https://images.unsplash.com/... (Primary 16:9 backdrop)"
-                        />
-                      </div>
-
-                      {/* Additional 16:9 Backdrops */}
-                      {(formData.backdropUrls || []).map((url, idx) => (
-                        <div key={`bd-url-${idx}`} className="flex items-center gap-2">
-                          <input
-                            type="text"
-                            value={url}
-                            onChange={(e) => {
-                              const updated = [...(formData.backdropUrls || [])];
-                              updated[idx] = e.target.value;
-                              setFormData({ ...formData, backdropUrls: updated });
-                            }}
-                            className="flex-1 bg-zinc-800 border border-zinc-700 rounded-lg px-3 py-1.5 text-white outline-none focus:border-red-500 font-mono text-xs"
-                            placeholder={`Variant ${idx + 2} 16:9 Backdrop URL...`}
-                          />
-                          <button
-                            type="button"
-                            onClick={() => {
-                              const updated = (formData.backdropUrls || []).filter((_, i) => i !== idx);
-                              setFormData({ ...formData, backdropUrls: updated });
-                            }}
-                            className="p-1.5 rounded hover:bg-red-950 text-zinc-400 hover:text-red-400 transition-colors"
-                            title="Delete image"
-                          >
-                            <Trash2 className="w-3.5 h-3.5" />
-                          </button>
-                        </div>
-                      ))}
-                    </div>
-
-                    {/* 3. 9:16 STRETCH FEED TITLE-INCLUDED POSTERS (DISTINCT FROM BACKDROP) */}
-                    <div className="p-3.5 rounded-xl bg-purple-950/20 border border-purple-800/40 space-y-2.5">
-                      <div className="flex items-center justify-between">
-                        <div>
-                          <label className="text-xs font-bold text-purple-200 flex items-center gap-2">
-                            <span>9:16 Stretch Feed Title-Included Posters</span>
-                            <span className="text-[10px] font-mono px-1.5 py-0.2 rounded bg-purple-900/60 text-purple-300">9:16 Stretch Feed</span>
-                          </label>
-                          <p className="text-[10px] text-zinc-300">
-                            <strong>Includes drama title typography / logo.</strong> Used inside Desktop & Mobile Stretch Feed carousels.
-                          </p>
-                        </div>
-                        <button
-                          type="button"
-                          onClick={() => {
-                            const prev = formData.poster9x16Urls || [];
-                            setFormData({ ...formData, poster9x16Urls: [...prev, ''] });
-                          }}
-                          className="px-2.5 py-1 rounded bg-purple-900/70 hover:bg-purple-800 text-purple-200 text-xs font-semibold flex items-center gap-1 cursor-pointer transition-colors"
-                        >
-                          <Plus className="w-3.5 h-3.5" />
-                          <span>Add Image URL</span>
-                        </button>
-                      </div>
-
-                      {/* Primary 9:16 Stretch Poster */}
-                      <div>
-                        <span className="text-[10px] text-purple-300 font-semibold block mb-0.5">Primary 9:16 Stretch Feed Poster (with title artwork)</span>
-                        <input
-                          type="text"
-                          value={formData.poster9x16Url || ''}
-                          onChange={(e) => setFormData({ ...formData, poster9x16Url: e.target.value })}
-                          className="w-full bg-zinc-800 border border-zinc-700 rounded-lg px-3 py-1.5 text-white outline-none focus:border-purple-500 font-mono text-xs"
-                          placeholder="https://images.unsplash.com/... (9:16 poster with title typography)"
-                        />
-                      </div>
-
-                      {/* Additional 9:16 Stretch Posters */}
-                      {(formData.poster9x16Urls || []).map((url, idx) => (
-                        <div key={`p9-url-${idx}`} className="flex items-center gap-2">
-                          <input
-                            type="text"
-                            value={url}
-                            onChange={(e) => {
-                              const updated = [...(formData.poster9x16Urls || [])];
-                              updated[idx] = e.target.value;
-                              setFormData({ ...formData, poster9x16Urls: updated });
-                            }}
-                            className="flex-1 bg-zinc-800 border border-zinc-700 rounded-lg px-3 py-1.5 text-white outline-none focus:border-purple-500 font-mono text-xs"
-                            placeholder={`Variant ${idx + 2} 9:16 Stretch Poster URL...`}
-                          />
-                          <button
-                            type="button"
-                            onClick={() => {
-                              const updated = (formData.poster9x16Urls || []).filter((_, i) => i !== idx);
-                              setFormData({ ...formData, poster9x16Urls: updated });
-                            }}
-                            className="p-1.5 rounded hover:bg-red-950 text-zinc-400 hover:text-red-400 transition-colors"
-                            title="Delete image"
-                          >
-                            <Trash2 className="w-3.5 h-3.5" />
-                          </button>
-                        </div>
-                      ))}
-                    </div>
-
-                    {/* 4. 9:16 VERTICAL CLEAN BACKDROPS (DISTINCT FROM STRETCH POSTER) */}
-                    <div className="p-3.5 rounded-xl bg-blue-950/20 border border-blue-800/40 space-y-2.5">
-                      <div className="flex items-center justify-between">
-                        <div>
-                          <label className="text-xs font-bold text-blue-200 flex items-center gap-2">
-                            <span>9:16 Vertical Clean Backdrops</span>
-                            <span className="text-[10px] font-mono px-1.5 py-0.2 rounded bg-blue-900/60 text-blue-300">9:16 Mobile Hero</span>
-                          </label>
-                          <p className="text-[10px] text-zinc-300">
-                            <strong>Clean full-bleed background WITHOUT title typography.</strong> Used for Mobile Recommendation Screens.
-                          </p>
-                        </div>
-                        <button
-                          type="button"
-                          onClick={() => {
-                            const prev = formData.verticalBackdropUrls || [];
-                            setFormData({ ...formData, verticalBackdropUrls: [...prev, ''] });
-                          }}
-                          className="px-2.5 py-1 rounded bg-blue-900/70 hover:bg-blue-800 text-blue-200 text-xs font-semibold flex items-center gap-1 cursor-pointer transition-colors"
-                        >
-                          <Plus className="w-3.5 h-3.5" />
-                          <span>Add Image URL</span>
-                        </button>
-                      </div>
-
-                      <div className="p-2 rounded bg-blue-950/50 border border-blue-700/40 text-[10px] text-blue-200">
-                        Notice: <strong>9:16 Vertical Backdrop</strong> (clean without title) and <strong>9:16 Stretch Feed Title Poster</strong> (with title typography) are 2 completely different assets.
-                      </div>
-
-                      {/* Primary 9:16 Backdrop */}
-                      <div>
-                        <span className="text-[10px] text-blue-300 font-semibold block mb-0.5">Primary 9:16 Vertical Clean Backdrop (without title text)</span>
-                        <input
-                          type="text"
-                          value={formData.verticalBackdropUrl || ''}
-                          onChange={(e) => setFormData({ ...formData, verticalBackdropUrl: e.target.value })}
-                          className="w-full bg-zinc-800 border border-zinc-700 rounded-lg px-3 py-1.5 text-white outline-none focus:border-blue-500 font-mono text-xs"
-                          placeholder="https://images.unsplash.com/... (Clean 9:16 vertical backdrop)"
-                        />
-                      </div>
-
-                      {/* Additional 9:16 Clean Backdrops */}
-                      {(formData.verticalBackdropUrls || []).map((url, idx) => (
-                        <div key={`vb-url-${idx}`} className="flex items-center gap-2">
-                          <input
-                            type="text"
-                            value={url}
-                            onChange={(e) => {
-                              const updated = [...(formData.verticalBackdropUrls || [])];
-                              updated[idx] = e.target.value;
-                              setFormData({ ...formData, verticalBackdropUrls: updated });
-                            }}
-                            className="flex-1 bg-zinc-800 border border-zinc-700 rounded-lg px-3 py-1.5 text-white outline-none focus:border-blue-500 font-mono text-xs"
-                            placeholder={`Variant ${idx + 2} 9:16 Vertical Backdrop URL...`}
-                          />
-                          <button
-                            type="button"
-                            onClick={() => {
-                              const updated = (formData.verticalBackdropUrls || []).filter((_, i) => i !== idx);
-                              setFormData({ ...formData, verticalBackdropUrls: updated });
-                            }}
-                            className="p-1.5 rounded hover:bg-red-950 text-zinc-400 hover:text-red-400 transition-colors"
-                            title="Delete image"
-                          >
-                            <Trash2 className="w-3.5 h-3.5" />
-                          </button>
-                        </div>
-                      ))}
-                    </div>
-
-                    {/* 5. 2:3 VERTICAL TITLE-INCLUDED POSTERS */}
-                    <div className="p-3.5 rounded-xl bg-zinc-900/80 border border-zinc-800/80 space-y-2.5">
-                      <div className="flex items-center justify-between">
-                        <div>
-                          <label className="text-xs font-bold text-white flex items-center gap-2">
-                            <span>2:3 Vertical Title-Included Posters</span>
-                            <span className="text-[10px] font-mono px-1.5 py-0.2 rounded bg-zinc-800 text-zinc-400">2:3 Grid & My List</span>
-                          </label>
-                          <p className="text-[10px] text-zinc-400">Mobile My List cards, Categories pages, and standard vertical poster grids.</p>
-                        </div>
-                        <button
-                          type="button"
-                          onClick={() => {
-                            const prev = formData.posterVerticalUrls || [];
-                            setFormData({ ...formData, posterVerticalUrls: [...prev, ''] });
-                          }}
-                          className="px-2.5 py-1 rounded bg-zinc-800 hover:bg-zinc-700 text-zinc-200 text-xs font-semibold flex items-center gap-1 cursor-pointer transition-colors"
-                        >
-                          <Plus className="w-3.5 h-3.5" />
-                          <span>Add Image URL</span>
-                        </button>
-                      </div>
-
-                      {/* Primary 2:3 Poster */}
-                      <div>
-                        <span className="text-[10px] text-zinc-400 font-semibold block mb-0.5">Primary 2:3 Poster</span>
-                        <input
-                          type="text"
-                          value={formData.posterVerticalUrl || ''}
-                          onChange={(e) => setFormData({ ...formData, posterVerticalUrl: e.target.value })}
-                          className="w-full bg-zinc-800 border border-zinc-700 rounded-lg px-3 py-1.5 text-white outline-none focus:border-red-500 font-mono text-xs"
-                          placeholder="https://images.unsplash.com/... (Primary 2:3 poster)"
-                        />
-                      </div>
-
-                      {/* Additional 2:3 Posters */}
-                      {(formData.posterVerticalUrls || []).map((url, idx) => (
-                        <div key={`pv-url-${idx}`} className="flex items-center gap-2">
-                          <input
-                            type="text"
-                            value={url}
-                            onChange={(e) => {
-                              const updated = [...(formData.posterVerticalUrls || [])];
-                              updated[idx] = e.target.value;
-                              setFormData({ ...formData, posterVerticalUrls: updated });
-                            }}
-                            className="flex-1 bg-zinc-800 border border-zinc-700 rounded-lg px-3 py-1.5 text-white outline-none focus:border-red-500 font-mono text-xs"
-                            placeholder={`Variant ${idx + 2} 2:3 Poster URL...`}
-                          />
-                          <button
-                            type="button"
-                            onClick={() => {
-                              const updated = (formData.posterVerticalUrls || []).filter((_, i) => i !== idx);
-                              setFormData({ ...formData, posterVerticalUrls: updated });
-                            }}
-                            className="p-1.5 rounded hover:bg-red-950 text-zinc-400 hover:text-red-400 transition-colors"
-                            title="Delete image"
-                          >
-                            <Trash2 className="w-3.5 h-3.5" />
-                          </button>
-                        </div>
-                      ))}
-                    </div>
-
-                    {/* 6. 1:2 ULTRA-TALL VERTICAL POSTERS */}
-                    <div className="p-3.5 rounded-xl bg-zinc-900/80 border border-zinc-800/80 space-y-2.5">
-                      <div className="flex items-center justify-between">
-                        <div>
-                          <label className="text-xs font-bold text-white flex items-center gap-2">
-                            <span>1:2 Ultra-Tall Vertical Posters</span>
-                            <span className="text-[10px] font-mono px-1.5 py-0.2 rounded bg-zinc-800 text-zinc-400">1:2 Ultra-Tall Feed</span>
-                          </label>
-                          <p className="text-[10px] text-zinc-400">Mobile stretch feed with 1:2 aspect ratio.</p>
-                        </div>
-                        <button
-                          type="button"
-                          onClick={() => {
-                            const prev = formData.poster1x2Urls || [];
-                            setFormData({ ...formData, poster1x2Urls: [...prev, ''] });
-                          }}
-                          className="px-2.5 py-1 rounded bg-zinc-800 hover:bg-zinc-700 text-zinc-200 text-xs font-semibold flex items-center gap-1 cursor-pointer transition-colors"
-                        >
-                          <Plus className="w-3.5 h-3.5" />
-                          <span>Add Image URL</span>
-                        </button>
-                      </div>
-
-                      {/* Primary 1:2 Poster */}
-                      <div>
-                        <span className="text-[10px] text-zinc-400 font-semibold block mb-0.5">Primary 1:2 Ultra-Tall Poster</span>
-                        <input
-                          type="text"
-                          value={formData.poster1x2Url || ''}
-                          onChange={(e) => setFormData({ ...formData, poster1x2Url: e.target.value })}
-                          className="w-full bg-zinc-800 border border-zinc-700 rounded-lg px-3 py-1.5 text-white outline-none focus:border-red-500 font-mono text-xs"
-                          placeholder="https://images.unsplash.com/... (optional 1:2 poster)"
-                        />
-                      </div>
-
-                      {/* Additional 1:2 Posters */}
-                      {(formData.poster1x2Urls || []).map((url, idx) => (
-                        <div key={`p12-url-${idx}`} className="flex items-center gap-2">
-                          <input
-                            type="text"
-                            value={url}
-                            onChange={(e) => {
-                              const updated = [...(formData.poster1x2Urls || [])];
-                              updated[idx] = e.target.value;
-                              setFormData({ ...formData, poster1x2Urls: updated });
-                            }}
-                            className="flex-1 bg-zinc-800 border border-zinc-700 rounded-lg px-3 py-1.5 text-white outline-none focus:border-red-500 font-mono text-xs"
-                            placeholder={`Variant ${idx + 2} 1:2 Poster URL...`}
-                          />
-                          <button
-                            type="button"
-                            onClick={() => {
-                              const updated = (formData.poster1x2Urls || []).filter((_, i) => i !== idx);
-                              setFormData({ ...formData, poster1x2Urls: updated });
-                            }}
-                            className="p-1.5 rounded hover:bg-red-950 text-zinc-400 hover:text-red-400 transition-colors"
-                            title="Delete image"
-                          >
-                            <Trash2 className="w-3.5 h-3.5" />
-                          </button>
-                        </div>
-                      ))}
-                    </div>
-
-                    {/* Show Title PNG Logo & Source Watermark */}
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-1">
-                      <div>
-                        <label className="block text-zinc-400 font-semibold mb-1">
-                          Show Title PNG Logo (Clearart with transparent background)
-                        </label>
-                        <input
-                          type="text"
-                          value={formData.titleLogoUrl || ''}
-                          onChange={(e) => setFormData({ ...formData, titleLogoUrl: e.target.value })}
-                          className="w-full bg-zinc-800 border border-zinc-700 rounded-lg px-3 py-1.5 text-white outline-none focus:border-red-500 font-mono text-xs"
-                          placeholder="https://.../logo.png"
-                        />
-                      </div>
-                      <div>
-                        <label className="block text-zinc-400 font-semibold mb-1">
-                          Source Watermark URL (Preview overlay only)
-                        </label>
-                        <input
-                          type="text"
-                          value={formData.sourceWatermarkUrl || ''}
-                          onChange={(e) => setFormData({ ...formData, sourceWatermarkUrl: e.target.value })}
-                          className="w-full bg-zinc-800 border border-zinc-700 rounded-lg px-3 py-1.5 text-white outline-none focus:border-red-500 font-mono text-xs"
-                          placeholder="https://.../source-watermark.png"
-                        />
-                      </div>
-                    </div>
-                  </div>
-
-                  {/* ========================================================================= */}
-                  {/* LIVE ARTWORK CARD PREVIEWS (INTERACTIVE 16:9, 9:16 & BACKDROPS)            */}
-                  {/* ========================================================================= */}
-                  <div className="p-4 rounded-xl bg-gradient-to-br from-[#12141c] to-[#181b28] border border-red-500/30 space-y-4">
-                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-zinc-800 pb-3">
-                      <div>
-                        <div className="flex items-center gap-2">
-                          <span className="w-2.5 h-2.5 rounded-full bg-emerald-500 animate-pulse" />
-                          <h4 className="text-sm font-bold text-white tracking-tight">
-                            Live Artwork Card Previews (16:9 & 9:16 Cards & Backdrops)
-                          </h4>
-                        </div>
-                        <p className="text-[11px] text-zinc-400 mt-0.5">
-                          Real-time rendered cards across every aspect ratio. Distinct cards for 9:16 Stretch Feed Title Poster vs 9:16 Vertical Clean Backdrop.
-                        </p>
-                      </div>
-                      <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-zinc-800 text-zinc-300 self-start sm:self-auto">
-                        Aspect Ratios: 16:9 · 9:16 · 2:3 · 1:2
-                      </span>
-                    </div>
-
-                    {/* Previews Grid */}
-                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-                      {/* PREVIEW CARD 1: 16:9 LANDSCAPE TITLE CARD */}
-                      <div className="p-3 rounded-xl bg-zinc-900 border border-zinc-800 flex flex-col justify-between">
-                        <div>
-                          <div className="flex items-center justify-between mb-2">
-                            <span className="text-[11px] font-bold text-white">16:9 Title Poster</span>
-                            <span className="text-[10px] font-mono px-1.5 py-0.2 rounded bg-zinc-800 text-zinc-400">16:9 Feed</span>
-                          </div>
-                          <div className="relative w-full aspect-video rounded-lg overflow-hidden bg-black border border-white/10 shadow-md">
-                            {formData.posterLandscapeUrl ? (
-                              <img
-                                src={formData.posterLandscapeUrl}
-                                alt="16:9 Preview"
-                                className="w-full h-full object-cover"
-                              />
-                            ) : (
-                              <div className="w-full h-full flex items-center justify-center text-zinc-600 text-[10px]">
-                                No 16:9 Poster URL
-                              </div>
-                            )}
-                            <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-transparent to-transparent flex items-end p-2">
-                              <span className="text-[11px] font-bold text-white truncate drop-shadow">{formData.title}</span>
-                            </div>
-                          </div>
-                        </div>
-                        <div className="mt-2 text-[10px] text-zinc-400">
-                          {1 + (formData.posterLandscapeUrls?.length || 0)} image(s) available
-                        </div>
-                      </div>
-
-                      {/* PREVIEW CARD 2: 16:9 LANDSCAPE BACKDROP */}
-                      <div className="p-3 rounded-xl bg-zinc-900 border border-zinc-800 flex flex-col justify-between">
-                        <div>
-                          <div className="flex items-center justify-between mb-2">
-                            <span className="text-[11px] font-bold text-white">16:9 Backdrop</span>
-                            <span className="text-[10px] font-mono px-1.5 py-0.2 rounded bg-zinc-800 text-zinc-400">Hero / Player</span>
-                          </div>
-                          <div
-                            className="relative w-full aspect-video rounded-lg overflow-hidden bg-black border border-white/10 shadow-md flex items-end p-2"
-                            style={{
-                              boxShadow: `0 0 20px ${(formData.recommendationBackdropColor || formData.ambientColor || '#b45309')}30`
-                            }}
-                          >
-                            {formData.backdropUrl ? (
-                              <img
-                                src={formData.backdropUrl}
-                                alt="Backdrop Preview"
-                                className="absolute inset-0 w-full h-full object-cover"
-                              />
-                            ) : (
-                              <div className="absolute inset-0 flex items-center justify-center text-zinc-600 text-[10px]">
-                                No 16:9 Backdrop URL
-                              </div>
-                            )}
-                            <div className="absolute inset-0 bg-gradient-to-t from-black/85 via-black/20 to-transparent pointer-events-none" />
-                            {formData.titleLogoUrl ? (
-                              <img src={formData.titleLogoUrl} alt="Logo" className="relative z-10 max-h-6 max-w-[120px] object-contain drop-shadow" />
-                            ) : (
-                              <span className="relative z-10 text-[11px] font-bold text-white truncate drop-shadow">{formData.title}</span>
-                            )}
-                          </div>
-                        </div>
-                        <div className="mt-2 text-[10px] text-zinc-400">
-                          {1 + (formData.backdropUrls?.length || 0)} image(s) available
-                        </div>
-                      </div>
-
-                      {/* PREVIEW CARD 3: 9:16 STRETCH FEED TITLE POSTER (WITH TITLE ARTWORK) */}
-                      <div className="p-3 rounded-xl bg-purple-950/20 border border-purple-800/40 flex flex-col justify-between">
-                        <div>
-                          <div className="flex items-center justify-between mb-2">
-                            <span className="text-[11px] font-bold text-purple-200">9:16 Stretch Feed Poster</span>
-                            <span className="text-[10px] font-mono px-1.5 py-0.2 rounded bg-purple-900/60 text-purple-300">Stretch</span>
-                          </div>
-                          <div className="relative w-full aspect-[9/16] max-h-60 rounded-lg overflow-hidden bg-black border border-purple-500/30 shadow-md mx-auto">
-                            {(formData.poster9x16Url || formData.posterLandscapeUrl) ? (
-                              <img
-                                src={formData.poster9x16Url || formData.posterLandscapeUrl}
-                                alt="9:16 Stretch Feed Preview"
-                                className="w-full h-full object-cover"
-                              />
-                            ) : (
-                              <div className="w-full h-full flex items-center justify-center text-zinc-600 text-[10px] text-center p-2">
-                                No 9:16 Poster URL
-                              </div>
-                            )}
-                            <div className="absolute top-1.5 left-1.5 px-1.5 py-0.5 rounded bg-purple-900/90 text-purple-200 text-[8px] font-bold uppercase tracking-wider">
-                              Title Artwork
-                            </div>
-                            <div className="absolute inset-x-0 bottom-0 p-2 bg-gradient-to-t from-black/90 to-transparent">
-                              <span className="text-[10px] font-bold text-white line-clamp-1">{formData.title}</span>
-                            </div>
-                          </div>
-                        </div>
-                        <div className="mt-2 text-[10px] text-purple-300/80">
-                          Used in carousels · {1 + (formData.poster9x16Urls?.length || 0)} image(s)
-                        </div>
-                      </div>
-
-                      {/* PREVIEW CARD 4: 9:16 VERTICAL CLEAN BACKDROP (WITHOUT TITLE ARTWORK) */}
-                      <div className="p-3 rounded-xl bg-blue-950/20 border border-blue-800/40 flex flex-col justify-between">
-                        <div>
-                          <div className="flex items-center justify-between mb-2">
-                            <span className="text-[11px] font-bold text-blue-200">9:16 Clean Backdrop</span>
-                            <span className="text-[10px] font-mono px-1.5 py-0.2 rounded bg-blue-900/60 text-blue-300">Clean Hero</span>
-                          </div>
-                          <div className="relative w-full aspect-[9/16] max-h-60 rounded-lg overflow-hidden bg-black border border-blue-500/30 shadow-md mx-auto">
-                            {(formData.verticalBackdropUrl || formData.backdropUrl) ? (
-                              <img
-                                src={formData.verticalBackdropUrl || formData.backdropUrl}
-                                alt="9:16 Clean Backdrop Preview"
-                                className="w-full h-full object-cover"
-                              />
-                            ) : (
-                              <div className="w-full h-full flex items-center justify-center text-zinc-600 text-[10px] text-center p-2">
-                                No 9:16 Backdrop URL
-                              </div>
-                            )}
-                            <div className="absolute top-1.5 left-1.5 px-1.5 py-0.5 rounded bg-blue-900/90 text-blue-200 text-[8px] font-bold uppercase tracking-wider">
-                              Clean Backdrop
-                            </div>
-                            <div className="absolute inset-x-0 bottom-0 p-1.5 bg-blue-950/80 text-[8.5px] text-blue-200 text-center border-t border-blue-800/40">
-                              No title typography
-                            </div>
-                          </div>
-                        </div>
-                        <div className="mt-2 text-[10px] text-blue-300/80">
-                          Mobile hero · {1 + (formData.verticalBackdropUrls?.length || 0)} image(s)
-                        </div>
-                      </div>
-                    </div>
-                  </div>
+                  {/* MODULAR PER-SURFACE ARTWORK & INDIVIDUAL AMBIANCE MANAGER */}
+                  <AdminArtworkManager
+                    formData={formData}
+                    setFormData={(updated) => setFormData(updated)}
+                  />
 
                   {/* Recommendation & More Info Ambient Glow Accent (100% Original Backdrop, no darkness overlay) */}
                   <div className="p-4 rounded-xl bg-zinc-900 border border-zinc-800 space-y-3">
@@ -6598,7 +6849,7 @@ export const AdminDashboardPage: React.FC<AdminDashboardPageProps> = ({
                         key={pIdx}
                         className="p-3.5 rounded-xl bg-zinc-850 border border-zinc-700/80 space-y-3"
                       >
-                        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
                           <div>
                             <label className="block text-[11px] text-zinc-400 font-semibold mb-1">
                               Text Before Image
@@ -6620,17 +6871,54 @@ export const AdminDashboardPage: React.FC<AdminDashboardPageProps> = ({
                             <label className="block text-[11px] text-zinc-400 font-semibold mb-1">
                               Source Image Link (Icon/Logo)
                             </label>
-                            <input
-                              type="text"
-                              value={prov.logoUrl || ''}
-                              onChange={(e) => {
-                                const updated = [...formData.whereToWatch];
-                                updated[pIdx].logoUrl = e.target.value;
-                                setFormData({ ...formData, whereToWatch: updated });
-                              }}
-                              className="w-full bg-zinc-900 border border-zinc-700 rounded px-2.5 py-1.5 text-xs text-white font-mono"
-                              placeholder="https://.../logo.png"
-                            />
+                            <div className="flex items-center gap-2">
+                              <input
+                                type="text"
+                                value={prov.logoUrl || ''}
+                                onChange={(e) => {
+                                  const updated = [...formData.whereToWatch];
+                                  updated[pIdx].logoUrl = e.target.value;
+                                  setFormData({ ...formData, whereToWatch: updated });
+                                }}
+                                className="w-full bg-zinc-900 border border-zinc-700 rounded px-2.5 py-1.5 text-xs text-white font-mono"
+                                placeholder="https://.../logo.png"
+                              />
+                              {prov.logoUrl && (
+                                <img
+                                  src={prov.logoUrl}
+                                  alt="Logo preview"
+                                  referrerPolicy="no-referrer"
+                                  className="w-7 h-7 rounded object-contain bg-black/40 border border-zinc-700 shrink-0"
+                                />
+                              )}
+                            </div>
+                          </div>
+
+                          <div>
+                            <label className="block text-[11px] text-zinc-400 font-semibold mb-1">
+                              Square Logo (Full Page Layout)
+                            </label>
+                            <div className="flex items-center gap-2">
+                              <input
+                                type="text"
+                                value={prov.squareLogoUrl || ''}
+                                onChange={(e) => {
+                                  const updated = [...formData.whereToWatch];
+                                  updated[pIdx].squareLogoUrl = e.target.value;
+                                  setFormData({ ...formData, whereToWatch: updated });
+                                }}
+                                className="w-full bg-zinc-900 border border-zinc-700 rounded px-2.5 py-1.5 text-xs text-white font-mono"
+                                placeholder="https://.../square-logo.png"
+                              />
+                              {(prov.squareLogoUrl || prov.logoUrl) && (
+                                <img
+                                  src={prov.squareLogoUrl || prov.logoUrl}
+                                  alt="Square logo preview"
+                                  referrerPolicy="no-referrer"
+                                  className="w-7 h-7 rounded-md object-cover bg-black/40 border border-zinc-700 shrink-0"
+                                />
+                              )}
+                            </div>
                           </div>
 
                           <div>
@@ -7311,6 +7599,11 @@ export const AdminDashboardPage: React.FC<AdminDashboardPageProps> = ({
                     </div>
                   </div>
                 </div>
+              )}
+
+              {/* TAB 6: LIVE ARTWORK & CARD PREVIEW */}
+              {activeFormTab === 'live_preview' && (
+                <AdminLivePreviewEngine formData={formData} />
               )}
             </div>
 

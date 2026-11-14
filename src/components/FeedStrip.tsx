@@ -1,10 +1,11 @@
 import React, { useRef, useState, useEffect, useCallback, useMemo } from 'react';
 import { Show, FeedConfig } from '../types';
 import { ShowCard, triggerGlobalScroll, getGlobalMousePos } from './ShowCard';
-import { ChevronLeft, ChevronRight, Volume2, VolumeX } from 'lucide-react';
+import { ChevronLeft, ChevronRight, Volume2, VolumeX, Play, Plus, Check } from 'lucide-react';
 import { ShowTitleLogo } from './ShowTitleLogo';
 import { attachHlsVideo } from '../utils/hlsHelper';
 import { WatchProgressItem } from '../utils/watchProgress';
+import { MediaImage } from './MediaImage';
 
 interface FeedStripProps {
   feed: FeedConfig;
@@ -27,6 +28,8 @@ interface FeedStripProps {
   onLongPressShow?: (show: Show) => void;
   enableStretchableCards?: boolean;
   showTop10Badges?: boolean;
+  modernTop10RankList?: boolean;
+  top10RankStyle?: 'classic' | 'modern' | 'inside_card';
 }
 
 // Global Active Feed Strip tracking:
@@ -73,11 +76,22 @@ export const FeedStrip: React.FC<FeedStripProps> = ({
   isTablet = false,
   onLongPressShow,
   enableStretchableCards = false,
-  showTop10Badges = true
+  showTop10Badges = true,
+  modernTop10RankList = false,
+  top10RankStyle
 }) => {
+  const effectiveTop10Style: 'classic' | 'modern' | 'inside_card' =
+    top10RankStyle || (modernTop10RankList === false ? 'classic' : 'modern');
   const isContinueWatchingFeed =
     feed.id.includes('continue-watching') ||
     feed.title.toLowerCase().includes('continue watching');
+
+  const isWatchlistFeed =
+    feed.id === 'watchlist' ||
+    feed.id.includes('watchlist') ||
+    feed.categoryKey === 'watchlist' ||
+    feed.title.toLowerCase().includes('my list') ||
+    feed.title.toLowerCase().includes('watchlist');
   
   // Only feeds explicitly marked by admin as stretchable (feed.isStretchableFeed) stretch on desktop.
   // Normal desktop feeds stay landscape 16:9 with popout preview.
@@ -90,9 +104,12 @@ export const FeedStrip: React.FC<FeedStripProps> = ({
 
   // In tablet view or mobile view, the titles in the special feed are ALWAYS in landscape 16:9 as in desktop view.
   // In mobile and tablet layout, stretch feed uses aspect ratio 9:16.
+  // In mobile layout, My List feed uses 16:9 matching continue watching.
   // Standard feeds on mobile use 2:3.
   // Normal desktop and tablet feeds use landscape 16:9.
   const cardAspectRatio = isContinueWatchingFeed
+    ? '16:9'
+    : (isMobile && isWatchlistFeed)
     ? '16:9'
     : feed.isSpecialFeed
     ? '16:9'
@@ -116,16 +133,21 @@ export const FeedStrip: React.FC<FeedStripProps> = ({
   // Dynamically measures the actual card thumbnail center Y relative to the parent container,
   // fixing any vertical displacement caused by container padding across all card aspect ratios.
   const [navButtonTop, setNavButtonTop] = useState<number | null>(null);
+  const [navButtonHeight, setNavButtonHeight] = useState<number | null>(null);
 
   const updateNavPosition = useCallback(() => {
     if (!scrollContainerRef.current) return;
-    const firstCard = scrollContainerRef.current.querySelector('[data-show-card="true"]') as HTMLElement | null;
+    const thumbEl = (scrollContainerRef.current.querySelector('[data-card-thumb="true"]') ||
+      scrollContainerRef.current.querySelector('[data-top10-card="true"]') ||
+      scrollContainerRef.current.querySelector('[data-show-card="true"]')) as HTMLElement | null;
     const parentEl = scrollContainerRef.current.parentElement;
-    if (firstCard && parentEl) {
+    if (thumbEl && parentEl) {
       const parentRect = parentEl.getBoundingClientRect();
-      const cardRect = firstCard.getBoundingClientRect();
-      const cardCenterY = (cardRect.top - parentRect.top) + (cardRect.height / 2);
-      setNavButtonTop(Math.round(cardCenterY));
+      const thumbRect = thumbEl.getBoundingClientRect();
+      const thumbTop = Math.round(thumbRect.top - parentRect.top);
+      const thumbHeight = Math.round(thumbRect.height);
+      setNavButtonTop(thumbTop);
+      setNavButtonHeight(thumbHeight);
     }
   }, []);
 
@@ -135,6 +157,7 @@ export const FeedStrip: React.FC<FeedStripProps> = ({
     if (!sc) return;
     const ro = new ResizeObserver(() => {
       updateNavPosition();
+      updateScrollButtons();
     });
     ro.observe(sc);
     window.addEventListener('resize', updateNavPosition, { passive: true });
@@ -142,7 +165,7 @@ export const FeedStrip: React.FC<FeedStripProps> = ({
       ro.disconnect();
       window.removeEventListener('resize', updateNavPosition);
     };
-  }, [updateNavPosition]);
+  }, [updateNavPosition, feed.isSpecialFeed]);
 
   // Active cursor tracking: STRICTLY ONLY 1 row active across entire page at a time
   // Left/right navigation badges only appear when cursor/pointer is strictly on the rows of titles (not above or below)
@@ -356,7 +379,11 @@ export const FeedStrip: React.FC<FeedStripProps> = ({
 
   useEffect(() => {
     updateScrollButtons();
-    const frameId = requestAnimationFrame(updateScrollButtons);
+    updateNavPosition();
+    const frameId = requestAnimationFrame(() => {
+      updateScrollButtons();
+      updateNavPosition();
+    });
     const el = scrollContainerRef.current;
     if (!el) return () => cancelAnimationFrame(frameId);
 
@@ -829,6 +856,41 @@ export const FeedStrip: React.FC<FeedStripProps> = ({
     }
   };
 
+  // Mobile special feed: strictly 1 card scroll per swipe
+  const specialFeedTouchStartXRef = useRef<number>(0);
+  const specialFeedTouchStartYRef = useRef<number>(0);
+
+  const handleSpecialFeedTouchStart = (e: React.TouchEvent) => {
+    specialFeedTouchStartXRef.current = e.touches[0].clientX;
+    specialFeedTouchStartYRef.current = e.touches[0].clientY;
+  };
+
+  const handleSpecialFeedTouchEnd = (e: React.TouchEvent) => {
+    const deltaX = e.changedTouches[0].clientX - specialFeedTouchStartXRef.current;
+    const deltaY = e.changedTouches[0].clientY - specialFeedTouchStartYRef.current;
+    if (Math.abs(deltaX) > 35 && Math.abs(deltaX) > Math.abs(deltaY)) {
+      if (deltaX < 0) {
+        const nextVirtual = mobileVirtualIndex + 1;
+        const targetEl = mobileCardRefs.current[nextVirtual];
+        if (targetEl && mobileCarouselRef.current) {
+          targetEl.scrollIntoView({ behavior: 'smooth', inline: 'center', block: 'nearest' });
+          setMobileVirtualIndex(nextVirtual);
+          setIsPosterCountdownDone(false);
+          setPreviewProgressPercent(0);
+        }
+      } else {
+        const prevVirtual = Math.max(0, mobileVirtualIndex - 1);
+        const targetEl = mobileCardRefs.current[prevVirtual];
+        if (targetEl && mobileCarouselRef.current) {
+          targetEl.scrollIntoView({ behavior: 'smooth', inline: 'center', block: 'nearest' });
+          setMobileVirtualIndex(prevVirtual);
+          setIsPosterCountdownDone(false);
+          setPreviewProgressPercent(0);
+        }
+      }
+    }
+  };
+
   // If customShows was explicitly passed and is empty (e.g. cleared watchlist or cleared history), hide feed strip completely
   if (customShows !== undefined && customShows.length === 0) {
     return null;
@@ -842,8 +904,176 @@ export const FeedStrip: React.FC<FeedStripProps> = ({
   if (feed.isSpecialFeed) {
     if (!filteredShows || filteredShows.length === 0) return null;
     const bgPicture = feed.specialBgImageUrl || (filteredShows[0]?.backdropUrl || filteredShows[0]?.posterLandscapeUrl || 'https://images.unsplash.com/photo-1509248961158-e54f6934749c?auto=format&fit=crop&w=1920&q=80');
-    // Only apply darkness if configured by admin, do not add darkness ourselves
-    const darknessPercent = typeof feed.specialBgDarkness === 'number' ? feed.specialBgDarkness : 0;
+    const darknessPercent = typeof feed.specialBgDarkness === 'number' ? feed.specialBgDarkness : 45;
+
+    // Desktop & Tablet Layout:
+    // Left centered logo + tagline (+ optional action button) over backdrop controlled by admin darkness slider; Right horizontal strip of 2:3 vertical poster cards with classic left/right nav arrows
+    if (!isMobile) {
+      return (
+        <div
+          ref={feedStripRef}
+          data-feed-strip="true"
+          data-feed-id={feed.id}
+          className={`relative group/strip transition-all my-6 w-full min-h-[340px] lg:min-h-[385px] flex items-center overflow-visible bg-[#141414] ${
+            isAnyCardHovered || isAnyCardExpanded ? 'z-[100]' : 'z-0'
+          }`}
+        >
+          {/* Backdrop Picture & Admin-Controlled Darkness Overlay (No yellow glare, seamless top/bottom #141414 fade) */}
+          <div
+            className="absolute inset-0 pointer-events-none select-none overflow-hidden"
+            style={{
+              maskImage:
+                'linear-gradient(to bottom, transparent 0%, rgba(0,0,0,0.45) 14%, #000 28%, #000 72%, rgba(0,0,0,0.45) 86%, transparent 100%)',
+              WebkitMaskImage:
+                'linear-gradient(to bottom, transparent 0%, rgba(0,0,0,0.45) 14%, #000 28%, #000 72%, rgba(0,0,0,0.45) 86%, transparent 100%)'
+            }}
+          >
+            <MediaImage
+              src={bgPicture}
+              fallbackTitle=""
+              hideFallback={true}
+              aria-hidden="true"
+              className="w-full h-full object-cover object-center transition-all duration-300"
+            />
+            {darknessPercent > 0 && (
+              <div
+                className="absolute inset-0 bg-black pointer-events-none transition-opacity duration-300"
+                style={{ opacity: darknessPercent / 100 }}
+              />
+            )}
+          </div>
+
+          {/* Foreground Row: Left Logo & Tagline + Right 2:3 Poster Cards */}
+          <div className="relative z-10 w-full max-w-[1920px] mx-auto pl-6 md:pl-8 xl:pl-12 pr-0 py-7 lg:py-9 flex items-center gap-6 lg:gap-10">
+            {/* Left Section: Centered Logo + Tagline/Subtitle + Optional Action Button */}
+            <div
+              onClick={() => {
+                if (onExploreSpecialFeed) {
+                  onExploreSpecialFeed(feed, filteredShows);
+                } else if (filteredShows.length > 0) {
+                  onOpenDetails(filteredShows[0]);
+                }
+              }}
+              className="relative z-20 w-[32%] lg:w-[30%] shrink-0 px-4 lg:px-6 flex flex-col items-center justify-center text-center gap-3 cursor-pointer select-none"
+            >
+              {feed.specialLogoUrl ? (
+                <img
+                  src={feed.specialLogoUrl}
+                  alt={feed.title}
+                  referrerPolicy="no-referrer"
+                  className="max-h-20 lg:max-h-28 max-w-[260px] lg:max-w-[320px] w-auto object-contain mx-auto"
+                />
+              ) : (
+                <h3 className="text-3xl lg:text-4xl xl:text-5xl font-black text-white uppercase tracking-wide leading-[0.95] text-center max-w-[300px]">
+                  {feed.title}
+                </h3>
+              )}
+
+              {(feed.specialTagline || feed.subtitle) && (
+                <p className="text-xs sm:text-sm lg:text-[15px] text-zinc-200 font-medium leading-snug line-clamp-2 max-w-[300px]">
+                  {feed.specialTagline || feed.subtitle}
+                </p>
+              )}
+
+              {feed.specialShowActionButton && (
+                <button
+                  type="button"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    if (onExploreSpecialFeed) {
+                      onExploreSpecialFeed(feed, filteredShows);
+                    } else if (filteredShows.length > 0) {
+                      onOpenDetails(filteredShows[0]);
+                    }
+                  }}
+                  className="mt-1 px-5 py-2 rounded-full bg-white hover:bg-white/90 text-black font-bold text-xs tracking-tight shadow-lg cursor-pointer transition-transform active:scale-95"
+                >
+                  {feed.specialExploreText || 'Explore All'}
+                </button>
+              )}
+            </div>
+
+            {/* Right Section: Horizontal 2:3 Poster Cards Carousel with Classic Hover Navigation Arrows */}
+            <div
+              onMouseEnter={() => {
+                setGlobalActiveFeedId(feed.id);
+                updateNavPosition();
+                updateScrollButtons();
+              }}
+              className="relative flex-1 min-w-0 group/specialdesktop"
+            >
+              {!isModalOpen && canScrollLeft && (
+                <button
+                  type="button"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    handleScroll('left');
+                  }}
+                  aria-label="Scroll left"
+                  style={{
+                    top: navButtonTop !== null ? `${navButtonTop}px` : '8px',
+                    height: navButtonHeight !== null ? `${navButtonHeight}px` : 'calc(100% - 16px)'
+                  }}
+                  className="group/nav absolute left-0 z-40 w-11 sm:w-12 md:w-14 rounded-r-xl bg-black/35 text-white flex items-center justify-center cursor-pointer shadow-2xl border-0 select-none opacity-0 group-hover/strip:opacity-100 transition-opacity duration-200"
+                >
+                  <ChevronLeft className="w-8 h-8 stroke-[2.5] group-active/nav:scale-75 transition-transform duration-100" />
+                </button>
+              )}
+
+              {!isModalOpen && canScrollRight && (
+                <button
+                  type="button"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    handleScroll('right');
+                  }}
+                  aria-label="Scroll right"
+                  style={{
+                    top: navButtonTop !== null ? `${navButtonTop}px` : '8px',
+                    height: navButtonHeight !== null ? `${navButtonHeight}px` : 'calc(100% - 16px)'
+                  }}
+                  className="group/nav absolute right-0 z-40 w-11 sm:w-12 md:w-14 rounded-l-xl bg-black/35 text-white flex items-center justify-center cursor-pointer shadow-2xl border-0 select-none opacity-0 group-hover/strip:opacity-100 transition-opacity duration-200"
+                >
+                  <ChevronRight className="w-8 h-8 stroke-[2.5] group-active/nav:scale-75 transition-transform duration-100" />
+                </button>
+              )}
+
+              <div
+                ref={scrollContainerRef}
+                className="flex items-center gap-3.5 lg:gap-4 overflow-x-auto no-scrollbar py-2 pr-6 md:pr-10 scroll-smooth"
+              >
+                {filteredShows.map((show) => {
+                  const poster2x3 =
+                    show.desktopTop10Image2x3Url ||
+                    show.posterVerticalUrl ||
+                    show.poster9x16Url ||
+                    show.posterUrl ||
+                    show.posterLandscapeUrl;
+
+                  return (
+                    <div
+                      key={`${feed.id}-2x3-${show.id}`}
+                      data-show-card="true"
+                      data-card-thumb="true"
+                      onClick={() => onOpenDetails(show)}
+                      className="relative w-[calc((100%-36px)/3.32)] min-w-[165px] aspect-[2/3] shrink-0 rounded-xl overflow-hidden bg-[#14151b] cursor-pointer shadow-2xl transition-transform duration-200 hover:scale-[1.03] group/spcard"
+                    >
+                      <MediaImage
+                        src={poster2x3}
+                        fallbackTitle={show.title}
+                        fallbackClassName="w-full h-full bg-[#14151b] flex items-center justify-center p-3 text-center select-none"
+                        className="w-full h-full object-cover"
+                      />
+                      <div className="absolute inset-0 bg-gradient-to-t from-black/40 via-transparent to-transparent opacity-0 group-hover/spcard:opacity-100 transition-opacity duration-200 pointer-events-none" />
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          </div>
+        </div>
+      );
+    }
 
     return (
       <div
@@ -864,9 +1094,10 @@ export const FeedStrip: React.FC<FeedStripProps> = ({
               'linear-gradient(to bottom, transparent 0px, transparent 35px, rgba(0,0,0,0.3) 65px, #000 105px, #000 calc(100% - 105px), rgba(0,0,0,0.3) calc(100% - 65px), transparent calc(100% - 35px), transparent 100%)'
           }}
         >
-          <img
+          <MediaImage
             src={bgPicture}
-            alt=""
+            fallbackTitle=""
+            hideFallback={true}
             aria-hidden="true"
             className="w-full h-full object-cover object-center"
           />
@@ -956,12 +1187,12 @@ export const FeedStrip: React.FC<FeedStripProps> = ({
                     }}
                     aria-label="Scroll left"
                     style={{
-                      top: navButtonTop !== null ? `${navButtonTop}px` : '50%',
-                      transform: 'translateY(-50%)'
+                      top: navButtonTop !== null ? `${navButtonTop}px` : undefined,
+                      height: navButtonHeight !== null ? `${navButtonHeight}px` : undefined
                     }}
-                    className="absolute left-0 z-40 w-6 sm:w-6.5 md:w-7 h-16 sm:h-20 rounded-r-lg bg-black/75 hover:bg-black/95 text-white/90 hover:text-white active:bg-black/90 flex items-center justify-center cursor-pointer shadow-none border-0 transition-all"
+                    className="group/nav absolute left-0 z-40 w-11 sm:w-12 md:w-14 rounded-r-xl rounded-l-none bg-black/35 text-white flex items-center justify-center cursor-pointer shadow-2xl border-0 select-none"
                   >
-                    <ChevronLeft className="w-4 h-4 sm:w-4.5 sm:h-4.5 stroke-[2.5]" />
+                    <ChevronLeft className="w-8 h-8 stroke-[2.5] group-active/nav:scale-75 transition-transform duration-100" />
                   </button>
                 )}
 
@@ -973,12 +1204,12 @@ export const FeedStrip: React.FC<FeedStripProps> = ({
                     }}
                     aria-label="Scroll right"
                     style={{
-                      top: navButtonTop !== null ? `${navButtonTop}px` : '50%',
-                      transform: 'translateY(-50%)'
+                      top: navButtonTop !== null ? `${navButtonTop}px` : undefined,
+                      height: navButtonHeight !== null ? `${navButtonHeight}px` : undefined
                     }}
-                    className="absolute right-0 z-40 w-5 sm:w-5.5 md:w-6 h-16 sm:h-20 rounded-l-lg bg-black/50 hover:bg-black/80 text-white/90 hover:text-white active:bg-black/60 flex items-center justify-center cursor-pointer shadow-md border-0 transition-all"
+                    className="group/nav absolute right-0 z-40 w-11 sm:w-12 md:w-14 rounded-l-xl rounded-r-none bg-black/35 text-white flex items-center justify-center cursor-pointer shadow-2xl border-0 select-none"
                   >
-                    <ChevronRight className="w-4 h-4 sm:w-4.5 sm:h-4.5 stroke-[2.5]" />
+                    <ChevronRight className="w-8 h-8 stroke-[2.5] group-active/nav:scale-75 transition-transform duration-100" />
                   </button>
                 )}
               </>
@@ -990,7 +1221,9 @@ export const FeedStrip: React.FC<FeedStripProps> = ({
                 <div
                   ref={mobileCarouselRef}
                   onScroll={handleMobileCarouselScroll}
-                  className="flex items-center overflow-x-auto snap-x snap-mandatory scroll-smooth no-scrollbar pl-2 pr-6 gap-2.5 py-1 select-none w-full"
+                  onTouchStart={handleSpecialFeedTouchStart}
+                  onTouchEnd={handleSpecialFeedTouchEnd}
+                  className="flex items-center overflow-x-auto snap-x snap-mandatory scroll-smooth no-scrollbar pl-2 pr-6 gap-2.5 py-1 select-none w-full [scroll-snap-stop:always]"
                 >
                   {(isMobileSpecialFeedCyclic
                     ? [0, 1, 2].flatMap((setNum) =>
@@ -1018,7 +1251,7 @@ export const FeedStrip: React.FC<FeedStripProps> = ({
                           mobileCardRefs.current[item.virtualIdx] = el;
                         }}
                         onClick={() => onOpenDetails(show)}
-                        className={`w-[80vw] max-w-[340px] shrink-0 snap-center aspect-[16/9] rounded-xl overflow-hidden relative shadow-none bg-[#16171d] border-0 transition-transform duration-300 cursor-pointer ${
+                        className={`w-[80vw] max-w-[340px] shrink-0 snap-center snap-always aspect-[16/9] rounded-xl overflow-hidden relative shadow-none bg-[#16171d] border-0 transition-transform duration-300 cursor-pointer ${
                           isActive ? 'scale-100' : 'scale-95 opacity-80'
                         }`}
                       >
@@ -1026,9 +1259,11 @@ export const FeedStrip: React.FC<FeedStripProps> = ({
                         <div className="absolute inset-0 rounded-[inherit] pointer-events-none z-30 border border-zinc-400/[0.09]" />
 
                         {/* Base Artwork Image */}
-                        <img
+                        <MediaImage
                           src={backdrop}
-                          alt={show.title}
+                          fallbackTitle={show.title}
+                          hideFallback={isActive && isMobileVideoPlaying}
+                          fallbackClassName="absolute inset-0 w-full h-full bg-[#16171d] flex items-center justify-center p-4 text-center select-none"
                           className="absolute inset-0 w-full h-full object-cover"
                         />
 
@@ -1176,6 +1411,263 @@ export const FeedStrip: React.FC<FeedStripProps> = ({
     );
   }
 
+  // If Top 10 style is 'modern' (side outlined number) or 'inside_card' (solid number top-left inside 2:3 card), render 2:3 portrait rank row
+  if (
+    (effectiveTop10Style === 'modern' || effectiveTop10Style === 'inside_card') &&
+    isTop10Feed &&
+    filteredShows &&
+    filteredShows.length > 0
+  ) {
+    const isInsideCardStyle = effectiveTop10Style === 'inside_card';
+
+    return (
+      <div
+        ref={feedStripRef}
+        data-feed-strip="true"
+        data-feed-id={feed.id}
+        className="relative group/modernstrip transition-all my-5 sm:my-7 select-none overflow-visible"
+      >
+        {/* Header Container */}
+        <div className="relative z-30 w-full pl-2.5 sm:pl-4 md:pl-8 xl:pl-12 pr-2.5 sm:pr-4 md:pr-8 xl:pr-12 mb-3">
+          <h3 className="text-base sm:text-lg md:text-xl font-bold text-white tracking-tight">
+            {feed.title}
+          </h3>
+        </div>
+
+        {/* Row Container */}
+        <div
+          onMouseEnter={() => setGlobalActiveFeedId(feed.id)}
+          className="relative w-full"
+        >
+          {/* Desktop Left/Right Navigation Chevrons: appear on row hover, height EXACTLY matches title card */}
+          {!isModalOpen && !isMobile && !isTablet && (
+            <>
+              {canScrollLeft && (
+                <button
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    handleScroll('left');
+                  }}
+                  aria-label="Scroll left"
+                  style={{
+                    top: navButtonTop !== null ? `${navButtonTop}px` : undefined,
+                    height: navButtonHeight !== null ? `${navButtonHeight}px` : undefined
+                  }}
+                  className="group/nav absolute left-0 z-40 w-11 sm:w-12 md:w-14 rounded-r-xl rounded-l-none bg-black/35 text-white flex items-center justify-center cursor-pointer border-0 select-none opacity-0 group-hover/modernstrip:opacity-100 transition-opacity duration-200"
+                >
+                  <ChevronLeft className="w-8 h-8 stroke-[2.5] group-active/nav:scale-75 transition-transform duration-100" />
+                </button>
+              )}
+
+              {canScrollRight && (
+                <button
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    handleScroll('right');
+                  }}
+                  aria-label="Scroll right"
+                  style={{
+                    top: navButtonTop !== null ? `${navButtonTop}px` : undefined,
+                    height: navButtonHeight !== null ? `${navButtonHeight}px` : undefined
+                  }}
+                  className="group/nav absolute right-0 z-40 w-11 sm:w-12 md:w-14 rounded-l-xl rounded-r-none bg-black/35 text-white flex items-center justify-center cursor-pointer border-0 select-none opacity-0 group-hover/modernstrip:opacity-100 transition-opacity duration-200"
+                >
+                  <ChevronRight className="w-8 h-8 stroke-[2.5] group-active/nav:scale-75 transition-transform duration-100" />
+                </button>
+              )}
+            </>
+          )}
+
+          {/* Cards Track */}
+          <div
+            ref={scrollContainerRef}
+            className={`flex items-center ${
+              isInsideCardStyle ? 'gap-2.5 sm:gap-3.5 md:gap-4' : 'gap-3 sm:gap-4 md:gap-5 lg:gap-6'
+            } overflow-x-auto no-scrollbar pl-2.5 sm:pl-4 md:pl-8 xl:pl-12 pr-4 sm:pr-6 md:pr-12 pt-10 -mt-10 pb-16 -mb-16 overflow-y-visible`}
+          >
+            {filteredShows.map((show, index) => {
+              const rankNum = index + 1;
+              const rankStr = String(rankNum);
+              const posterArtwork =
+                show.desktopTop10Image2x3Url ||
+                show.posterVerticalUrl ||
+                show.poster9x16Url ||
+                show.posterUrl ||
+                show.posterLandscapeUrl;
+              const ambientColor = show.desktopTop10Image2x3Ambiance || '#b45309';
+              const isInWatchlist = watchlist.includes(show.id);
+
+              return (
+                <div
+                  key={`modern-top10-${feed.id}-${show.id}`}
+                  data-show-card="true"
+                  className={`relative shrink-0 flex items-center select-none group/top10item ${
+                    isInsideCardStyle
+                      ? 'w-[calc((100vw-38px)/2.55)] sm:w-[calc((100vw-56px)/3.5)] md:w-[calc((100vw-128px)/6.22)] lg:w-[calc((100vw-128px)/6.22)] xl:w-[calc((100vw-144px)/6.22)]'
+                      : 'w-[calc((100vw-44px)*0.44)] sm:w-[calc((100vw-56px)*0.36)] md:w-[calc((100vw-120px)/4.5)] xl:w-[calc((100vw-160px)/4.5)]'
+                  }`}
+                >
+                  {/* Outlined Rank Number on Left (only in 'modern' mode) */}
+                  {!isInsideCardStyle && (
+                    <div className="relative z-0 pointer-events-none select-none shrink-0 flex items-center justify-end leading-none w-10 sm:w-12 md:w-15 lg:w-18 overflow-visible">
+                      {rankNum === 10 ? (
+                        <svg
+                          viewBox="0 0 135 140"
+                          className="w-[74px] sm:w-[90px] md:w-[112px] lg:w-[132px] h-[95px] sm:h-[115px] md:h-[145px] lg:h-[168px] overflow-visible -mr-1.5 sm:-mr-2.5"
+                          aria-label="10"
+                        >
+                          <text
+                            x="44"
+                            y="124"
+                            fontSize="140"
+                            fontWeight="900"
+                            fontFamily="Inter, system-ui, -apple-system, sans-serif"
+                            fill="#141414"
+                            stroke="rgba(255, 255, 255, 0.42)"
+                            strokeWidth="3.5"
+                            paintOrder="stroke fill"
+                          >
+                            0
+                          </text>
+                          <text
+                            x="2"
+                            y="124"
+                            fontSize="140"
+                            fontWeight="900"
+                            fontFamily="Inter, system-ui, -apple-system, sans-serif"
+                            fill="#141414"
+                            stroke="rgba(255, 255, 255, 0.42)"
+                            strokeWidth="3.5"
+                            paintOrder="stroke fill"
+                          >
+                            1
+                          </text>
+                        </svg>
+                      ) : (
+                        <span
+                          className="text-8xl sm:text-9xl md:text-[125px] lg:text-[145px] xl:text-[155px] font-black font-sans tracking-tighter"
+                          style={{
+                            WebkitTextStroke: '2px rgba(255, 255, 255, 0.42)',
+                            color: 'transparent',
+                            lineHeight: 0.85
+                          }}
+                        >
+                          {rankStr}
+                        </span>
+                      )}
+                    </div>
+                  )}
+
+                  {/* Poster Card */}
+                  <div
+                    data-top10-card="true"
+                    onClick={() => onOpenDetails(show)}
+                    className={`${
+                      isInsideCardStyle ? 'ml-0' : '-ml-2 sm:-ml-2.5 md:-ml-3 lg:-ml-3.5'
+                    } relative z-10 flex-1 aspect-[2/3] shrink-0 rounded-xl overflow-visible cursor-pointer transition-transform duration-300 ease-out group-hover/top10item:scale-[1.05]`}
+                  >
+                    {/* Glowing Ambiance Halo on Hover */}
+                    <div
+                      className="hidden md:block absolute -inset-y-8 -inset-x-6 rounded-3xl pointer-events-none -z-10 blur-2xl opacity-0 group-hover/top10item:opacity-100 transition-opacity duration-300"
+                      style={{
+                        background: `radial-gradient(circle at 50% 50%, ${ambientColor}88 0%, ${ambientColor}40 45%, ${ambientColor}10 70%, transparent 85%)`
+                      }}
+                    />
+
+                    {/* Card Inner Wrapper with rounded-xl corners (NO border) */}
+                    <div className="relative w-full h-full rounded-xl overflow-hidden bg-[#14151b] border-0 outline-none shadow-xl">
+                      {/* Vertical Poster Artwork */}
+                      <MediaImage
+                        src={posterArtwork}
+                        fallbackTitle={show.title}
+                        fallbackClassName="absolute inset-0 w-full h-full bg-[#14151b] flex items-center justify-center p-3 text-center select-none"
+                        className="absolute inset-0 w-full h-full object-cover"
+                      />
+
+                      {/* 3rd Style ('inside_card'): Solid vertical-gradient rank number top-left INSIDE card (hides on desktop hover) */}
+                      {isInsideCardStyle && (
+                        <div className="absolute top-2 left-3 z-20 pointer-events-none select-none transition-opacity duration-200 md:group-hover/top10item:opacity-0">
+                          <span
+                            className="text-3xl sm:text-4xl md:text-[42px] font-black leading-none tracking-tight inline-block"
+                            style={{
+                              backgroundImage:
+                                'linear-gradient(180deg, #ffffff 35%, #a1a1aa 100%)',
+                              WebkitBackgroundClip: 'text',
+                              color: 'transparent',
+                              filter: 'drop-shadow(0 2px 6px rgba(0, 0, 0, 0.72))'
+                            }}
+                          >
+                            {rankStr}
+                          </span>
+                        </div>
+                      )}
+
+                      {/* Bottom Dark Gradient Scrim */}
+                      <div className="absolute inset-x-0 bottom-0 h-32 bg-gradient-to-t from-black/95 via-black/50 to-transparent pointer-events-none z-10" />
+
+                      {/* PNG Logo at Bottom Center:
+                          Smoothly translates up on desktop hover */}
+                      <div className="absolute inset-x-2 bottom-3.5 z-20 flex flex-col items-center justify-end pointer-events-none transition-transform duration-300 ease-out md:group-hover/top10item:-translate-y-12">
+                        {show.titleLogoUrl ? (
+                          <img
+                            src={show.titleLogoUrl}
+                            alt={show.title}
+                            referrerPolicy="no-referrer"
+                            className="h-10 sm:h-12 md:h-12 w-auto max-h-14 max-w-[85%] object-contain drop-shadow-[0_2px_8px_rgba(0,0,0,0.85)]"
+                          />
+                        ) : (
+                          <span className="text-white font-extrabold text-xs sm:text-sm text-center tracking-tight drop-shadow-md px-1">
+                            {show.title}
+                          </span>
+                        )}
+                      </div>
+
+                      {/* Action Buttons on Desktop Hover (Image 4 Card 2):
+                          - White Pill Button: ▶ Play
+                          - Circular Button: (+) or (✓) */}
+                      <div className="hidden md:flex absolute inset-x-2 bottom-3 z-30 items-center justify-center gap-2 opacity-0 group-hover/top10item:opacity-100 transition-opacity duration-200 pointer-events-auto">
+                        {/* Play Pill Button */}
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            onPlayShow(show);
+                          }}
+                          className="px-4 py-1.5 rounded-full bg-white hover:bg-white/90 text-black font-bold text-xs flex items-center gap-1.5 shadow-lg active:scale-95 transition-transform cursor-pointer"
+                          aria-label={`Play ${show.title}`}
+                        >
+                          <svg className="w-3.5 h-3.5 fill-current shrink-0" viewBox="0 0 24 24">
+                            <path d="M7.05 3.6A1.5 1.5 0 0 0 4.75 4.9v14.2a1.5 1.5 0 0 0 2.3 1.3l12.1-7.1a1.5 1.5 0 0 0 0-2.6L7.05 3.6z" />
+                          </svg>
+                          <span>Play</span>
+                        </button>
+
+                        {/* Add to List Circular Button */}
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            onToggleWatchlist(show.id);
+                          }}
+                          className="w-8 h-8 rounded-full bg-black/60 hover:bg-black/80 text-white border border-white/60 flex items-center justify-center cursor-pointer shadow-lg active:scale-90 transition-transform"
+                          aria-label={isInWatchlist ? `Remove from list` : `Add to list`}
+                        >
+                          {isInWatchlist ? (
+                            <Check className="w-3.5 h-3.5 text-white" />
+                          ) : (
+                            <Plus className="w-3.5 h-3.5 text-white" />
+                          )}
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   if (!filteredShows || filteredShows.length === 0) return null;
 
   return (
@@ -1188,7 +1680,7 @@ export const FeedStrip: React.FC<FeedStripProps> = ({
       }`}
     >
       {/* Header Container */}
-      <div className="relative z-30 w-full pl-2 sm:pl-4 md:pl-8 xl:pl-12 pr-4 md:pr-8 xl:pr-12 mb-3 flex items-end justify-between">
+      <div className="relative z-30 w-full pl-2.5 sm:pl-4 md:pl-8 xl:pl-12 pr-2.5 sm:pr-4 md:pr-8 xl:pr-12 mb-3 flex items-end justify-between">
         <div>
           <h3 className="text-base sm:text-lg md:text-xl font-bold text-white tracking-tight">
             {feed.title}
@@ -1212,12 +1704,12 @@ export const FeedStrip: React.FC<FeedStripProps> = ({
                 }}
                 aria-label="Scroll left"
                 style={{
-                  top: navButtonTop !== null ? `${navButtonTop}px` : 'calc(5rem + 5rem)',
-                  transform: 'translateY(-50%)'
+                  top: navButtonTop !== null ? `${navButtonTop}px` : '0px',
+                  height: navButtonHeight !== null ? `${navButtonHeight}px` : '100%'
                 }}
-                className="absolute left-0 z-40 w-5 sm:w-5.5 md:w-6 h-20 sm:h-24 rounded-r-lg bg-black/40 hover:bg-black/75 text-white/90 hover:text-white active:bg-black/60 flex items-center justify-center cursor-pointer shadow-xl border-0 transition-all"
+                className="group/nav absolute left-0 z-40 w-11 sm:w-12 md:w-14 rounded-r-xl rounded-l-none bg-black/35 text-white flex items-center justify-center cursor-pointer border-0 select-none"
               >
-                <ChevronLeft className="w-4 h-4 sm:w-4.5 sm:h-4.5 stroke-[2.5]" />
+                <ChevronLeft className="w-8 h-8 stroke-[2.5] group-active/nav:scale-75 transition-transform duration-100" />
               </button>
             )}
 
@@ -1229,12 +1721,12 @@ export const FeedStrip: React.FC<FeedStripProps> = ({
                 }}
                 aria-label="Scroll right"
                 style={{
-                  top: navButtonTop !== null ? `${navButtonTop}px` : 'calc(5rem + 5rem)',
-                  transform: 'translateY(-50%)'
+                  top: navButtonTop !== null ? `${navButtonTop}px` : '0px',
+                  height: navButtonHeight !== null ? `${navButtonHeight}px` : '100%'
                 }}
-                className="absolute right-0 z-40 w-5 sm:w-5.5 md:w-6 h-20 sm:h-24 rounded-l-lg bg-black/40 hover:bg-black/75 text-white/90 hover:text-white active:bg-black/60 flex items-center justify-center cursor-pointer shadow-xl border-0 transition-all"
+                className="group/nav absolute right-0 z-40 w-11 sm:w-12 md:w-14 rounded-l-xl rounded-r-none bg-black/35 text-white flex items-center justify-center cursor-pointer border-0 select-none"
               >
-                <ChevronRight className="w-4 h-4 sm:w-4.5 sm:h-4.5 stroke-[2.5]" />
+                <ChevronRight className="w-8 h-8 stroke-[2.5] group-active/nav:scale-75 transition-transform duration-100" />
               </button>
             )}
           </>
@@ -1244,7 +1736,7 @@ export const FeedStrip: React.FC<FeedStripProps> = ({
           ref={scrollContainerRef}
           className={`flex items-center gap-2 sm:gap-2.5 md:gap-3 lg:gap-4 overflow-x-auto no-scrollbar ${
             isStretchableFeed ? 'pt-1 pb-1 md:pt-2 md:pb-6' : 'pt-1 pb-1 md:pt-24 md:-mt-24 md:pb-48 md:-mb-48'
-          } pl-2 sm:pl-4 md:pl-8 xl:pl-12 pr-4 md:pr-8 xl:pr-12`}
+          } pl-2.5 sm:pl-4 md:pl-8 xl:pl-12 pr-3.5 sm:pr-4 md:pr-8 xl:pr-12`}
         >
           {filteredShows.map((show, index) => (
             <ShowCard
@@ -1267,6 +1759,7 @@ export const FeedStrip: React.FC<FeedStripProps> = ({
               onPopoutViewClose={handlePopoutClose}
               aspectRatio={cardAspectRatio}
               isContinueWatching={isContinueWatchingFeed}
+              isWatchlistLandscape={Boolean(isMobile && isWatchlistFeed)}
               watchProgress={watchHistory?.[show.id]}
               disablePopout={disablePopout}
               isStretchable={isStretchableFeed}

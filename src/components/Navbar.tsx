@@ -16,7 +16,8 @@ import {
   Plus,
   ChevronDown,
   Trash2,
-  RotateCcw
+  RotateCcw,
+  Menu
 } from 'lucide-react';
 
 interface NavbarProps {
@@ -29,7 +30,7 @@ interface NavbarProps {
   onRequestContent?: () => void;
   isLoggedIn?: boolean;
   onToggleAuth?: () => void;
-  onSelectCategory: (category: 'all' | 'series' | 'movies' | 'categories' | 'watchlist') => void;
+  onSelectCategory: (category: 'all' | 'series' | 'movies' | 'categories' | 'watchlist' | 'trends') => void;
   activeFilter: string;
   searchQuery: string;
   onSearchChange: (query: string) => void;
@@ -45,6 +46,9 @@ interface NavbarProps {
   onClearWatchHistory?: () => void;
   isSpecialFeedPage?: boolean;
   isOffline?: boolean;
+  hideMobileLogoBar?: boolean;
+  isSharePage?: boolean;
+  onOpenHamburgerDrawer?: () => void;
 }
 
 export const Navbar: React.FC<NavbarProps> = ({
@@ -72,7 +76,10 @@ export const Navbar: React.FC<NavbarProps> = ({
   onClearWatchlist,
   onClearWatchHistory,
   isSpecialFeedPage = false,
-  isOffline = false
+  isOffline = false,
+  hideMobileLogoBar = false,
+  isSharePage = false,
+  onOpenHamburgerDrawer
 }) => {
   type ActiveMenu = 'none' | 'search' | 'notifications' | 'profile' | 'more';
   const [activeMenu, setActiveMenu] = useState<ActiveMenu>('none');
@@ -87,7 +94,7 @@ export const Navbar: React.FC<NavbarProps> = ({
     return () => window.removeEventListener('resize', handleResize);
   }, []);
 
-  // 5 standard page tabs
+  // Standard page tabs (Home, Series, Movies, Categories, My list)
   const ALL_PAGES = [
     { id: 'all' as const, label: 'Home' },
     { id: 'series' as const, label: 'Series' },
@@ -232,7 +239,7 @@ export const Navbar: React.FC<NavbarProps> = ({
       className="fixed left-0 right-0 z-50 border-none select-none transition-[top] duration-200"
     >
       {/* Background for Desktop & Mobile: subtle top gradient without harsh glare, smooth ramp to 100% opacity on scroll */}
-      <div className="absolute inset-0 pointer-events-none -z-10 overflow-hidden">
+      <div className={`absolute inset-0 pointer-events-none -z-10 overflow-hidden ${hideMobileLogoBar ? 'hidden md:block' : ''}`}>
         {/* Soft top gradient when at top (scrollY ~ 0) without high glare */}
         <div
           style={{
@@ -252,36 +259,70 @@ export const Navbar: React.FC<NavbarProps> = ({
       {/* ========================================================================= */}
       {/* MOBILE TOP NAVIGATION (Compact height, logo position strictly constant on scroll) */}
       {/* ========================================================================= */}
-      <div className="md:hidden relative w-full px-4 h-12 flex items-center justify-between">
-        {/* Top Bar: Brand Logo on left with NO shadow beneath */}
-        <button
-          onClick={() => {
-            onSearchChange('');
-            onSelectCategory('all');
-            setActiveMenu('none');
-          }}
-          className="flex items-center gap-1 cursor-pointer text-left shrink-0 max-w-[120px]"
-          aria-label="Dizi Home"
-        >
-          {useCustomLogo && customLogoUrl ? (
-            <img
-              src={customLogoUrl}
-              alt="Brand Logo"
-              referrerPolicy="no-referrer"
-              className="h-7 w-auto max-w-[110px] object-contain"
-            />
-          ) : (
-            <DiziLogo variant="red" size="md" className="max-w-[110px] h-7" />
-          )}
-        </button>
-      </div>
+      {!hideMobileLogoBar && (
+        <div className="md:hidden relative w-full px-4 h-12 flex items-center justify-between">
+          {/* Top Bar: Brand Logo on left with NO shadow beneath */}
+          <button
+            onClick={() => {
+              onSearchChange('');
+              onSelectCategory('all');
+              setActiveMenu('none');
+            }}
+            className="flex items-center gap-1 cursor-pointer text-left shrink-0 max-w-[120px]"
+            aria-label="Dizi Home"
+          >
+            {useCustomLogo && customLogoUrl ? (
+              <img
+                src={customLogoUrl}
+                alt="Brand Logo"
+                referrerPolicy="no-referrer"
+                className="h-7 w-auto max-w-[110px] object-contain"
+              />
+            ) : (
+              <DiziLogo variant="red" size="md" className="max-w-[110px] h-7" />
+            )}
+          </button>
+        </div>
+      )}
 
       {/* ========================================================================= */}
       {/* DESKTOP TOP NAVIGATION */}
       {/* ========================================================================= */}
       <div className="hidden md:flex w-full px-4 md:px-8 xl:px-12 py-3.5 items-center justify-between">
-        {/* Left: Brand Logo & Navigation */}
-        <div className="flex items-center gap-4 lg:gap-8">
+        {isSharePage ? (
+          <div className="flex items-center gap-4">
+            <button
+              onClick={() => onOpenHamburgerDrawer?.()}
+              className="p-1.5 -ml-1.5 text-white hover:text-white/80 active:scale-90 transition-transform cursor-pointer"
+              aria-label="Open menu"
+            >
+              <Menu className="w-6 h-6 text-white" />
+            </button>
+            <button
+              onClick={() => {
+                onSearchChange('');
+                onSelectCategory('all');
+                setActiveMenu('none');
+              }}
+              className="flex items-center gap-1 group cursor-pointer text-left shrink-0 max-w-[95px] sm:max-w-[110px] md:max-w-[125px]"
+              aria-label="Dizi Home"
+            >
+              {useCustomLogo && customLogoUrl ? (
+                <img
+                  src={customLogoUrl}
+                  alt="Brand Logo"
+                  referrerPolicy="no-referrer"
+                  className="h-6.5 sm:h-7.5 md:h-8.5 w-auto max-w-[92px] sm:max-w-[108px] md:max-w-[120px] object-contain"
+                />
+              ) : (
+                <DiziLogo variant="red" size="md" className="max-w-[92px] sm:max-w-[108px] md:max-w-[120px] h-7 sm:h-[32px] md:h-[35px]" />
+              )}
+            </button>
+          </div>
+        ) : (
+          <>
+            {/* Left: Brand Logo & Navigation */}
+            <div className="flex items-center gap-4 lg:gap-8">
           {/* Logo with actual Dizi brand logo */}
           {/* Brand Logo with constrained max-width */}
           <button
@@ -705,6 +746,8 @@ export const Navbar: React.FC<NavbarProps> = ({
             )}
           </div>
         </div>
+        </>
+      )}
       </div>
     </header>
   );

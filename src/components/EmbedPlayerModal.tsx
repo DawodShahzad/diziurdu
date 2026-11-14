@@ -44,17 +44,17 @@ export function parseTimeToSeconds(timeStr?: string): number | null {
 }
 
 export function extractDailymotionScriptSrc(raw?: string): string {
-  if (!raw) return 'https://geo.dailymotion.com/libs/player/x1o1xe.js';
+  if (!raw) return 'https://geo.dailymotion.com/libs/player/x8lr5.js';
   const match = raw.match(/src=["']([^"']+)["']/i);
   if (match) return match[1].trim();
   return raw.trim();
 }
 
 export function extractDailymotionPlayerId(scriptUrl?: string): string {
-  if (!scriptUrl) return 'x1o1xe';
+  if (!scriptUrl) return 'x8lr5';
   const clean = extractDailymotionScriptSrc(scriptUrl);
   const match = clean.match(/player\/([a-zA-Z0-9]+)\.js/i);
-  return match ? match[1] : 'x1o1xe';
+  return match ? match[1] : 'x8lr5';
 }
 
 export function extractDailymotionVideoId(url: string): string {
@@ -128,7 +128,8 @@ export function getEmbedSourceInfo(
 
   if (type === 'dailymotion' || trimmed.includes('dailymotion.com') || trimmed.includes('dai.ly')) {
     const id = extractDailymotionVideoId(trimmed);
-    const playerId = extractDailymotionPlayerId(dailymotionScriptUrl);
+    const rawPlayerId = extractDailymotionPlayerId(dailymotionScriptUrl);
+    const playerId = rawPlayerId && rawPlayerId !== 'x1o1xe' && rawPlayerId !== 'default' ? rawPlayerId : 'x8lr5';
     const params = new URLSearchParams();
     params.set('autoplay', '1');
     params.set('mute', '0');
@@ -138,13 +139,9 @@ export function getEmbedSourceInfo(
       params.set('start', String(effectiveSeekSec));
       params.set('startTime', String(effectiveSeekSec));
     }
-    const isCustomPlayer = Boolean(playerId && playerId !== 'x1o1xe' && playerId !== 'default');
-    const embedSrc = isCustomPlayer
-      ? `https://geo.dailymotion.com/player/${playerId}.html?video=${id}&${params.toString()}`
-      : `https://www.dailymotion.com/embed/video/${id}?${params.toString()}`;
 
     return {
-      src: embedSrc,
+      src: `https://geo.dailymotion.com/player/${playerId}.html?video=${id}&${params.toString()}`,
       provider: 'dailymotion',
       videoId: id,
       playerId,
@@ -174,7 +171,7 @@ export const EmbedPlayerModal: React.FC<EmbedPlayerModalProps> = ({
   hasNextEpisode,
   onNextEpisode,
   onClose,
-  dailymotionScriptUrl = 'https://geo.dailymotion.com/libs/player/x1o1xe.js',
+  dailymotionScriptUrl = 'https://geo.dailymotion.com/libs/player/x8lr5.js',
   backdropDarkness,
   backdropBlur,
   onProgressUpdate,
@@ -430,11 +427,24 @@ export const EmbedPlayerModal: React.FC<EmbedPlayerModalProps> = ({
           iframeRef.current.contentWindow.postMessage('api:getState', '*');
         } catch {}
       }
-    }, 5000);
+    }, 2500);
+
+    // Active playback timer: ensures continuous second-by-second progress tracking
+    // for all providers (Dailymotion & YouTube), even if iframe messages are blocked by browser cross-origin policy
+    const playbackTimer = setInterval(() => {
+      if (lastRealVideoTimeRef.current >= 0 && (playerStateRef.current === 1 || playerStateRef.current === -1)) {
+        lastRealVideoTimeRef.current += 1;
+        // Periodic sync to storage every 2 seconds
+        if (lastRealVideoTimeRef.current % 2 === 0) {
+          emitCalculatedProgress(lastRealVideoTimeRef.current, lastRealDurationRef.current);
+        }
+      }
+    }, 1000);
 
     return () => {
       isMounted = false;
       clearInterval(pollInterval);
+      clearInterval(playbackTimer);
       window.removeEventListener('message', handleWindowMessage);
 
       // On unmount/close: capture the exact frame user was at

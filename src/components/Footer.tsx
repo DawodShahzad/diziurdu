@@ -47,11 +47,11 @@ export const Footer: React.FC<FooterProps> = ({
     setPromoteSubmitted(false);
   };
 
-  // Dedicated Desktop My List Footer
+  // Dedicated Desktop My List & Full-Size More Info Compact Footer
   if (isMyListPage) {
     return (
-      <footer className="hidden md:block relative w-full mt-16 px-6 md:px-12 lg:px-16 pb-12 select-none">
-        <div className="max-w-7xl mx-auto flex flex-col md:flex-row md:items-end justify-between gap-6 pt-6 border-t border-white/10">
+      <footer className="hidden md:block relative w-full mt-0 pt-2 px-6 sm:px-8 lg:px-12 pb-10 select-none bg-transparent">
+        <div className="max-w-[1780px] mx-auto flex flex-col md:flex-row md:items-end justify-between gap-6 pt-6 border-t border-white/10">
           {/* Left: Brand Logo + Copyright */}
           <div className="flex flex-col items-start gap-2.5">
             <div className="flex items-center gap-2 max-w-[150px]">

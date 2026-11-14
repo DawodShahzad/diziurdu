@@ -2,6 +2,7 @@ import React, { useEffect, useRef, useState } from 'react';
 import { CastMember, Show } from '../types';
 import { X, Plus, Check, Star } from 'lucide-react';
 import { getActorFilmography } from '../utils/actorIndex';
+import { MediaImage } from './MediaImage';
 
 interface CastPoolModalProps {
   actor: CastMember | null;
@@ -138,10 +139,10 @@ export const CastPoolModal: React.FC<CastPoolModalProps> = ({
                         }}
                         className="aspect-[2/3] rounded-md overflow-hidden bg-black shadow cursor-pointer group active:scale-95 transition-transform"
                       >
-                        <img
+                        <MediaImage
                           src={relShow.posterVerticalUrl || relShow.posterUrl || relShow.posterLandscapeUrl}
-                          alt={relShow.title}
-                          referrerPolicy="no-referrer"
+                          fallbackTitle={relShow.title}
+                          fallbackClassName="w-full h-full bg-[#181818] flex items-center justify-center p-2.5 text-center select-none"
                           className="w-full h-full object-cover group-hover:scale-105 transition-transform"
                         />
                       </div>
@@ -165,10 +166,10 @@ export const CastPoolModal: React.FC<CastPoolModalProps> = ({
                       >
                         {/* Card Thumbnail */}
                         <div className="aspect-video w-full bg-black relative overflow-hidden">
-                          <img
+                          <MediaImage
                             src={relShow.posterLandscapeUrl || relShow.backdropUrl}
-                            alt={relShow.title}
-                            referrerPolicy="no-referrer"
+                            fallbackTitle={relShow.title}
+                            fallbackClassName="w-full h-full bg-[#181818] flex items-center justify-center p-3 text-center select-none"
                             className="w-full h-full object-cover"
                           />
                           <span className="absolute top-2.5 right-2.5 text-sm sm:text-[14.5px] font-medium text-white drop-shadow-[0_2px_4px_rgba(0,0,0,0.95)]">

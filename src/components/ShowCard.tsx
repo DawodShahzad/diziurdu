@@ -5,6 +5,8 @@ import { ShowTitleLogo } from './ShowTitleLogo';
 import { getActiveArtwork } from '../utils/artworkRotator';
 import { attachHlsVideo, isHlsSource } from '../utils/hlsHelper';
 import { WatchProgressItem, formatProgressTime } from '../utils/watchProgress';
+import { ResumeButtonProgress } from './ResumeButtonProgress';
+import { MediaImage } from './MediaImage';
 
 interface ShowCardProps {
   show: Show;
@@ -26,10 +28,12 @@ interface ShowCardProps {
   cardSize?: 'default' | 'small' | 'full' | 'special';
   aspectRatio?: '2:3' | '16:9' | '9:16';
   isContinueWatching?: boolean;
+  isWatchlistLandscape?: boolean;
   watchProgress?: WatchProgressItem;
   disablePopout?: boolean;
   isStretchable?: boolean;
   onLongPress?: (show: Show) => void;
+  biggerCards?: boolean;
 }
 
 // Track scrolling state so pointer changes to arrow cursor and cards don't pop out when scrolling
@@ -176,10 +180,12 @@ export const ShowCard: React.FC<ShowCardProps> = ({
   cardSize = 'default',
   aspectRatio,
   isContinueWatching = false,
+  isWatchlistLandscape = false,
   watchProgress,
   disablePopout = false,
   isStretchable = false,
-  onLongPress
+  onLongPress,
+  biggerCards = false
 }) => {
   const [isHovered, setIsHovered] = useState<boolean>(false);
   const [shouldLoadVideo, setShouldLoadVideo] = useState<boolean>(false);
@@ -1319,20 +1325,17 @@ export const ShowCard: React.FC<ShowCardProps> = ({
                   ? 'w-[622px] sm:w-[702px] md:w-[773px] lg:w-[calc(((100vw-112px)/4.05)*2.6667)] max-w-[907px] z-30 shadow-none'
                   : 'w-[235px] sm:w-[265px] md:w-[290px] lg:w-[calc((100vw-112px)/4.05)] max-w-[340px] z-10 shadow-none'
               } h-[350px] sm:h-[395px] md:h-[435px] lg:h-[calc(((100vw-112px)/4.05)*1.5)] max-h-[510px] origin-left rounded-[6px] overflow-hidden bg-[#181818] border-0 shrink-0`}
+              data-card-thumb="true"
             >
               {/* Layer 1: Vertical Poster (strictly unexpanded width, direct hide with NO stretch or zoom-out) */}
-              <img
-                src={verticalPosterSrc}
-                alt={show.title}
-                referrerPolicy="no-referrer"
-                onError={() => setImageError(true)}
-                className={`absolute top-0 bottom-0 left-0 w-full object-cover select-none ${
-                  isHovered ? 'opacity-0 pointer-events-none' : 'opacity-100'
-                }`}
-                style={{
-                  display: isHovered ? 'none' : 'block'
-                }}
-              />
+              <div className={isHovered ? 'hidden' : 'absolute inset-0'}>
+                <MediaImage
+                  src={verticalPosterSrc}
+                  fallbackTitle={show.title}
+                  onError={() => setImageError(true)}
+                  className="w-full h-full object-cover select-none"
+                />
+              </div>
 
               {/* Layer 2: 16:9 Backdrop media container directly showing backdrop on stretch */}
               <div
@@ -1343,10 +1346,10 @@ export const ShowCard: React.FC<ShowCardProps> = ({
                   display: isHovered ? 'block' : 'none'
                 }}
               >
-                <img
-                  src={show.backdropUrl || posterLandscapeUrl}
-                  alt={show.title}
-                  referrerPolicy="no-referrer"
+                <MediaImage
+                  src={show.stretchableFeedBackdropUrl || show.backdropUrl || posterLandscapeUrl}
+                  fallbackTitle={show.title}
+                  hideFallback={isVideoPlaying}
                   className={`w-full h-full object-cover ${
                     isVideoPlaying ? 'opacity-0' : 'opacity-100'
                   }`}
@@ -1419,15 +1422,25 @@ export const ShowCard: React.FC<ShowCardProps> = ({
                     <ShowTitleLogo show={show} className="max-h-[65px] sm:max-h-[72px] md:max-h-[80px] max-w-[260px] sm:max-w-[300px] w-auto h-auto object-contain drop-shadow-md" />
                   </div>
 
-                  {/* Action Buttons: Play, Add to List, Info (animations removed) */}
+                  {/* Action Buttons: Play / Resume with progress underline, Add to List, Info (matching image_f72bd3ca.png) */}
                   <div className="flex items-center gap-2">
                     <button
                       onClick={handlePlayClick}
                       className="px-4 sm:px-5 py-2 rounded-full bg-white hover:bg-white/90 text-black font-bold text-xs sm:text-sm flex items-center gap-1.5 shadow-lg cursor-pointer"
-                      aria-label="Play"
+                      aria-label={watchProgress && watchProgress.progressPercent > 0 ? 'Resume' : 'Play'}
                     >
                       <Play className="w-4.5 h-4.5 sm:w-5 sm:h-5 fill-black" />
-                      <span>Play</span>
+                      <ResumeButtonProgress
+                        label={
+                          watchProgress && watchProgress.progressPercent > 0
+                            ? show.type === 'series'
+                              ? `Resume S${watchProgress.seasonNumber || 1} E${watchProgress.episodeNumber || 1}`
+                              : 'Resume'
+                            : 'Play'
+                        }
+                        progressPercent={watchProgress?.progressPercent}
+                        textClassName="text-xs sm:text-sm font-bold"
+                      />
                     </button>
                     <button
                       onClick={handleWatchlistClick}
@@ -1486,11 +1499,10 @@ export const ShowCard: React.FC<ShowCardProps> = ({
             </div>
           ) : aspectRatio === '9:16' ? (
             /* Feed Card in 1:2 aspect ratio (on mobile & tablet for stretchable feed) */
-            <div className="relative w-[calc((100vw-32px)/2.14)] sm:w-[185px] md:w-[218px] aspect-[1/2] rounded-[6px] overflow-hidden bg-[#181818] border-0 shadow-none transition-all duration-300">
-              <img
+            <div data-card-thumb="true" className="relative w-[calc((100vw-32px)/2.14)] sm:w-[185px] md:w-[218px] aspect-[1/2] rounded-[6px] overflow-hidden bg-[#181818] border-0 shadow-none transition-all duration-300">
+              <MediaImage
                 src={verticalPosterSrc}
-                alt={show.title}
-                referrerPolicy="no-referrer"
+                fallbackTitle={show.title}
                 onError={() => setImageError(true)}
                 className="w-full h-full object-cover"
               />
@@ -1504,12 +1516,15 @@ export const ShowCard: React.FC<ShowCardProps> = ({
               )}
             </div>
           ) : aspectRatio === '2:3' ? (
-            /* 2. Feed Card in 2:3 aspect ratio - shows 3 full cards in normal mobile display */
-            <div className="relative w-[calc((100vw-34px)/3.12)] sm:w-[145px] md:w-[175px] aspect-[2/3] rounded-[6px] overflow-hidden bg-[#181818] border-0 shadow-none transition-all duration-300">
-              <img
+            /* 2. Feed Card in 2:3 aspect ratio - shows 3 full cards + edge of 4th card in mobile layout */
+            <div data-card-thumb="true" className={`relative ${
+              biggerCards
+                ? 'w-[calc((100vw-24px)/2.25)] sm:w-[185px] md:w-[220px]'
+                : 'w-[calc((100vw-24px)/3.22)] sm:w-[155px] md:w-[185px]'
+            } aspect-[2/3] rounded-[6px] overflow-hidden bg-[#181818] border-0 shadow-none transition-all duration-300`}>
+              <MediaImage
                 src={verticalPosterSrc}
-                alt={show.title}
-                referrerPolicy="no-referrer"
+                fallbackTitle={show.title}
                 onError={() => setImageError(true)}
                 className="w-full h-full object-cover"
               />
@@ -1523,6 +1538,18 @@ export const ShowCard: React.FC<ShowCardProps> = ({
                 </div>
               )}
             </div>
+          ) : isWatchlistLandscape ? (
+            /* My List in Mobile layout: SAME SIZE and 16:9 aspect ratio as continue watching, but just card thumbnail (no progress bar, no time left) */
+            <div className="relative w-[68vw] max-w-[295px] sm:w-[260px] md:w-[290px] flex flex-col shrink-0">
+              <div data-card-thumb="true" className="relative w-full aspect-video rounded-xl sm:rounded-[6px] overflow-hidden bg-[#181818] border-0 shadow-none transition-all duration-300">
+                <MediaImage
+                  src={posterLandscapeUrl}
+                  fallbackTitle={show.title}
+                  onError={() => setImageError(true)}
+                  className="w-full h-full object-cover"
+                />
+              </div>
+            </div>
           ) : isContinueWatching ? (
             /* 3. Continue Watching:
                - On Mobile: Matching image_74bcd37d.png with progress bar inside card at bottom, rounded-xl corners,
@@ -1530,23 +1557,24 @@ export const ShowCard: React.FC<ShowCardProps> = ({
                - On Desktop & Tablet: Progress bar below card
             */
             <div className="relative w-[68vw] max-w-[295px] sm:w-[260px] md:w-[290px] flex flex-col shrink-0">
-              <div className="relative w-full aspect-video rounded-xl sm:rounded-[6px] overflow-hidden bg-[#181818] border-0 shadow-none transition-all duration-300">
-                <img
+              <div data-card-thumb="true" className="relative w-full aspect-video rounded-xl sm:rounded-[6px] overflow-hidden bg-[#181818] border-0 shadow-none transition-all duration-300">
+                <MediaImage
                   src={posterLandscapeUrl}
-                  alt={show.title}
-                  referrerPolicy="no-referrer"
+                  fallbackTitle={show.title}
                   onError={() => setImageError(true)}
                   className="w-full h-full object-cover"
                 />
-                {/* Mobile layout: Progress bar at bottom of thumbnail with no bottom padding */}
-                <div className="sm:hidden absolute inset-x-0 bottom-0 h-[3px] bg-white/20 overflow-hidden z-20 pointer-events-none">
-                  <div
-                    className="h-full bg-white transition-all duration-300"
-                    style={{
-                      width: `${Math.min(100, Math.max(0, watchProgress?.progressPercent && watchProgress.progressPercent > 0 ? watchProgress.progressPercent : 35))}%`
-                    }}
-                  />
-                </div>
+                {/* Progress bar inside card at bottom (matching image_c2ddc79a.png) */}
+                {watchProgress && watchProgress.progressPercent > 0 && !watchProgress.isNextEpisodePrompt && (
+                  <div className="absolute inset-x-0 bottom-0 h-1 bg-zinc-600/70 overflow-hidden z-20 pointer-events-none">
+                    <div
+                      className="h-full bg-white transition-all duration-300"
+                      style={{
+                        width: `${Math.min(100, Math.max(0, watchProgress.progressPercent))}%`
+                      }}
+                    />
+                  </div>
+                )}
               </div>
 
               {/* Mobile layout beneath card: S1 E1  24 min left  ⋮ (matching image_74bcd37d.png) */}
@@ -1577,30 +1605,18 @@ export const ShowCard: React.FC<ShowCardProps> = ({
                   <MoreVertical className="w-4 h-4" />
                 </button>
               </div>
-
-              {/* Desktop & Tablet layout: progress bar below the card (matching desktop layout) or height placeholder */}
-              {watchProgress && watchProgress.progressPercent > 0 && !watchProgress.isNextEpisodePrompt ? (
-                <div className="hidden sm:block w-full px-1.5 pt-2 pb-0.5">
-                  <div className="w-full h-[3.5px] bg-[#4d4d4d] rounded-full overflow-hidden">
-                    <div
-                      className="h-full bg-[#e50914] rounded-full"
-                      style={{ width: `${Math.min(100, Math.max(0, watchProgress.progressPercent))}%` }}
-                    />
-                  </div>
-                </div>
-              ) : (
-                <div className="hidden sm:block w-full px-1.5 pt-2 pb-0.5 pointer-events-none opacity-0 select-none" aria-hidden="true">
-                  <div className="w-full h-[3.5px]" />
-                </div>
-              )}
             </div>
           ) : (
-            /* 4. Default Desktop Card: 16:9 aspect ratio (shows 2 full cards and edge of 3rd on mobile; 4 cards per row on desktop) */
-            <div className={`relative ${
+            /* 4. Default Desktop Card: 16:9 aspect ratio */
+            <div data-card-thumb="true" className={`relative ${
               cardSize === 'full' || cardSize === 'special'
                 ? 'w-full'
                 : cardSize === 'small'
-                ? 'w-[calc((100vw-20px)/2.12)] sm:w-[245px] md:w-[270px] lg:w-[calc((100vw-112px)/4.05)] max-w-[340px]'
+                ? biggerCards
+                  ? 'w-[calc((100vw-20px)/2.12)] sm:w-[285px] md:w-[320px] lg:w-[calc((100vw-112px)/3.35)] max-w-[420px]'
+                  : 'w-[calc((100vw-20px)/2.12)] sm:w-[245px] md:w-[270px] lg:w-[calc((100vw-112px)/4.05)] max-w-[340px]'
+                : biggerCards
+                ? 'w-[calc((100vw-20px)/2.12)] sm:w-[295px] md:w-[340px] lg:w-[calc((100vw-112px)/3.35)] max-w-[420px]'
                 : 'w-[calc((100vw-20px)/2.12)] sm:w-[265px] md:w-[290px] lg:w-[calc((100vw-112px)/4.05)] max-w-[340px]'
             } aspect-video rounded-[6px] overflow-hidden bg-[#181818] border-0 shadow-none group-focus-visible/item:ring-2 group-focus-visible/item:ring-red-600 group-focus-visible/item:ring-offset-2 group-focus-visible/item:ring-offset-[#141414] transition-all duration-300`}>
               {imageError || !posterLandscapeUrl ? (
@@ -1674,11 +1690,13 @@ export const ShowCard: React.FC<ShowCardProps> = ({
             {/* Top Preview: Poster stays 1 second, then preview video buffers/plays */}
             <div className="relative aspect-video w-full bg-black overflow-hidden border-0">
             {imageError || !posterLandscapeUrl ? (
-              <div className="w-full h-full bg-[#0a0a0c] border-0 rounded-lg flex items-center justify-center p-4 text-center select-none">
-                <span className="text-white font-medium text-sm sm:text-base leading-snug drop-shadow-sm font-sans">
-                  {show.title}
-                </span>
-              </div>
+              !(!isPopoutPosterPhase && isVideoPlaying) && (
+                <div className="w-full h-full bg-[#0a0a0c] border-0 rounded-lg flex items-center justify-center p-4 text-center select-none">
+                  <span className="text-white font-medium text-sm sm:text-base leading-snug drop-shadow-sm font-sans">
+                    {show.title}
+                  </span>
+                </div>
+              )
             ) : (
               <img
                 src={posterLandscapeUrl}
@@ -1815,22 +1833,50 @@ export const ShowCard: React.FC<ShowCardProps> = ({
             )}
           </div>
 
+          {/* Progress bar between poster and below section on hover (matching image_f956b96c.png) */}
+          {isContinueWatching && watchProgress && watchProgress.progressPercent > 0 && (
+            <div className="w-full h-1 bg-zinc-600/70 overflow-hidden z-30">
+              <div
+                className="h-full bg-white transition-all duration-300"
+                style={{ width: `${Math.min(100, Math.max(0, watchProgress.progressPercent))}%` }}
+              />
+            </div>
+          )}
+
           {/* Body: Action Buttons, Metadata, Genres */}
           <div className="p-3.5 bg-[#181818] space-y-2.5 border-0">
             {/* Action Row */}
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-2">
-                {/* Play Button - NO animation, NO tooltip, keyboard tab-accessible */}
-                <button
-                  onClick={handlePlayClick}
-                  tabIndex={0}
-                  className="w-8.5 h-8.5 rounded-full bg-white hover:bg-zinc-200 text-black flex items-center justify-center transition-colors shadow cursor-pointer border-0 focus-visible:ring-2 focus-visible:ring-red-500 focus-visible:outline-none"
-                  aria-label={`Play ${show.title}`}
-                >
-                  <svg className="w-4 h-4 ml-0.5 fill-current shrink-0" viewBox="0 0 24 24">
-                    <path d="M7.05 3.6A1.5 1.5 0 0 0 4.75 4.9v14.2a1.5 1.5 0 0 0 2.3 1.3l12.1-7.1a1.5 1.5 0 0 0 0-2.6L7.05 3.6z" />
-                  </svg>
-                </button>
+                {/* Play / Resume Button with Season and Episode number */}
+                {watchProgress && watchProgress.progressPercent > 0 ? (
+                  <button
+                    onClick={handlePlayClick}
+                    tabIndex={0}
+                    className="h-8.5 px-3.5 rounded-full bg-white hover:bg-zinc-200 text-black flex items-center gap-1.5 transition-colors shadow cursor-pointer border-0 focus-visible:ring-2 focus-visible:ring-red-500 focus-visible:outline-none"
+                    aria-label={`Resume ${show.title}`}
+                  >
+                    <svg className="w-3.5 h-3.5 fill-current shrink-0" viewBox="0 0 24 24">
+                      <path d="M7.05 3.6A1.5 1.5 0 0 0 4.75 4.9v14.2a1.5 1.5 0 0 0 2.3 1.3l12.1-7.1a1.5 1.5 0 0 0 0-2.6L7.05 3.6z" />
+                    </svg>
+                    <span className="text-xs font-bold">
+                      {show.type === 'series' || (show.seasons && show.seasons.length > 0)
+                        ? `Resume S${watchProgress.seasonNumber || 1} E${watchProgress.episodeNumber || 1}`
+                        : 'Resume'}
+                    </span>
+                  </button>
+                ) : (
+                  <button
+                    onClick={handlePlayClick}
+                    tabIndex={0}
+                    className="w-8.5 h-8.5 rounded-full bg-white hover:bg-zinc-200 text-black flex items-center justify-center transition-colors shadow cursor-pointer border-0 focus-visible:ring-2 focus-visible:ring-red-500 focus-visible:outline-none"
+                    aria-label={`Play ${show.title}`}
+                  >
+                    <svg className="w-4 h-4 ml-0.5 fill-current shrink-0" viewBox="0 0 24 24">
+                      <path d="M7.05 3.6A1.5 1.5 0 0 0 4.75 4.9v14.2a1.5 1.5 0 0 0 2.3 1.3l12.1-7.1a1.5 1.5 0 0 0 0-2.6L7.05 3.6z" />
+                    </svg>
+                  </button>
+                )}
 
                 {/* Watchlist Button - converts to tick icon with white color (never turns green) */}
                 <button
@@ -1867,57 +1913,27 @@ export const ShowCard: React.FC<ShowCardProps> = ({
               </button>
             </div>
 
-            {/* Watch Progress Indicator (Matching Image 2): Episode title + red progress bar with time left */}
-            {watchProgress && (watchProgress.progressPercent > 0 || watchProgress.isNextEpisodePrompt) && (
-              <div className="space-y-1.5 pt-1">
-                <div className="text-white font-bold text-sm sm:text-[14px] leading-tight truncate">
-                  {watchProgress.seasonNumber && watchProgress.episodeNumber
-                    ? `S${watchProgress.seasonNumber}:E${watchProgress.episodeNumber} "${watchProgress.episodeTitle || `Episode ${watchProgress.episodeNumber}`}"`
-                    : watchProgress.episodeTitle
-                    ? `"${watchProgress.episodeTitle}"`
-                    : show.title}
-                </div>
+            {/* Standard Metadata Line (matching image_a62190e5.png) */}
+            <div className="flex items-center gap-2.5 text-[14px] sm:text-[14.5px] font-semibold">
+              <span className="text-[#46d369] font-bold">{show.imdbRating ? `${show.imdbRating}` : `${show.matchScore}% Match`}</span>
+              <span className="text-zinc-200 px-1.5 py-0.5 rounded border border-zinc-700 text-[12px] leading-none">
+                {show.maturityRating || '16+'}
+              </span>
+              <span className="text-zinc-200 font-bold">{show.durationOrSeasons}</span>
+              <span className="px-1.5 py-0.5 rounded bg-zinc-800 text-zinc-300 text-[11px] font-bold leading-none">HD</span>
+            </div>
 
-                <div className="flex items-center gap-3">
-                  <div className="flex-1 h-[2.5px] sm:h-[3px] bg-[#404040] rounded-full overflow-hidden">
-                    <div
-                      className="h-full bg-[#e50914] rounded-full"
-                      style={{ width: `${Math.min(100, Math.max(0, watchProgress.progressPercent))}%` }}
-                    />
-                  </div>
-                  <span className="text-zinc-300 font-medium text-xs sm:text-[13px] whitespace-nowrap leading-none">
-                    {formatProgressTime(watchProgress.currentTime, watchProgress.duration)}
-                  </span>
-                </div>
-              </div>
-            )}
-
-            {/* When card has progress bar & episode detail, DO NOT add other infos (matching Image 2). Only add when no progress bar exists */}
-            {!(watchProgress && (watchProgress.progressPercent > 0 || watchProgress.isNextEpisodePrompt)) && (
-              <>
-                {/* Metadata Line - clear larger font matching prompt */}
-                <div className="flex items-center gap-2.5 text-[14px] sm:text-[14.5px] font-semibold">
-                  <span className="text-[#46d369] font-bold">{show.imdbRating ? `${show.imdbRating}` : `${show.matchScore}% Match`}</span>
-                  <span className="text-zinc-200 px-1.5 py-0.5 rounded border border-zinc-700 text-[12px] leading-none">
-                    {show.maturityRating}
-                  </span>
-                  <span className="text-zinc-200 font-bold">{show.durationOrSeasons}</span>
-                  <span className="px-1.5 py-0.5 rounded bg-zinc-800 text-zinc-300 text-[11px] font-bold leading-none">HD</span>
-                </div>
-
-                {/* Short Genres - larger font */}
-                <div className="flex flex-wrap gap-1.5 text-[13px] sm:text-[13.5px] text-zinc-300 font-medium">
-                  {show.genres.slice(0, 3).map((g, i) => (
-                    <span key={g} className="flex items-center gap-1.5">
-                      <span>{g}</span>
-                      {i < Math.min(show.genres.length - 1, 2) && (
-                        <span className="text-zinc-600 font-bold">•</span>
-                      )}
-                    </span>
-                  ))}
-                </div>
-              </>
-            )}
+            {/* Short Genres */}
+            <div className="flex flex-wrap gap-1.5 text-[13px] sm:text-[13.5px] text-zinc-300 font-medium">
+              {show.genres.slice(0, 3).map((g, i) => (
+                <span key={g} className="flex items-center gap-1.5">
+                  <span>{g}</span>
+                  {i < Math.min(show.genres.length - 1, 2) && (
+                    <span className="text-zinc-600 font-bold">•</span>
+                  )}
+                </span>
+              ))}
+            </div>
           </div>
         </div>
       )}

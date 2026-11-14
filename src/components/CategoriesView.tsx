@@ -2,6 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { Show, CategoryItem } from '../types';
 import fullBackupData from '../full_backup.json';
 import { ArrowLeft } from 'lucide-react';
+import { MediaImage } from './MediaImage';
 
 const INITIAL_CATEGORIES: CategoryItem[] = ((fullBackupData as any)?.categoriesList as CategoryItem[]) || [];
 export type { CategoryItem };
@@ -95,39 +96,21 @@ export const CategoriesView: React.FC<CategoriesViewProps> = ({
 
   return (
     <div className="pt-2 sm:pt-4 md:pt-36 lg:pt-40 pb-36 px-3 sm:px-4 md:px-8 xl:px-12 w-full animate-in fade-in duration-300">
-      {/* If a category is selected: header with back button and top padding so cards never hide behind navbar */}
+      {/* If a category is selected: directly display posters grid without top Back to Categories bar */}
       {selectedCategory ? (
-        <div className="space-y-6 pt-4 md:pt-6">
-          <div className="flex items-center justify-between pb-4 border-b border-white/10">
-            <button
-              onClick={() => setSelectedCategory(null)}
-              className="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-white/10 hover:bg-white/20 text-white text-xs sm:text-sm font-semibold transition-colors cursor-pointer"
-            >
-              <ArrowLeft className="w-4 h-4" />
-              <span>Back to Categories</span>
-            </button>
-            <div className="text-right">
-              <h2 className="text-white font-extrabold text-sm sm:text-lg md:text-xl">
-                {selectedCategory.name}
-              </h2>
-              <span className="text-xs text-zinc-400">
-                {getShowsForCategory(selectedCategory).length} titles
-              </span>
-            </div>
-          </div>
-
-          {/* Posters Grid for Selected Genre: 2:3 vertical posters with generous top clearance */}
-          <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-6 gap-3 sm:gap-4 md:gap-5 pt-4 md:pt-6">
+        <div className="pt-2 md:pt-4">
+          {/* Posters Grid for Selected Genre: 2:3 vertical posters */}
+          <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-6 gap-3 sm:gap-4 md:gap-5">
             {getShowsForCategory(selectedCategory).map((show) => (
               <div
                 key={show.id}
                 onClick={() => onOpenDetails(show)}
                 className="aspect-[2/3] rounded-md overflow-hidden bg-black shadow cursor-pointer group active:scale-95 transition-transform border border-white/5"
               >
-                <img
+                <MediaImage
                   src={show.posterVerticalUrl || show.posterUrl || show.posterLandscapeUrl}
-                  alt={show.title}
-                  referrerPolicy="no-referrer"
+                  fallbackTitle={show.title}
+                  fallbackClassName="w-full h-full bg-[#181818] flex items-center justify-center p-2.5 text-center select-none"
                   className="w-full h-full object-cover group-hover:scale-105 transition-transform"
                 />
               </div>
@@ -156,15 +139,11 @@ export const CategoriesView: React.FC<CategoriesViewProps> = ({
                   className="group relative aspect-[2/3] md:aspect-[16/9] w-full rounded-lg overflow-hidden bg-[#16171d] border border-zinc-400/[0.09] cursor-pointer shadow-md transition-all duration-200 active:scale-95 hover:border-zinc-300/30"
                 >
                   {/* Category Background Image */}
-                  <img
+                  <MediaImage
                     src={cat.imageUrl}
-                    alt={cat.name}
-                    referrerPolicy="no-referrer"
+                    fallbackTitle={cat.name}
+                    hideFallback={true}
                     className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
-                    onError={(e) => {
-                      (e.target as HTMLImageElement).src =
-                        'https://images.unsplash.com/photo-1579783902614-a3fb3927b675?auto=format&fit=crop&w=640&q=80';
-                    }}
                   />
 
                   {/* Dark Gradient Overlay for bottom text legibility */}

@@ -4,6 +4,7 @@ import { Play, Volume2, VolumeX, RotateCcw, Plus, Check, Info } from 'lucide-rea
 import { ShowTitleLogo } from './ShowTitleLogo';
 import { getActiveArtwork } from '../utils/artworkRotator';
 import { attachHlsVideo } from '../utils/hlsHelper';
+import { MediaImage } from './MediaImage';
 
 interface HeroRecommendationProps {
   show: Show;
@@ -19,7 +20,8 @@ interface HeroRecommendationProps {
   isGlobalMuted?: boolean;
   onToggleGlobalMute?: (forcedValue?: boolean) => void;
   isMobile?: boolean;
-  mobileRecommendationStyle?: 'portrait' | 'landscape';
+  mobileRecommendationStyle?: 'portrait' | 'landscape' | 'poster_no_preview';
+  useNoPreviewButtonsFor2x3Recommendation?: boolean;
 }
 
 export const HeroRecommendation: React.FC<HeroRecommendationProps> = ({
@@ -34,7 +36,8 @@ export const HeroRecommendation: React.FC<HeroRecommendationProps> = ({
   isGlobalMuted = false,
   onToggleGlobalMute,
   isMobile,
-  mobileRecommendationStyle = 'portrait'
+  mobileRecommendationStyle = 'portrait',
+  useNoPreviewButtonsFor2x3Recommendation = false
 }) => {
   const isEffectivelyPaused = isPaused || isPausedByModal || isPausedByFeedHover;
   const [shouldLoadPreview, setShouldLoadPreview] = useState<boolean>(false);
@@ -63,8 +66,9 @@ export const HeroRecommendation: React.FC<HeroRecommendationProps> = ({
   }, []);
 
   const isMobileLayout = isMobile !== undefined ? isMobile : windowWidth <= 768;
+  const isPosterNoPreviewMobile = isMobileLayout && mobileRecommendationStyle === 'poster_no_preview';
   const isLandscapeMobile = isMobileLayout && mobileRecommendationStyle === 'landscape';
-  const isPortraitMobile = isMobileLayout && mobileRecommendationStyle !== 'landscape';
+  const isPortraitMobile = isMobileLayout && (mobileRecommendationStyle === 'portrait' || !mobileRecommendationStyle);
 
   // Desktop zoom >= 150% detection (width <= 480px)
   const checkIsZoomed = () => {
@@ -194,8 +198,12 @@ export const HeroRecommendation: React.FC<HeroRecommendationProps> = ({
     };
   }, [show.id, activeBackdrop]);
 
-  // Check if image was instantly loaded from cache
+  // Check if image was instantly loaded from cache or missing
   useEffect(() => {
+    if (!backdropSrc || !backdropSrc.trim()) {
+      setIsBackdropLoaded(true);
+      return;
+    }
     if (imgRef.current && imgRef.current.complete && imgRef.current.naturalWidth > 0 && !isBackdropLoaded) {
       setIsBackdropLoaded(true);
     }
@@ -431,28 +439,136 @@ export const HeroRecommendation: React.FC<HeroRecommendationProps> = ({
 
   if (!show) return null;
 
-  const ambientColor = show.recommendationBackdropColor || show.ambientColor || '#b45309';
+  const ambientColor = isMobileLayout
+    ? (isPosterNoPreviewMobile
+        ? (show.mobileNoPreviewPosterHeroAmbiance || show.ambientColor || '#b45309')
+        : isPortraitMobile
+        ? (show.mobileNoPreviewCard2x3Ambiance || show.mobileRecommendation9x16BackdropAmbiance || show.ambientColor || '#b45309')
+        : (show.mobileRecommendation16x9BackdropAmbiance || show.ambientColor || '#b45309'))
+    : (show.desktopRecommendationBackdropAmbiance || show.recommendationBackdropColor || show.ambientColor || '#b45309');
 
   return (
     <div className="relative w-full pt-0 pb-3 md:pt-20 md:pb-6 select-none overflow-visible">
       {/* 
+      {/* 
         Rich, seamless ambient glow radiating behind the recommendation card
         Contained on mobile so it does not bleed into the top filter strip
+        (Disabled when isPosterNoPreviewMobile is selected: no ambiance)
       */}
-      <div className="absolute -top-4 md:-top-28 sm:-top-36 inset-x-0 -bottom-8 pointer-events-none z-0 flex items-center justify-center overflow-visible">
-        {/* Soft diffused wide aura that extends smoothly */}
-        <div
-          className="w-full max-w-[1680px] h-[115%] rounded-full blur-[120px] md:blur-[180px] transition-colors duration-1000 ease-out"
-          style={{
-            background: `radial-gradient(ellipse 80% 70% at 50% 40%, ${ambientColor} 0%, ${ambientColor}65 35%, ${ambientColor}20 65%, transparent 100%)`,
-            opacity: 0.72
-          }}
-        />
-      </div>
+      {!isPosterNoPreviewMobile && (
+        <div className="absolute -top-4 md:-top-28 sm:-top-36 inset-x-0 -bottom-8 pointer-events-none z-0 flex items-center justify-center overflow-visible">
+          {/* Soft diffused wide aura that extends smoothly */}
+          <div
+            className="w-full max-w-[1680px] h-[115%] rounded-full blur-[120px] md:blur-[180px] transition-colors duration-1000 ease-out"
+            style={{
+              background: `radial-gradient(ellipse 80% 70% at 50% 40%, ${ambientColor} 0%, ${ambientColor}65 35%, ${ambientColor}20 65%, transparent 100%)`,
+              opacity: 0.72
+            }}
+          />
+        </div>
+      )}
 
-      {/* Floating Hero Card with ambient shadow reflection matching show theme (reduced side area on mobile: px-2.5) */}
-      <div className="w-full px-2.5 sm:px-4 md:px-8 xl:px-12 relative z-10">
-        {isPortraitMobile || (!isMobileLayout && isZoomedMode) ? (
+      {/* Floating Hero Card with ambient shadow reflection matching show theme (full bleed edge-to-edge on mobile when isPosterNoPreviewMobile) */}
+      <div
+        className={`w-full ${
+          isPosterNoPreviewMobile
+            ? 'px-0 sm:px-4 md:px-8 xl:px-12'
+            : isPortraitMobile
+            ? 'px-8 sm:px-10 md:px-8 xl:px-12'
+            : 'px-2.5 sm:px-4 md:px-8 xl:px-12'
+        } relative z-10`}
+      >
+        {isPosterNoPreviewMobile ? (
+          /* ========================================================================= */
+          /* POSTER RECOMMENDATION WITHOUT PREVIEW (Edge-to-edge, no ambiance, larger logo) */
+          /* ========================================================================= */
+          <div
+            ref={cardRef}
+            onClick={() => onOpenDetails(show)}
+            className="relative w-full max-w-none sm:max-w-[480px] mx-auto aspect-[9/14] sm:aspect-[2/3] rounded-none sm:rounded-2xl overflow-hidden bg-[#121319] border-0 select-none shadow-[0_25px_60px_-15px_rgba(0,0,0,0.95)] cursor-pointer"
+          >
+            {/* Base Vertical Poster Image - Style 1 (Full-Bleed No-Preview Hero) */}
+            <MediaImage
+              src={show.mobileNoPreviewPosterHeroUrl || show.posterVerticalUrl || show.posterUrl || show.posterLandscapeUrl || backdropSrc}
+              fallbackTitle={show.title}
+              fallbackClassName="absolute inset-0 w-full h-full bg-[#121319] flex items-center justify-center p-6 text-center select-none"
+              fallbackTextClassName="text-white/85 font-bold text-xl font-sans"
+              className="absolute inset-0 w-full h-full object-cover object-top"
+            />
+
+            {/* Seamless Top Vignette for fixed hamburger bar */}
+            <div className="absolute inset-x-0 top-0 h-28 bg-gradient-to-b from-black/85 via-black/35 to-transparent pointer-events-none z-10" />
+
+            {/* Seamless Bottom Vignette Gradient */}
+            <div className="absolute inset-0 bg-gradient-to-t from-black via-black/55 to-transparent pointer-events-none" />
+
+            {/* Overlay Content: No original/featured, no top 10, increased PNG logo size, 2-line synopsis */}
+            <div className="absolute bottom-5 left-4 right-4 z-20 flex flex-col items-start text-left gap-1.5 pointer-events-auto">
+              {/* Show Title PNG Logo (noticeably larger size) */}
+              <div className="my-1 max-w-[85vw] sm:max-w-[380px]">
+                {show.titleLogoUrl ? (
+                  <img
+                    src={show.titleLogoUrl}
+                    alt={show.title}
+                    referrerPolicy="no-referrer"
+                    className="h-24 sm:h-28 max-h-28 w-auto max-w-[85vw] sm:max-w-[380px] object-contain object-left drop-shadow-[0_6px_20px_rgba(0,0,0,0.95)]"
+                  />
+                ) : (
+                  <h3 className="text-3xl sm:text-4xl font-black text-white tracking-tight drop-shadow-md">
+                    {show.title}
+                  </h3>
+                )}
+              </div>
+
+              {/* Metadata Badges (No TOP 10 badge) */}
+              <div className="flex items-center gap-2 text-xs font-semibold text-zinc-300 mt-0.5 flex-wrap">
+                {show.maturityRating && (
+                  <span className="px-1.5 py-0.5 rounded bg-white/10 text-white font-bold text-[11px] border border-white/20">
+                    {show.maturityRating}
+                  </span>
+                )}
+                {show.durationOrSeasons && (
+                  <span>{show.durationOrSeasons}</span>
+                )}
+                {show.genres?.[0] && (
+                  <>
+                    <span className="text-zinc-500">•</span>
+                    <span>{show.genres[0]}</span>
+                  </>
+                )}
+              </div>
+
+              {/* Action Buttons: Round white "▶ Watch S1 E1" and round "+" button */}
+              <div className="flex items-center justify-between w-full mt-3">
+                <button
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onPlay(show);
+                  }}
+                  className="px-6 py-2.5 rounded-full bg-white hover:bg-white/90 text-black font-bold text-sm flex items-center gap-2 shadow-xl cursor-pointer active:scale-95 transition-transform"
+                  aria-label={`Watch ${show.title}`}
+                >
+                  <svg className="w-5 h-5 fill-current shrink-0" viewBox="0 0 24 24">
+                    <path d="M7.05 3.6A1.5 1.5 0 0 0 4.75 4.9v14.2a1.5 1.5 0 0 0 2.3 1.3l12.1-7.1a1.5 1.5 0 0 0 0-2.6L7.05 3.6z" />
+                  </svg>
+                  <span>{show.type === 'series' ? 'Watch S1 E1' : 'Watch Movie'}</span>
+                </button>
+
+                {/* + (Add to list) button */}
+                <button
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onToggleWatchlist(show.id);
+                  }}
+                  className="w-10 h-10 rounded-full bg-white/20 hover:bg-white/30 text-white flex items-center justify-center cursor-pointer active:scale-90 transition-transform shadow-lg"
+                  aria-label="Add to Watchlist"
+                >
+                  {isInWatchlist ? <Check className="w-5 h-5 text-emerald-400 stroke-[2.5]" /> : <Plus className="w-6 h-6 text-white" />}
+                </button>
+              </div>
+            </div>
+          </div>
+        ) : isPortraitMobile || (!isMobileLayout && isZoomedMode) ? (
           /* ========================================================================= */
           /* VERTICAL RECOMMENDATION (When screen zoom > 125%): NO preview, vertical backdrop, */
           /* PNG title, maturity rating, genre, and side-by-side Play & More Info buttons */
@@ -468,10 +584,12 @@ export const HeroRecommendation: React.FC<HeroRecommendationProps> = ({
             {/* Subtle inner overlay border with grey color, reduced to 1.8px width and 9% opacity */}
             <div className="absolute inset-0 rounded-[inherit] pointer-events-none z-30 border-[1.8px] border-zinc-400/[0.09]" />
 
-            {/* Base Vertical Backdrop Image */}
-            <img
-              src={show.posterVerticalUrl || show.posterLandscapeUrl || backdropSrc}
-              alt={show.title}
+            {/* Base Vertical Backdrop Image - Style 2 (Centered 2:3 Floating Card Hero) */}
+            <MediaImage
+              src={show.mobileNoPreviewCard2x3Url || show.mobileRecommendation9x16BackdropUrl || show.posterVerticalUrl || show.posterLandscapeUrl || backdropSrc}
+              fallbackTitle={show.title}
+              fallbackClassName="absolute inset-0 w-full h-full bg-[#121319] flex items-center justify-center p-6 text-center select-none"
+              fallbackTextClassName="text-white/85 font-bold text-xl font-sans"
               className="absolute inset-0 w-full h-full object-cover object-center"
             />
 
@@ -509,38 +627,73 @@ export const HeroRecommendation: React.FC<HeroRecommendationProps> = ({
                 )}
               </div>
 
-              {/* Two Pill Buttons Side-by-Side: Play & Add to My List */}
-              <div className="flex items-center gap-3 sm:gap-3.5 w-full max-w-[360px] sm:max-w-[420px]">
-                <button
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    onPlay(show);
-                  }}
-                  className="flex-1 py-2.5 sm:py-3 px-5 sm:px-6 rounded-full bg-white hover:bg-white/90 text-black font-bold text-sm sm:text-base flex items-center justify-center gap-1 sm:gap-1.5 shadow-xl cursor-pointer active:scale-95 transition-transform"
-                  aria-label={`Play ${show.title}`}
-                >
-                  <svg className="w-5.5 h-5.5 sm:w-6.5 sm:h-6.5 fill-current shrink-0" viewBox="0 0 24 24">
-                    <path d="M7.05 3.6A1.5 1.5 0 0 0 4.75 4.9v14.2a1.5 1.5 0 0 0 2.3 1.3l12.1-7.1a1.5 1.5 0 0 0 0-2.6L7.05 3.6z" />
-                  </svg>
-                  <span className="tracking-wide">Play</span>
-                </button>
+              {/* Action Buttons: Either No-Preview Poster style (Watch + circular +) or Play + My List pills */}
+              {!isLandscapeMobile && (
+                useNoPreviewButtonsFor2x3Recommendation ? (
+                  <div className="flex items-center justify-between w-full mt-1">
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        onPlay(show);
+                      }}
+                      className="px-6 py-2.5 rounded-full bg-white hover:bg-white/90 text-black font-bold text-sm flex items-center gap-2 shadow-xl cursor-pointer active:scale-95 transition-transform"
+                      aria-label={`Watch ${show.title}`}
+                    >
+                      <svg className="w-5 h-5 fill-current shrink-0" viewBox="0 0 24 24">
+                        <path d="M7.05 3.6A1.5 1.5 0 0 0 4.75 4.9v14.2a1.5 1.5 0 0 0 2.3 1.3l12.1-7.1a1.5 1.5 0 0 0 0-2.6L7.05 3.6z" />
+                      </svg>
+                      <span>{show.type === 'series' ? 'Watch S1 E1' : 'Watch Movie'}</span>
+                    </button>
 
-                <button
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    onToggleWatchlist(show.id);
-                  }}
-                  className="flex-1 py-2.5 sm:py-3 px-4.5 sm:px-5 rounded-full bg-white/20 hover:bg-white/30 text-white font-semibold text-sm sm:text-base flex items-center justify-center gap-2 shadow-xl cursor-pointer active:scale-95 transition-transform"
-                  aria-label="My List"
-                >
-                  {isInWatchlist ? (
-                    <Check className="w-4 h-4 text-white stroke-[2.5]" />
-                  ) : (
-                    <Plus className="w-4 h-4 text-white" />
-                  )}
-                  <span>My List</span>
-                </button>
-              </div>
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        onToggleWatchlist(show.id);
+                      }}
+                      className="w-10 h-10 rounded-full bg-white/20 hover:bg-white/30 text-white flex items-center justify-center cursor-pointer active:scale-90 transition-transform shadow-lg"
+                      aria-label="Add to Watchlist"
+                    >
+                      {isInWatchlist ? (
+                        <Check className="w-5 h-5 text-emerald-400 stroke-[2.5]" />
+                      ) : (
+                        <Plus className="w-6 h-6 text-white" />
+                      )}
+                    </button>
+                  </div>
+                ) : (
+                  <div className="flex items-center gap-3 sm:gap-3.5 w-full max-w-[360px] sm:max-w-[420px]">
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        onPlay(show);
+                      }}
+                      className="flex-1 py-2.5 sm:py-3 px-5 sm:px-6 rounded-full bg-white hover:bg-white/90 text-black font-bold text-sm sm:text-base flex items-center justify-center gap-1 sm:gap-1.5 shadow-xl cursor-pointer active:scale-95 transition-transform"
+                      aria-label={`Play ${show.title}`}
+                    >
+                      <svg className="w-5.5 h-5.5 sm:w-6.5 sm:h-6.5 fill-current shrink-0" viewBox="0 0 24 24">
+                        <path d="M7.05 3.6A1.5 1.5 0 0 0 4.75 4.9v14.2a1.5 1.5 0 0 0 2.3 1.3l12.1-7.1a1.5 1.5 0 0 0 0-2.6L7.05 3.6z" />
+                      </svg>
+                      <span className="tracking-wide">Play</span>
+                    </button>
+
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        onToggleWatchlist(show.id);
+                      }}
+                      className="flex-1 py-2.5 sm:py-3 px-4.5 sm:px-5 rounded-full bg-white/20 hover:bg-white/30 text-white font-semibold text-sm sm:text-base flex items-center justify-center gap-2 shadow-xl cursor-pointer active:scale-95 transition-transform"
+                      aria-label="My List"
+                    >
+                      {isInWatchlist ? (
+                        <Check className="w-4 h-4 text-white stroke-[2.5]" />
+                      ) : (
+                        <Plus className="w-4 h-4 text-white" />
+                      )}
+                      <span>My List</span>
+                    </button>
+                  </div>
+                )
+              )}
             </div>
           </div>
         ) : (
@@ -567,14 +720,16 @@ export const HeroRecommendation: React.FC<HeroRecommendationProps> = ({
             {/* Media: Cinematic Backdrop Image + Optional Video Preview Overlay (zero black screen) */}
             <div className="absolute inset-0 z-0 bg-[#0d0e12]">
               {/* Primary Base Layer: Backdrop Image (Always visible underneath - stays visible if video loading or error) */}
-              <img
-                ref={imgRef}
+              <MediaImage
+                imageRef={imgRef}
                 src={backdropSrc}
-                alt={show.title}
+                fallbackTitle={show.title}
+                hideFallback={isVideoPlaying}
+                fallbackClassName="absolute inset-0 w-full h-full bg-[#0d0e12] flex items-center justify-center p-6 text-center select-none"
+                fallbackTextClassName="text-white/80 font-bold text-2xl font-sans"
                 loading="eager"
                 decoding="async"
                 {...({ fetchPriority: 'high' } as any)}
-                referrerPolicy="no-referrer"
                 onLoad={() => setIsBackdropLoaded(true)}
                 onError={() => {
                   setIsBackdropLoaded(true);
