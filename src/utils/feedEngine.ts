@@ -289,7 +289,7 @@ export function generateDailyFeeds(
     if (continueShows.length >= 1) {
       continueWatchingFeed.push({
         id: 'feed-continue-watching',
-        title: 'Continue Watching',
+        title: 'Keep Watching',
         subtitle: 'Pick up right where you left off',
         categoryKey: 'continue_watching',
         shows: continueShows
@@ -753,7 +753,7 @@ export function generateDailyFeeds(
     if (t.includes('top 10') || t.includes('top10') || id.includes('top-10') || id.includes('top10') || c.includes('top_10')) {
       return true;
     }
-    if (t.includes('continue watching') || id.includes('continue-watching')) return true;
+    if (t.includes('continue watching') || t.includes('keep watching') || id.includes('continue-watching')) return true;
     if (t.includes('watchlist') || t.includes('my list') || id.includes('watchlist') || id.includes('my-list')) return true;
     return false;
   };
@@ -947,6 +947,11 @@ export function generateDailyFeeds(
   const recentRowWindow: string[][] = [];
 
   const internallyShuffledRows: FeedRow[] = dedupedSequencedRows.map((row, idx) => {
+    // Keep Watching & My List preserve exact recency order and never displace titles from other rows
+    if (row.id.includes('continue-watching') || row.id.includes('my-list') || row.categoryKey === 'continue_watching' || row.categoryKey === 'my_list') {
+      return row;
+    }
+
     // Preserve strict Top 10 rank order for #1-10 rows
     if (row.showRankNumbers) {
       recentRowWindow.push(row.shows.slice(0, 5).map((s) => s.id));

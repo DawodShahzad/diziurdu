@@ -169,6 +169,7 @@ export const AdminDashboardPage: React.FC<AdminDashboardPageProps> = ({
   // Search queries for custom show selector inside dropdowns
   const [sourceSearchQuery1, setSourceSearchQuery1] = useState<string>('');
   const [sourceSearchQuery2, setSourceSearchQuery2] = useState<string>('');
+  const [firstEpSearchQuery, setFirstEpSearchQuery] = useState<string>('');
 
   // All distinct genres across catalog
   const ALL_GENRES: string[] = useMemo(() => {
@@ -246,18 +247,21 @@ export const AdminDashboardPage: React.FC<AdminDashboardPageProps> = ({
 
   const [newCatName, setNewCatName] = useState('');
   const [newCatImage, setNewCatImage] = useState('');
+  const [newCatNarrowImage, setNewCatNarrowImage] = useState('');
   const [newCatDesc, setNewCatDesc] = useState('');
 
   // Editing Category Modal State
   const [editingCategory, setEditingCategory] = useState<CategoryItem | null>(null);
   const [editCatName, setEditCatName] = useState('');
   const [editCatImage, setEditCatImage] = useState('');
+  const [editCatNarrowImage, setEditCatNarrowImage] = useState('');
   const [editCatDesc, setEditCatDesc] = useState('');
 
   const handleStartEditCategory = (cat: CategoryItem) => {
     setEditingCategory(cat);
     setEditCatName(cat.name);
     setEditCatImage(cat.imageUrl);
+    setEditCatNarrowImage(cat.narrowLandscapeUrl || '');
     setEditCatDesc(cat.description || '');
   };
 
@@ -275,6 +279,7 @@ export const AdminDashboardPage: React.FC<AdminDashboardPageProps> = ({
               ...c,
               name: editCatName.trim(),
               imageUrl: updatedImg,
+              narrowLandscapeUrl: editCatNarrowImage.trim() || undefined,
               description: editCatDesc.trim()
             }
           : c
@@ -2638,6 +2643,111 @@ export const AdminDashboardPage: React.FC<AdminDashboardPageProps> = ({
                 </div>
               </form>
 
+              {/* Desktop "Start from the 1st Episode" Row Show Selector */}
+              <div className="p-4 sm:p-5 rounded-xl bg-zinc-900/90 border border-zinc-800 space-y-3.5">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                  <div>
+                    <h4 className="text-sm font-bold text-white flex items-center gap-2">
+                      <span>Desktop Row: Start from the 1st Episode</span>
+                      <span className="text-[10px] px-2 py-0.5 rounded-full bg-zinc-800 text-zinc-300 font-mono">
+                        {(adminSettings.startFromFirstEpisodeShowIds || []).length > 0
+                          ? `${adminSettings.startFromFirstEpisodeShowIds!.length} Selected`
+                          : 'Auto (All Series)'}
+                      </span>
+                    </h4>
+                    <p className="text-xs text-zinc-400 mt-0.5">
+                      Pick specific series to feature in the desktop "Start from the 1st Episode" row. Leave empty to auto-include all episodic series.
+                    </p>
+                  </div>
+
+                  <div className="flex items-center gap-2 shrink-0">
+                    {(adminSettings.startFromFirstEpisodeShowIds || []).length > 0 && (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          const updated = { ...adminSettings, startFromFirstEpisodeShowIds: [] };
+                          onUpdateSettings(updated);
+                          try {
+                            localStorage.setItem('cineflix_settings', JSON.stringify(updated));
+                          } catch {}
+                        }}
+                        className="px-3 py-1.5 rounded-lg bg-zinc-800 hover:bg-zinc-700 text-zinc-300 text-xs font-semibold cursor-pointer"
+                      >
+                        Reset to All
+                      </button>
+                    )}
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const updated = {
+                          ...adminSettings,
+                          startFromFirstEpisodeEnabled: adminSettings.startFromFirstEpisodeEnabled === false
+                        };
+                        onUpdateSettings(updated);
+                        try {
+                          localStorage.setItem('cineflix_settings', JSON.stringify(updated));
+                        } catch {}
+                      }}
+                      className={`px-3 py-1.5 rounded-lg text-xs font-bold cursor-pointer transition-colors ${
+                        adminSettings.startFromFirstEpisodeEnabled !== false
+                          ? 'bg-emerald-600 text-white'
+                          : 'bg-zinc-800 text-zinc-400'
+                      }`}
+                    >
+                      {adminSettings.startFromFirstEpisodeEnabled !== false ? 'Row Enabled' : 'Row Hidden'}
+                    </button>
+                  </div>
+                </div>
+
+                {adminSettings.startFromFirstEpisodeEnabled !== false && (
+                  <div className="space-y-2.5 pt-1">
+                    <div className="relative">
+                      <Search className="w-3.5 h-3.5 text-zinc-500 absolute left-3 top-1/2 -translate-y-1/2" />
+                      <input
+                        type="text"
+                        value={firstEpSearchQuery}
+                        onChange={(e) => setFirstEpSearchQuery(e.target.value)}
+                        placeholder="Search series with episodes..."
+                        className="w-full bg-zinc-950 border border-zinc-800 rounded-lg pl-8 pr-3 py-1.5 text-xs text-white focus:border-zinc-500 focus:outline-none"
+                      />
+                    </div>
+                    <div className="flex flex-wrap gap-1.5 max-h-44 overflow-y-auto custom-scrollbar pr-1">
+                      {shows
+                        .filter((s) => s.seasons?.some((se) => se.episodes && se.episodes.length > 0))
+                        .filter((s) => !firstEpSearchQuery.trim() || s.title.toLowerCase().includes(firstEpSearchQuery.toLowerCase()))
+                        .map((show) => {
+                          const currentIds = adminSettings.startFromFirstEpisodeShowIds || [];
+                          const isSelected = currentIds.includes(show.id);
+                          return (
+                            <button
+                              key={`firstep-pick-${show.id}`}
+                              type="button"
+                              onClick={() => {
+                                const nextIds = isSelected
+                                  ? currentIds.filter((id) => id !== show.id)
+                                  : [...currentIds, show.id];
+                                const updated = { ...adminSettings, startFromFirstEpisodeShowIds: nextIds };
+                                onUpdateSettings(updated);
+                                try {
+                                  localStorage.setItem('cineflix_settings', JSON.stringify(updated));
+                                } catch {}
+                              }}
+                              className={`px-2.5 py-1.5 rounded-lg text-xs font-semibold flex items-center gap-1.5 transition-colors cursor-pointer border ${
+                                isSelected
+                                  ? 'bg-red-600/20 border-red-500 text-white'
+                                  : 'bg-zinc-950 border-zinc-800 text-zinc-400 hover:text-white hover:border-zinc-600'
+                              }`}
+                            >
+                              {isSelected && <Check className="w-3 h-3 text-red-400 stroke-[3]" />}
+                              <span>{show.title}</span>
+                            </button>
+                          );
+                        })}
+                    </div>
+                  </div>
+                )}
+              </div>
+
               {/* Feed Strips List */}
               <div className="space-y-3">
                 <p className="text-xs font-bold text-zinc-400 uppercase tracking-wider font-mono">
@@ -2834,6 +2944,19 @@ export const AdminDashboardPage: React.FC<AdminDashboardPageProps> = ({
                   </div>
                 </div>
 
+                <div>
+                  <label className="block text-[11px] text-zinc-400 font-semibold mb-1">
+                    Narrow Landscape Artwork URL (Optional, for Mobile Stacked Cards)
+                  </label>
+                  <input
+                    type="text"
+                    placeholder="https://... (wide/narrow artwork banner for stacked category cards)"
+                    value={newCatNarrowImage}
+                    onChange={(e) => setNewCatNarrowImage(e.target.value)}
+                    className="w-full bg-zinc-800 border border-zinc-700 rounded-lg px-3 py-2 text-xs text-white font-mono outline-none focus:border-red-500"
+                  />
+                </div>
+
                 <div className="flex items-center justify-between pt-2">
                   {newCatImage ? (
                     <div className="flex items-center gap-2">
@@ -2858,11 +2981,13 @@ export const AdminDashboardPage: React.FC<AdminDashboardPageProps> = ({
                         id: `cat-${Date.now()}`,
                         name: newCatName.trim(),
                         imageUrl: fallbackImg,
+                        narrowLandscapeUrl: newCatNarrowImage.trim() || undefined,
                         description: newCatDesc.trim()
                       };
                       setCategoriesList([...categoriesList, newCategory]);
                       setNewCatName('');
                       setNewCatImage('');
+                      setNewCatNarrowImage('');
                       setNewCatDesc('');
                       notify(`Created category "${newCategory.name}"!`);
                     }}
@@ -3020,6 +3145,23 @@ export const AdminDashboardPage: React.FC<AdminDashboardPageProps> = ({
                           value={editCatImage}
                           onChange={(e) => setEditCatImage(e.target.value)}
                           placeholder="https://images.unsplash.com/... or paste direct image link"
+                          className="w-full bg-zinc-900 border border-zinc-700 rounded-lg px-3.5 py-2.5 text-xs text-white font-mono placeholder-zinc-500 outline-none focus:border-red-500 transition-colors"
+                        />
+                      </div>
+
+                      {/* Narrow Landscape URL Input (for Stacked Mobile Cards) */}
+                      <div>
+                        <div className="flex items-center justify-between mb-1.5">
+                          <label className="text-[11px] text-zinc-300 font-bold uppercase tracking-wider font-mono">
+                            Narrow Landscape Image URL (Mobile Stacked)
+                          </label>
+                          <span className="text-[11px] text-zinc-500 font-mono">Wide banner strip</span>
+                        </div>
+                        <input
+                          type="text"
+                          value={editCatNarrowImage}
+                          onChange={(e) => setEditCatNarrowImage(e.target.value)}
+                          placeholder="https://... (optional; auto-creates collage if blank)"
                           className="w-full bg-zinc-900 border border-zinc-700 rounded-lg px-3.5 py-2.5 text-xs text-white font-mono placeholder-zinc-500 outline-none focus:border-red-500 transition-colors"
                         />
                       </div>
@@ -5468,6 +5610,62 @@ export const AdminDashboardPage: React.FC<AdminDashboardPageProps> = ({
                       </div>
                     </div>
 
+                    {/* Option 3B: Mobile Categories Page Card Style */}
+                    <div className="p-4 rounded-xl bg-zinc-900/90 border border-zinc-800 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                      <div>
+                        <h4 className="text-sm font-bold text-white">
+                          Mobile Categories Page Style
+                        </h4>
+                        <p className="text-xs text-zinc-400">
+                          Display categories on mobile as a 2:3 portrait grid or full-width stacked landscape cards with narrow artwork strips.
+                        </p>
+                      </div>
+
+                      <div className="flex items-center gap-1.5 bg-zinc-800/90 p-1 rounded-xl border border-zinc-700 shrink-0 flex-wrap sm:flex-nowrap">
+                        <button
+                          type="button"
+                          onClick={() => {
+                            const updated = {
+                              ...adminSettings,
+                              mobileCategoriesStyle: 'grid' as const
+                            };
+                            onUpdateSettings(updated);
+                            try {
+                              localStorage.setItem('cineflix_settings', JSON.stringify(updated));
+                            } catch {}
+                          }}
+                          className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+                            (adminSettings.mobileCategoriesStyle || 'grid') === 'grid'
+                              ? 'bg-red-600 text-white shadow'
+                              : 'text-zinc-400 hover:text-white'
+                          }`}
+                        >
+                          2:3 Card Grid
+                        </button>
+
+                        <button
+                          type="button"
+                          onClick={() => {
+                            const updated = {
+                              ...adminSettings,
+                              mobileCategoriesStyle: 'stacked_cards' as const
+                            };
+                            onUpdateSettings(updated);
+                            try {
+                              localStorage.setItem('cineflix_settings', JSON.stringify(updated));
+                            } catch {}
+                          }}
+                          className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+                            adminSettings.mobileCategoriesStyle === 'stacked_cards'
+                              ? 'bg-red-600 text-white shadow'
+                              : 'text-zinc-400 hover:text-white'
+                          }`}
+                        >
+                          Stacked Landscape Cards
+                        </button>
+                      </div>
+                    </div>
+
                     {/* Option 4: Top 10 Rank List Style (Modern Outlined, Inside Card Number, Classic Portrait) */}
                     <div className="p-4 rounded-xl bg-zinc-900/90 border border-zinc-800 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
                       <div>
@@ -5663,6 +5861,770 @@ export const AdminDashboardPage: React.FC<AdminDashboardPageProps> = ({
                           }`}
                         >
                           No-Preview Poster Buttons
+                        </button>
+                      </div>
+                    </div>
+
+                    {/* Option 7: Mobile More Info Reaction Button Style */}
+                    <div className="p-4 rounded-xl bg-zinc-900/90 border border-zinc-800 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                      <div>
+                        <h4 className="text-sm font-bold text-white">
+                          Mobile More Info Reaction Button
+                        </h4>
+                        <p className="text-xs text-zinc-400">
+                          Switch between classic Thumbs Up Like button or the animated Emoji Reaction button (tap to smile, hold for 3-emoji pill).
+                        </p>
+                      </div>
+
+                      <div className="flex items-center gap-1.5 bg-zinc-800/90 p-1 rounded-xl border border-zinc-700 shrink-0">
+                        <button
+                          type="button"
+                          onClick={() => {
+                            const updated = {
+                              ...adminSettings,
+                              mobileLikeButtonStyle: 'thumbs' as const
+                            };
+                            onUpdateSettings(updated);
+                            try {
+                              localStorage.setItem('cineflix_settings', JSON.stringify(updated));
+                            } catch {}
+                          }}
+                          className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+                            (adminSettings.mobileLikeButtonStyle || 'thumbs') === 'thumbs'
+                              ? 'bg-red-600 text-white shadow'
+                              : 'text-zinc-400 hover:text-white'
+                          }`}
+                        >
+                          Thumbs Up
+                        </button>
+
+                        <button
+                          type="button"
+                          onClick={() => {
+                            const updated = {
+                              ...adminSettings,
+                              mobileLikeButtonStyle: 'emoji' as const
+                            };
+                            onUpdateSettings(updated);
+                            try {
+                              localStorage.setItem('cineflix_settings', JSON.stringify(updated));
+                            } catch {}
+                          }}
+                          className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+                            adminSettings.mobileLikeButtonStyle === 'emoji'
+                              ? 'bg-red-600 text-white shadow'
+                              : 'text-zinc-400 hover:text-white'
+                          }`}
+                        >
+                          Emoji Reactions Pill
+                        </button>
+                      </div>
+                    </div>
+
+                    {/* Option 8: Desktop Card Popout Design Style */}
+                    <div className="p-4 rounded-xl bg-zinc-900/90 border border-zinc-800 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                      <div>
+                        <h4 className="text-sm font-bold text-white">
+                          Desktop Card Popout Style
+                        </h4>
+                        <p className="text-xs text-zinc-400">
+                          Choose desktop hover popout card appearance: Classic Split, Modern Style, or Immersive Fade.
+                        </p>
+                      </div>
+
+                      <div className="flex items-center gap-1.5 bg-zinc-800/90 p-1 rounded-xl border border-zinc-700 shrink-0 flex-wrap sm:flex-nowrap">
+                        <button
+                          type="button"
+                          onClick={() => {
+                            const updated = {
+                              ...adminSettings,
+                              desktopPopoutStyle: 'classic' as const
+                            };
+                            onUpdateSettings(updated);
+                            try {
+                              localStorage.setItem('cineflix_settings', JSON.stringify(updated));
+                            } catch {}
+                          }}
+                          className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+                            (adminSettings.desktopPopoutStyle || 'classic') === 'classic'
+                              ? 'bg-red-600 text-white shadow'
+                              : 'text-zinc-400 hover:text-white'
+                          }`}
+                        >
+                          Classic Split
+                        </button>
+
+                        <button
+                          type="button"
+                          onClick={() => {
+                            const updated = {
+                              ...adminSettings,
+                              desktopPopoutStyle: 'overlay_red' as const
+                            };
+                            onUpdateSettings(updated);
+                            try {
+                              localStorage.setItem('cineflix_settings', JSON.stringify(updated));
+                            } catch {}
+                          }}
+                          className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+                            adminSettings.desktopPopoutStyle === 'overlay_red'
+                              ? 'bg-red-600 text-white shadow'
+                              : 'text-zinc-400 hover:text-white'
+                          }`}
+                        >
+                          Modern Style
+                        </button>
+
+                        <button
+                          type="button"
+                          onClick={() => {
+                            const updated = {
+                              ...adminSettings,
+                              desktopPopoutStyle: 'immersive_fade' as const
+                            };
+                            onUpdateSettings(updated);
+                            try {
+                              localStorage.setItem('cineflix_settings', JSON.stringify(updated));
+                            } catch {}
+                          }}
+                          className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+                            adminSettings.desktopPopoutStyle === 'immersive_fade'
+                              ? 'bg-red-600 text-white shadow'
+                              : 'text-zinc-400 hover:text-white'
+                          }`}
+                        >
+                          Immersive Fade
+                        </button>
+                      </div>
+                    </div>
+
+                    {/* Option 9: Desktop Top Bar Style */}
+                    <div className="p-4 rounded-xl bg-zinc-900/90 border border-zinc-800 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                      <div>
+                        <h4 className="text-sm font-bold text-white">
+                          Desktop Top Navigation Bar Style
+                        </h4>
+                        <p className="text-xs text-zinc-400">
+                          Switch between Classic Top Bar and Translucent Floating Glass Header (menu left, logo center, search &amp; profile right).
+                        </p>
+                      </div>
+
+                      <div className="flex items-center gap-1.5 bg-zinc-800/90 p-1 rounded-xl border border-zinc-700 shrink-0">
+                        <button
+                          type="button"
+                          onClick={() => {
+                            const updated = {
+                              ...adminSettings,
+                              desktopNavbarStyle: 'classic' as const
+                            };
+                            onUpdateSettings(updated);
+                            try {
+                              localStorage.setItem('cineflix_settings', JSON.stringify(updated));
+                            } catch {}
+                          }}
+                          className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+                            (adminSettings.desktopNavbarStyle || 'classic') === 'classic'
+                              ? 'bg-red-600 text-white shadow'
+                              : 'text-zinc-400 hover:text-white'
+                          }`}
+                        >
+                          Classic Top Bar
+                        </button>
+
+                        <button
+                          type="button"
+                          onClick={() => {
+                            const updated = {
+                              ...adminSettings,
+                              desktopNavbarStyle: 'floating_glass' as const
+                            };
+                            onUpdateSettings(updated);
+                            try {
+                              localStorage.setItem('cineflix_settings', JSON.stringify(updated));
+                            } catch {}
+                          }}
+                          className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+                            adminSettings.desktopNavbarStyle === 'floating_glass'
+                              ? 'bg-red-600 text-white shadow'
+                              : 'text-zinc-400 hover:text-white'
+                          }`}
+                        >
+                          Floating Glass Bar
+                        </button>
+                      </div>
+                    </div>
+
+                    {/* Option 10: Sign-Up Promotional Tile Banner */}
+                    <div className="p-4 rounded-xl bg-zinc-900/90 border border-zinc-800 space-y-4">
+                      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                        <div>
+                          <h4 className="text-sm font-bold text-white">
+                            Promotional Sign-Up Tile Banner
+                          </h4>
+                          <p className="text-xs text-zinc-400">
+                            Display an Apple TV-style Sign-Up banner tile on the Homepage. Clicking it opens the Login / Create Account page.
+                          </p>
+                        </div>
+
+                        <button
+                          type="button"
+                          onClick={() => {
+                            const updated = {
+                              ...adminSettings,
+                              signupTileEnabled: !adminSettings.signupTileEnabled,
+                              signupTileLayouts: adminSettings.signupTileLayouts || ['desktop', 'tablet', 'mobile']
+                            };
+                            onUpdateSettings(updated);
+                            try {
+                              localStorage.setItem('cineflix_settings', JSON.stringify(updated));
+                            } catch {}
+                          }}
+                          className={`px-4 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer shrink-0 ${
+                            adminSettings.signupTileEnabled
+                              ? 'bg-red-600 text-white shadow'
+                              : 'bg-zinc-800 text-zinc-400 hover:text-white border border-zinc-700'
+                          }`}
+                        >
+                          {adminSettings.signupTileEnabled ? 'Enabled' : 'Disabled'}
+                        </button>
+                      </div>
+
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-1">
+                        <div>
+                          <label className="block text-[11px] font-semibold text-zinc-400 mb-1">
+                            Headline Title (optional)
+                          </label>
+                          <input
+                            type="text"
+                            value={adminSettings.signupTileTitle || ''}
+                            onChange={(e) => {
+                              const updated = { ...adminSettings, signupTileTitle: e.target.value };
+                              onUpdateSettings(updated);
+                              try {
+                                localStorage.setItem('cineflix_settings', JSON.stringify(updated));
+                              } catch {}
+                            }}
+                            placeholder="e.g. Watch Every Original Ad-Free"
+                            className="w-full px-3 py-2 rounded-lg bg-zinc-950 border border-zinc-800 text-xs text-white placeholder-zinc-600 focus:outline-none focus:border-red-500"
+                          />
+                        </div>
+
+                        <div>
+                          <label className="block text-[11px] font-semibold text-zinc-400 mb-1">
+                            Button Label
+                          </label>
+                          <input
+                            type="text"
+                            value={adminSettings.signupTileButtonText || ''}
+                            onChange={(e) => {
+                              const updated = { ...adminSettings, signupTileButtonText: e.target.value };
+                              onUpdateSettings(updated);
+                              try {
+                                localStorage.setItem('cineflix_settings', JSON.stringify(updated));
+                              } catch {}
+                            }}
+                            placeholder="Sign Up to Watch"
+                            className="w-full px-3 py-2 rounded-lg bg-zinc-950 border border-zinc-800 text-xs text-white placeholder-zinc-600 focus:outline-none focus:border-red-500"
+                          />
+                        </div>
+
+                        <div className="sm:col-span-2">
+                          <label className="block text-[11px] font-semibold text-zinc-400 mb-1">
+                            Subtitle Text
+                          </label>
+                          <input
+                            type="text"
+                            value={adminSettings.signupTileSubtitle || ''}
+                            onChange={(e) => {
+                              const updated = { ...adminSettings, signupTileSubtitle: e.target.value };
+                              onUpdateSettings(updated);
+                              try {
+                                localStorage.setItem('cineflix_settings', JSON.stringify(updated));
+                              } catch {}
+                            }}
+                            placeholder="Stream thousands of hours of exclusive Turkish Originals & dubbed epics."
+                            className="w-full px-3 py-2 rounded-lg bg-zinc-950 border border-zinc-800 text-xs text-white placeholder-zinc-600 focus:outline-none focus:border-red-500"
+                          />
+                        </div>
+
+                        <div className="sm:col-span-2">
+                          <label className="block text-[11px] font-semibold text-zinc-400 mb-1">
+                            Custom Banner Image URL (leave empty for automatic catalog collage)
+                          </label>
+                          <input
+                            type="text"
+                            value={adminSettings.signupTileImageUrl || ''}
+                            onChange={(e) => {
+                              const updated = { ...adminSettings, signupTileImageUrl: e.target.value };
+                              onUpdateSettings(updated);
+                              try {
+                                localStorage.setItem('cineflix_settings', JSON.stringify(updated));
+                              } catch {}
+                            }}
+                            placeholder="https://..."
+                            className="w-full px-3 py-2 rounded-lg bg-zinc-950 border border-zinc-800 text-xs text-white placeholder-zinc-600 focus:outline-none focus:border-red-500"
+                          />
+                        </div>
+
+                        <div className="sm:col-span-2 grid grid-cols-1 sm:grid-cols-2 gap-3 pt-1">
+                          <div>
+                            <label className="block text-[11px] font-semibold text-zinc-400 mb-1">
+                              Banner Logo Mode
+                            </label>
+                            <div className="flex items-center gap-1.5 bg-zinc-950 p-1 rounded-lg border border-zinc-800">
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  const updated = { ...adminSettings, signupTileUseCustomLogo: false };
+                                  onUpdateSettings(updated);
+                                  try {
+                                    localStorage.setItem('cineflix_settings', JSON.stringify(updated));
+                                  } catch {}
+                                }}
+                                className={`flex-1 px-2 py-1.5 rounded text-[11px] font-bold transition-all cursor-pointer ${
+                                  !adminSettings.signupTileUseCustomLogo
+                                    ? 'bg-red-600 text-white'
+                                    : 'text-zinc-400 hover:text-white'
+                                }`}
+                              >
+                                Platform Logo
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  const updated = { ...adminSettings, signupTileUseCustomLogo: true };
+                                  onUpdateSettings(updated);
+                                  try {
+                                    localStorage.setItem('cineflix_settings', JSON.stringify(updated));
+                                  } catch {}
+                                }}
+                                className={`flex-1 px-2 py-1.5 rounded text-[11px] font-bold transition-all cursor-pointer ${
+                                  adminSettings.signupTileUseCustomLogo
+                                    ? 'bg-red-600 text-white'
+                                    : 'text-zinc-400 hover:text-white'
+                                }`}
+                              >
+                                Custom Logo
+                              </button>
+                            </div>
+                          </div>
+
+                          <div>
+                            <label className="block text-[11px] font-semibold text-zinc-400 mb-1">
+                              Custom Banner Logo URL
+                            </label>
+                            <input
+                              type="text"
+                              value={adminSettings.signupTileCustomLogoUrl || ''}
+                              onChange={(e) => {
+                                const updated = { ...adminSettings, signupTileCustomLogoUrl: e.target.value };
+                                onUpdateSettings(updated);
+                                try {
+                                  localStorage.setItem('cineflix_settings', JSON.stringify(updated));
+                                } catch {}
+                              }}
+                              placeholder="https://..."
+                              className="w-full px-3 py-2 rounded-lg bg-zinc-950 border border-zinc-800 text-xs text-white placeholder-zinc-600 focus:outline-none focus:border-red-500"
+                            />
+                          </div>
+                        </div>
+
+                        <div className="sm:col-span-2 flex flex-wrap items-center gap-2 pt-1">
+                          <span className="text-[11px] font-semibold text-zinc-400 mr-1">
+                            Show on Layouts:
+                          </span>
+                          {(['desktop', 'tablet', 'mobile'] as const).map((layoutKey) => {
+                            const currentLayouts = adminSettings.signupTileLayouts || ['desktop', 'tablet', 'mobile'];
+                            const isChecked = currentLayouts.includes(layoutKey);
+                            return (
+                              <button
+                                key={layoutKey}
+                                type="button"
+                                onClick={() => {
+                                  const nextLayouts = isChecked
+                                    ? currentLayouts.filter((l) => l !== layoutKey)
+                                    : [...currentLayouts, layoutKey];
+                                  const updated = { ...adminSettings, signupTileLayouts: nextLayouts };
+                                  onUpdateSettings(updated);
+                                  try {
+                                    localStorage.setItem('cineflix_settings', JSON.stringify(updated));
+                                  } catch {}
+                                }}
+                                className={`px-3 py-1 rounded-lg text-xs font-bold capitalize transition-all cursor-pointer border ${
+                                  isChecked
+                                    ? 'bg-red-600/20 border-red-500 text-white'
+                                    : 'bg-zinc-950 border-zinc-800 text-zinc-500 hover:text-zinc-300'
+                                }`}
+                              >
+                                {layoutKey}
+                              </button>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Option 11: Global Alert Poster Announcement Modal */}
+                    <div className="p-4 rounded-xl bg-zinc-900/90 border border-zinc-800 space-y-4">
+                      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                        <div>
+                          <h4 className="text-sm font-bold text-white">
+                            Alert Poster Announcement Modal
+                          </h4>
+                          <p className="text-xs text-zinc-400">
+                            Show a centered Prime-style poster modal announcement with custom image, text, and CTA action.
+                          </p>
+                        </div>
+
+                        <div className="flex items-center gap-2 shrink-0">
+                          <button
+                            type="button"
+                            onClick={() => {
+                              try {
+                                sessionStorage.removeItem('dizi_alert_poster_dismissed');
+                              } catch {}
+                              window.dispatchEvent(new Event('dizi_alert_poster_reset'));
+                            }}
+                            className="px-3 py-1.5 rounded-lg text-xs font-semibold bg-zinc-800 hover:bg-zinc-700 text-zinc-200 border border-zinc-700 cursor-pointer transition-colors"
+                          >
+                            Reset Dismissal
+                          </button>
+
+                          <button
+                            type="button"
+                            onClick={() => {
+                              const nextEnabled = !adminSettings.alertPosterEnabled;
+                              const updated = {
+                                ...adminSettings,
+                                alertPosterEnabled: nextEnabled,
+                                alertPosterButtonAction: adminSettings.alertPosterButtonAction || ('close' as const),
+                                alertPosterLayouts: adminSettings.alertPosterLayouts || ['desktop', 'tablet', 'mobile']
+                              };
+                              onUpdateSettings(updated);
+                              try {
+                                localStorage.setItem('cineflix_settings', JSON.stringify(updated));
+                                if (nextEnabled) {
+                                  sessionStorage.removeItem('dizi_alert_poster_dismissed');
+                                  window.dispatchEvent(new Event('dizi_alert_poster_reset'));
+                                }
+                              } catch {}
+                            }}
+                            className={`px-4 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+                              adminSettings.alertPosterEnabled
+                                ? 'bg-red-600 text-white shadow'
+                                : 'bg-zinc-800 text-zinc-400 hover:text-white border border-zinc-700'
+                            }`}
+                          >
+                            {adminSettings.alertPosterEnabled ? 'Enabled' : 'Disabled'}
+                          </button>
+                        </div>
+                      </div>
+
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-1">
+                        <div>
+                          <label className="block text-[11px] font-semibold text-zinc-400 mb-1">
+                            Alert Title
+                          </label>
+                          <input
+                            type="text"
+                            value={adminSettings.alertPosterTitle || ''}
+                            onChange={(e) => {
+                              const updated = { ...adminSettings, alertPosterTitle: e.target.value };
+                              onUpdateSettings(updated);
+                              try {
+                                localStorage.setItem('cineflix_settings', JSON.stringify(updated));
+                              } catch {}
+                            }}
+                            placeholder="Traveling"
+                            className="w-full px-3 py-2 rounded-lg bg-zinc-950 border border-zinc-800 text-xs text-white placeholder-zinc-600 focus:outline-none focus:border-red-500"
+                          />
+                        </div>
+
+                        <div>
+                          <label className="block text-[11px] font-semibold text-zinc-400 mb-1">
+                            Button Label
+                          </label>
+                          <input
+                            type="text"
+                            value={adminSettings.alertPosterButtonText || ''}
+                            onChange={(e) => {
+                              const updated = { ...adminSettings, alertPosterButtonText: e.target.value };
+                              onUpdateSettings(updated);
+                              try {
+                                localStorage.setItem('cineflix_settings', JSON.stringify(updated));
+                              } catch {}
+                            }}
+                            placeholder="Close"
+                            className="w-full px-3 py-2 rounded-lg bg-zinc-950 border border-zinc-800 text-xs text-white placeholder-zinc-600 focus:outline-none focus:border-red-500"
+                          />
+                        </div>
+
+                        <div className="sm:col-span-2">
+                          <label className="block text-[11px] font-semibold text-zinc-400 mb-1">
+                            Subtitle / Message
+                          </label>
+                          <input
+                            type="text"
+                            value={adminSettings.alertPosterSubtitle || ''}
+                            onChange={(e) => {
+                              const updated = { ...adminSettings, alertPosterSubtitle: e.target.value };
+                              onUpdateSettings(updated);
+                              try {
+                                localStorage.setItem('cineflix_settings', JSON.stringify(updated));
+                              } catch {}
+                            }}
+                            placeholder="Your access to movies, TV, and add-on subscriptions vary while you're abroad"
+                            className="w-full px-3 py-2 rounded-lg bg-zinc-950 border border-zinc-800 text-xs text-white placeholder-zinc-600 focus:outline-none focus:border-red-500"
+                          />
+                        </div>
+
+                        <div className="sm:col-span-2">
+                          <label className="block text-[11px] font-semibold text-zinc-400 mb-1">
+                            Poster Image URL
+                          </label>
+                          <input
+                            type="text"
+                            value={adminSettings.alertPosterImageUrl || ''}
+                            onChange={(e) => {
+                              const updated = { ...adminSettings, alertPosterImageUrl: e.target.value };
+                              onUpdateSettings(updated);
+                              try {
+                                localStorage.setItem('cineflix_settings', JSON.stringify(updated));
+                              } catch {}
+                            }}
+                            placeholder="https://..."
+                            className="w-full px-3 py-2 rounded-lg bg-zinc-950 border border-zinc-800 text-xs text-white placeholder-zinc-600 focus:outline-none focus:border-red-500"
+                          />
+                        </div>
+
+                        <div>
+                          <label className="block text-[11px] font-semibold text-zinc-400 mb-1">
+                            Button Action
+                          </label>
+                          <div className="flex items-center gap-1.5 bg-zinc-950 p-1 rounded-lg border border-zinc-800">
+                            {([
+                              { id: 'close' as const, label: 'Close Modal' },
+                              { id: 'login' as const, label: 'Open Login' },
+                              { id: 'link' as const, label: 'Open Link' }
+                            ]).map((act) => (
+                              <button
+                                key={act.id}
+                                type="button"
+                                onClick={() => {
+                                  const updated = { ...adminSettings, alertPosterButtonAction: act.id };
+                                  onUpdateSettings(updated);
+                                  try {
+                                    localStorage.setItem('cineflix_settings', JSON.stringify(updated));
+                                  } catch {}
+                                }}
+                                className={`flex-1 px-2 py-1.5 rounded text-[11px] font-bold transition-all cursor-pointer ${
+                                  (adminSettings.alertPosterButtonAction || 'close') === act.id
+                                    ? 'bg-red-600 text-white'
+                                    : 'text-zinc-400 hover:text-white'
+                                }`}
+                              >
+                                {act.label}
+                              </button>
+                            ))}
+                          </div>
+                        </div>
+
+                        {adminSettings.alertPosterButtonAction === 'link' && (
+                          <div>
+                            <label className="block text-[11px] font-semibold text-zinc-400 mb-1">
+                              Destination URL (e.g. /series or https://...)
+                            </label>
+                            <input
+                              type="text"
+                              value={adminSettings.alertPosterButtonUrl || ''}
+                              onChange={(e) => {
+                                const updated = { ...adminSettings, alertPosterButtonUrl: e.target.value };
+                                onUpdateSettings(updated);
+                                try {
+                                  localStorage.setItem('cineflix_settings', JSON.stringify(updated));
+                                } catch {}
+                              }}
+                              placeholder="/series or https://..."
+                              className="w-full px-3 py-2 rounded-lg bg-zinc-950 border border-zinc-800 text-xs text-white placeholder-zinc-600 focus:outline-none focus:border-red-500"
+                            />
+                          </div>
+                        )}
+
+                        <div className="sm:col-span-2 flex flex-wrap items-center gap-2 pt-1">
+                          <span className="text-[11px] font-semibold text-zinc-400 mr-1">
+                            Show on Layouts:
+                          </span>
+                          {(['desktop', 'tablet', 'mobile'] as const).map((layoutKey) => {
+                            const currentLayouts = adminSettings.alertPosterLayouts || ['desktop', 'tablet', 'mobile'];
+                            const isChecked = currentLayouts.includes(layoutKey);
+                            return (
+                              <button
+                                key={layoutKey}
+                                type="button"
+                                onClick={() => {
+                                  const nextLayouts = isChecked
+                                    ? currentLayouts.filter((l) => l !== layoutKey)
+                                    : [...currentLayouts, layoutKey];
+                                  const updated = { ...adminSettings, alertPosterLayouts: nextLayouts };
+                                  onUpdateSettings(updated);
+                                  try {
+                                    localStorage.setItem('cineflix_settings', JSON.stringify(updated));
+                                  } catch {}
+                                }}
+                                className={`px-3 py-1 rounded-lg text-xs font-bold capitalize transition-all cursor-pointer border ${
+                                  isChecked
+                                    ? 'bg-red-600/20 border-red-500 text-white'
+                                    : 'bg-zinc-950 border-zinc-800 text-zinc-500 hover:text-zinc-300'
+                                }`}
+                              >
+                                {layoutKey}
+                              </button>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Option 12: Mobile More Info Action Button Text Labels */}
+                    <div className="p-4 rounded-xl bg-zinc-900/90 border border-zinc-800 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                      <div>
+                        <h4 className="text-sm font-bold text-white">
+                          Mobile More Info Action Button Text
+                        </h4>
+                        <p className="text-xs text-zinc-400">
+                          Hide text below Like, My List, Share, and Info buttons on mobile detail page and show larger compact icons.
+                        </p>
+                      </div>
+                      <div className="flex items-center gap-2 bg-zinc-950 p-1 rounded-lg border border-zinc-800 shrink-0">
+                        <button
+                          type="button"
+                          onClick={() => {
+                            const updated = { ...adminSettings, hideMobileDetailActionLabels: false };
+                            onUpdateSettings(updated);
+                            try {
+                              localStorage.setItem('cineflix_settings', JSON.stringify(updated));
+                            } catch {}
+                          }}
+                          className={`px-3 py-1.5 rounded-md text-xs font-bold transition-all cursor-pointer ${
+                            !adminSettings.hideMobileDetailActionLabels
+                              ? 'bg-red-600 text-white shadow'
+                              : 'text-zinc-400 hover:text-white'
+                          }`}
+                        >
+                          Show Labels
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            const updated = { ...adminSettings, hideMobileDetailActionLabels: true };
+                            onUpdateSettings(updated);
+                            try {
+                              localStorage.setItem('cineflix_settings', JSON.stringify(updated));
+                            } catch {}
+                          }}
+                          className={`px-3 py-1.5 rounded-md text-xs font-bold transition-all cursor-pointer ${
+                            adminSettings.hideMobileDetailActionLabels
+                              ? 'bg-red-600 text-white shadow'
+                              : 'text-zinc-400 hover:text-white'
+                          }`}
+                        >
+                          Hide Text
+                        </button>
+                      </div>
+                    </div>
+
+                    {/* Option 13: Mobile Dailymotion/YouTube Episode Auto-Fullscreen Landscape */}
+                    <div className="p-4 rounded-xl bg-zinc-900/90 border border-zinc-800 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                      <div>
+                        <h4 className="text-sm font-bold text-white">
+                          Mobile Episode Direct Landscape Fullscreen (YouTube / Dailymotion)
+                        </h4>
+                        <p className="text-xs text-zinc-400">
+                          When enabled, playing a Dailymotion or YouTube episode on mobile opens directly in landscape fullscreen.
+                        </p>
+                      </div>
+                      <div className="flex items-center gap-2 bg-zinc-950 p-1 rounded-lg border border-zinc-800 shrink-0">
+                        <button
+                          type="button"
+                          onClick={() => {
+                            const updated = { ...adminSettings, mobileAutoFullscreenLandscapeEmbed: false };
+                            onUpdateSettings(updated);
+                            try {
+                              localStorage.setItem('cineflix_settings', JSON.stringify(updated));
+                            } catch {}
+                          }}
+                          className={`px-3 py-1.5 rounded-md text-xs font-bold transition-all cursor-pointer ${
+                            !adminSettings.mobileAutoFullscreenLandscapeEmbed
+                              ? 'bg-red-600 text-white shadow'
+                              : 'text-zinc-400 hover:text-white'
+                          }`}
+                        >
+                          Standard
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            const updated = { ...adminSettings, mobileAutoFullscreenLandscapeEmbed: true };
+                            onUpdateSettings(updated);
+                            try {
+                              localStorage.setItem('cineflix_settings', JSON.stringify(updated));
+                            } catch {}
+                          }}
+                          className={`px-3 py-1.5 rounded-md text-xs font-bold transition-all cursor-pointer ${
+                            adminSettings.mobileAutoFullscreenLandscapeEmbed
+                              ? 'bg-red-600 text-white shadow'
+                              : 'text-zinc-400 hover:text-white'
+                          }`}
+                        >
+                          Landscape Fullscreen
+                        </button>
+                      </div>
+                    </div>
+
+                    {/* Option 14: Full Size More Info Episode Card Titles */}
+                    <div className="p-4 rounded-xl bg-zinc-900/90 border border-zinc-800 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                      <div>
+                        <h4 className="text-sm font-bold text-white">
+                          Full Size More Info Episode Cards Display
+                        </h4>
+                        <p className="text-xs text-zinc-400">
+                          Hide episode title text below cards and show big bold episode number (bottom-left) + duration (bottom-right) inside thumbnail.
+                        </p>
+                      </div>
+                      <div className="flex items-center gap-2 bg-zinc-950 p-1 rounded-lg border border-zinc-800 shrink-0">
+                        <button
+                          type="button"
+                          onClick={() => {
+                            const updated = { ...adminSettings, hideFullSizeEpisodeTitles: false };
+                            onUpdateSettings(updated);
+                            try {
+                              localStorage.setItem('cineflix_settings', JSON.stringify(updated));
+                            } catch {}
+                          }}
+                          className={`px-3 py-1.5 rounded-md text-xs font-bold transition-all cursor-pointer ${
+                            !adminSettings.hideFullSizeEpisodeTitles
+                              ? 'bg-red-600 text-white shadow'
+                              : 'text-zinc-400 hover:text-white'
+                          }`}
+                        >
+                          Title Below
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            const updated = { ...adminSettings, hideFullSizeEpisodeTitles: true };
+                            onUpdateSettings(updated);
+                            try {
+                              localStorage.setItem('cineflix_settings', JSON.stringify(updated));
+                            } catch {}
+                          }}
+                          className={`px-3 py-1.5 rounded-md text-xs font-bold transition-all cursor-pointer ${
+                            adminSettings.hideFullSizeEpisodeTitles
+                              ? 'bg-red-600 text-white shadow'
+                              : 'text-zinc-400 hover:text-white'
+                          }`}
+                        >
+                          Number & Duration
                         </button>
                       </div>
                     </div>

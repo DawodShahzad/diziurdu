@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { DiziLogo } from './DiziLogo';
-import { NotificationItem } from '../types';
+import { NotificationItem, Show } from '../types';
 import {
   Search,
   Bell,
@@ -15,6 +15,7 @@ import {
   Settings,
   Plus,
   ChevronDown,
+  ChevronLeft,
   Trash2,
   RotateCcw,
   Menu
@@ -49,6 +50,13 @@ interface NavbarProps {
   hideMobileLogoBar?: boolean;
   isSharePage?: boolean;
   onOpenHamburgerDrawer?: () => void;
+  searchSuggestions?: string[];
+  onExactSearchCommit?: (query: string) => void;
+  hideProfileAvatar?: boolean;
+  desktopNavbarStyle?: 'classic' | 'floating_glass';
+  shows?: Show[];
+  onOpenCreateAccount?: () => void;
+  onShareBack?: () => void;
 }
 
 export const Navbar: React.FC<NavbarProps> = ({
@@ -67,7 +75,7 @@ export const Navbar: React.FC<NavbarProps> = ({
   onSearchChange,
   onOpenShowById,
   userAvatar = 'https://images.unsplash.com/photo-1553284965-83fd3e82fa5a?auto=format&fit=crop&w=120&q=80',
-  userName = 'Good',
+  userName = '',
   useCustomLogo = false,
   customLogoUrl,
   notifications: propNotifications,
@@ -79,14 +87,24 @@ export const Navbar: React.FC<NavbarProps> = ({
   isOffline = false,
   hideMobileLogoBar = false,
   isSharePage = false,
-  onOpenHamburgerDrawer
+  onOpenHamburgerDrawer,
+  searchSuggestions = [],
+  onExactSearchCommit,
+  hideProfileAvatar = false,
+  desktopNavbarStyle = 'classic',
+  shows = [],
+  onOpenCreateAccount,
+  onShareBack
 }) => {
   type ActiveMenu = 'none' | 'search' | 'notifications' | 'profile' | 'more';
   const [activeMenu, setActiveMenu] = useState<ActiveMenu>('none');
+  const [floatingExpand, setFloatingExpand] = useState<'none' | 'menu' | 'search' | 'profile'>('none');
+  const [floatingSearchDraft, setFloatingSearchDraft] = useState<string>(searchQuery || '');
   const [isScrolled, setIsScrolled] = useState<boolean>(false);
   const [windowWidth, setWindowWidth] = useState<number>(() =>
     typeof window !== 'undefined' ? window.innerWidth : 1200
   );
+  const floatingBarRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     const handleResize = () => setWindowWidth(window.innerWidth);
@@ -123,6 +141,31 @@ export const Navbar: React.FC<NavbarProps> = ({
     if (windowWidth >= 660) return 2;
     return 1;
   }, [windowWidth, activeMenu]);
+
+  // Inline predictive autocomplete suffix (e.g. "ertu" -> dull "grul ghazi")
+  const { fullPrediction, ghostSuffix } = useMemo(() => {
+    const raw = searchQuery;
+    const trimmed = raw.trim();
+    if (!trimmed || !searchSuggestions || searchSuggestions.length === 0) {
+      return { fullPrediction: '', ghostSuffix: '' };
+    }
+    const lowerRaw = raw.toLowerCase();
+    const match = searchSuggestions.find(
+      (s) => s.toLowerCase().startsWith(lowerRaw) && s.length > raw.length
+    );
+    if (!match) return { fullPrediction: '', ghostSuffix: '' };
+    return {
+      fullPrediction: match,
+      ghostSuffix: match.slice(raw.length)
+    };
+  }, [searchQuery, searchSuggestions]);
+
+  // Keep search input open when navigated via /search URL with a query
+  useEffect(() => {
+    if (searchQuery.trim() && activeMenu === 'none') {
+      setActiveMenu('search');
+    }
+  }, [searchQuery]);
 
   // References to keep exactly ONE menu visible at a time
   const searchContainerRef = useRef<HTMLDivElement>(null);
@@ -196,18 +239,27 @@ export const Navbar: React.FC<NavbarProps> = ({
 
   useEffect(() => {
     const handleScroll = () => {
-      setScrollY(window.scrollY);
+      const shareScroller = isSharePage
+        ? (document.querySelector('[data-share-overlay-scroll="true"]') as HTMLElement | null)
+        : null;
+      const currentY = isSharePage && shareScroller ? shareScroller.scrollTop : window.scrollY;
+      setScrollY(currentY);
       // Smoothly activate solid background when scrolling beyond 20px threshold
-      setIsScrolled(window.scrollY > 20);
+      setIsScrolled(currentY > 20);
     };
 
-    // Run once on mount to capture initial scroll position
+    // Run once on mount / mode change to capture initial scroll position
     handleScroll();
 
     const handleClickOutside = (e: MouseEvent) => {
       const target = e.target as Node;
+      if (floatingBarRef.current && !floatingBarRef.current.contains(target)) {
+        setFloatingExpand('none');
+      }
+      if (activeMenu === 'search') {
+        return;
+      }
       if (
-        (activeMenu === 'search' && searchContainerRef.current?.contains(target)) ||
         (activeMenu === 'notifications' && notifContainerRef.current?.contains(target)) ||
         (activeMenu === 'profile' && profileContainerRef.current?.contains(target)) ||
         (activeMenu === 'more' && moreContainerRef.current?.contains(target))
@@ -218,18 +270,109 @@ export const Navbar: React.FC<NavbarProps> = ({
     };
 
     const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') setActiveMenu('none');
+      if (e.key === 'Escape') {
+        setActiveMenu('none');
+        setFloatingExpand('none');
+      }
     };
 
-    window.addEventListener('scroll', handleScroll, { passive: true });
+    const shareScroller = isSharePage
+      ? (document.querySelector('[data-share-overlay-scroll="true"]') as HTMLElement | null)
+      : null;
+
+    window.addEventListener('scroll', handleScroll, { passive: true, capture: true });
+    shareScroller?.addEventListener('scroll', handleScroll, { passive: true });
     document.addEventListener('click', handleClickOutside);
     document.addEventListener('keydown', handleKeyDown);
     return () => {
-      window.removeEventListener('scroll', handleScroll);
+      window.removeEventListener('scroll', handleScroll, { capture: true } as EventListenerOptions);
+      shareScroller?.removeEventListener('scroll', handleScroll);
       document.removeEventListener('click', handleClickOutside);
       document.removeEventListener('keydown', handleKeyDown);
     };
-  }, [activeMenu]);
+  }, [activeMenu, isSharePage]);
+
+  // Sync draft search input when external searchQuery clears
+  useEffect(() => {
+    setFloatingSearchDraft(searchQuery || '');
+  }, [searchQuery]);
+
+  // Collapse floating navbar menus when entering Full Size More Info Page
+  useEffect(() => {
+    if (isSharePage) {
+      setFloatingExpand('none');
+    }
+  }, [isSharePage]);
+
+  // Floating navbar inline live suggestions (3-4) and matching cards (4)
+  const { floatingMatchedSuggestions, floatingMatchedShows } = useMemo(() => {
+    const q = floatingSearchDraft.trim().toLowerCase();
+    if (!q) {
+      return {
+        floatingMatchedSuggestions: [] as string[],
+        floatingMatchedShows: [] as Show[]
+      };
+    }
+
+    const sugMatches: string[] = [];
+    const seenSug = new Set<string>();
+    const addSug = (text: string) => {
+      const clean = text.trim();
+      if (!clean || seenSug.has(clean.toLowerCase())) return;
+      seenSug.add(clean.toLowerCase());
+      sugMatches.push(clean);
+    };
+
+    shows.forEach((s) => {
+      if (s.title.toLowerCase().startsWith(q)) addSug(s.title);
+    });
+    shows.forEach((s) => {
+      if (s.title.toLowerCase().includes(q)) addSug(s.title);
+    });
+    searchSuggestions.forEach((s) => {
+      if (s.toLowerCase().includes(q)) addSug(s);
+    });
+
+    const cardMatches = shows
+      .filter(
+        (s) =>
+          s.title.toLowerCase().includes(q) ||
+          Boolean(s.turkishTitle?.toLowerCase().includes(q)) ||
+          s.genres.some((g) => g.toLowerCase().includes(q)) ||
+          s.cast.some((c) => c.name.toLowerCase().includes(q))
+      )
+      .sort((a, b) => {
+        const aStart = a.title.toLowerCase().startsWith(q) ? 1 : 0;
+        const bStart = b.title.toLowerCase().startsWith(q) ? 1 : 0;
+        if (aStart !== bStart) return bStart - aStart;
+        return (b.points || 0) - (a.points || 0);
+      })
+      .slice(0, 3);
+
+    return {
+      floatingMatchedSuggestions: sugMatches.slice(0, 3),
+      floatingMatchedShows: cardMatches
+    };
+  }, [floatingSearchDraft, shows, searchSuggestions]);
+
+  const floatingPageLabel = useMemo(() => {
+    if (isSharePage) return null;
+    if (searchQuery.trim()) return 'Search';
+    if (activeFilter === 'series') return 'Series';
+    if (activeFilter === 'movies') return 'Movies';
+    if (activeFilter === 'categories') return 'Categories';
+    if (activeFilter === 'watchlist') return 'My List';
+    return null;
+  }, [isSharePage, searchQuery, activeFilter]);
+
+  const commitFloatingSearch = (term: string) => {
+    const clean = term.trim();
+    if (!clean) return;
+    onSearchChange(clean);
+    onExactSearchCommit?.(clean);
+    setFloatingExpand('none');
+    setActiveMenu('none');
+  };
 
   return (
     <header
@@ -238,29 +381,44 @@ export const Navbar: React.FC<NavbarProps> = ({
       }}
       className="fixed left-0 right-0 z-50 border-none select-none transition-[top] duration-200"
     >
-      {/* Background for Desktop & Mobile: subtle top gradient without harsh glare, smooth ramp to 100% opacity on scroll */}
-      <div className={`absolute inset-0 pointer-events-none -z-10 overflow-hidden ${hideMobileLogoBar ? 'hidden md:block' : ''}`}>
-        {/* Soft top gradient when at top (scrollY ~ 0) without high glare */}
+      {/* Background for Desktop & Mobile: hidden on floating_glass desktop, and transparent at top on classic share page until scrolled */}
+      {(!isSharePage || desktopNavbarStyle === 'classic') && (
         <div
-          style={{
-            opacity: Math.max(0, 1 - scrollY / 50)
-          }}
-          className="absolute inset-0 bg-gradient-to-b from-black/25 via-transparent to-transparent pointer-events-none transition-opacity duration-300"
-        />
-        {/* Mobile & Desktop: smoothly reaches 100% black opacity as user scrolls down, not instantly */}
-        <div
-          style={{
-            opacity: Math.min(1, Math.max(0, scrollY / 90))
-          }}
-          className="absolute inset-0 bg-black pointer-events-none transition-opacity duration-200"
-        />
-      </div>
+          className={`absolute inset-0 pointer-events-none -z-10 overflow-hidden ${
+            hideMobileLogoBar
+              ? desktopNavbarStyle === 'floating_glass'
+                ? 'hidden'
+                : 'hidden md:block'
+              : desktopNavbarStyle === 'floating_glass'
+              ? 'md:hidden'
+              : ''
+          }`}
+        >
+          {/* Subtle resting top gradient (omitted at scroll 0 on share page) */}
+          <div
+            style={{
+              opacity: isSharePage ? 0 : Math.max(0, 1 - scrollY / 50)
+            }}
+            className="absolute inset-0 bg-gradient-to-b from-black/15 via-transparent to-transparent pointer-events-none transition-opacity duration-300"
+          />
+          {/* Smooth ramp to black background on scroll */}
+          <div
+            style={{
+              opacity: Math.min(1, Math.max(0, scrollY / 90))
+            }}
+            className="absolute inset-0 bg-black pointer-events-none transition-opacity duration-200"
+          />
+        </div>
+      )}
 
       {/* ========================================================================= */}
       {/* MOBILE TOP NAVIGATION (Compact height, logo position strictly constant on scroll) */}
       {/* ========================================================================= */}
       {!hideMobileLogoBar && (
-        <div className="md:hidden relative w-full px-4 h-12 flex items-center justify-between">
+        <div
+          data-mobile-top-navbar="true"
+          className="md:hidden relative w-full px-4 h-12 flex items-center justify-between"
+        >
           {/* Top Bar: Brand Logo on left with NO shadow beneath */}
           <button
             onClick={() => {
@@ -286,14 +444,574 @@ export const Navbar: React.FC<NavbarProps> = ({
       )}
 
       {/* ========================================================================= */}
-      {/* DESKTOP TOP NAVIGATION */}
+      {/* DESKTOP TOP NAVIGATION                                                    */}
       {/* ========================================================================= */}
-      <div className="hidden md:flex w-full px-4 md:px-8 xl:px-12 py-3.5 items-center justify-between">
-        {isSharePage ? (
+      {desktopNavbarStyle === 'floating_glass' ? (
+        <div
+          className={`hidden md:flex justify-center w-full pointer-events-none transition-all duration-300 ease-out ${
+            isScrolled ? 'pt-[9px] px-4' : 'pt-0 px-0'
+          }`}
+        >
+          <div
+            ref={floatingBarRef}
+            className={`pointer-events-auto relative flex flex-col transition-all duration-300 ease-out origin-top ${
+              isScrolled
+                ? 'w-[60%] min-w-[560px] max-w-[960px] px-5 scale-[0.96] overflow-hidden'
+                : 'w-full px-4 md:px-8 xl:px-12 scale-100 overflow-visible'
+            } ${
+              isScrolled
+                ? floatingExpand !== 'none'
+                  ? 'rounded-[24px] bg-black/90 backdrop-blur-sm border border-white/15 shadow-[0_18px_48px_rgba(0,0,0,0.75)]'
+                  : 'rounded-[28px] bg-black/45 backdrop-blur-xl border border-white/15 shadow-[0_12px_40px_rgba(0,0,0,0.55)]'
+                : 'rounded-none bg-transparent backdrop-blur-none border border-transparent shadow-none'
+            }`}
+          >
+            {/* Primary Single-Row Header inside Floating Bar */}
+            <div
+              data-desktop-navbar-bar="true"
+              className={`relative flex items-center justify-between w-full shrink-0 transition-all duration-300 ${
+                isScrolled ? 'h-13.5' : 'h-16'
+              }`}
+            >
+              {/* Left: Back only on Full Size More Info, else Search->Back, Menu/Profile->Cross, Subpage->Back+Label, Home->Hamburger + Inline Links at top */}
+              <div className="flex items-center gap-3 z-10">
+                {isSharePage ? (
+                  <button
+                    onClick={() => {
+                      setFloatingExpand('none');
+                      onShareBack?.();
+                    }}
+                    className="p-1.5 -ml-1.5 rounded-full hover:bg-white/10 text-white active:scale-90 transition-all cursor-pointer drop-shadow-[0_1px_2px_rgba(0,0,0,0.4)]"
+                    aria-label="Back"
+                  >
+                    <ChevronLeft className="w-6 h-6 stroke-[2.6]" />
+                  </button>
+                ) : floatingExpand === 'search' ? (
+                  <button
+                    onClick={() => setFloatingExpand('none')}
+                    className="p-1.5 -ml-1.5 rounded-full hover:bg-white/10 text-white active:scale-90 transition-all cursor-pointer"
+                    aria-label="Close search options"
+                  >
+                    <ChevronLeft className="w-6 h-6 stroke-[2.6]" />
+                  </button>
+                ) : floatingPageLabel && floatingExpand === 'none' ? (
+                  <button
+                    onClick={() => {
+                      setFloatingExpand('none');
+                      setFloatingSearchDraft('');
+                      onSearchChange('');
+                      onSelectCategory('all');
+                      setActiveMenu('none');
+                    }}
+                    className="flex items-center gap-1.5 -ml-1.5 px-2 py-1.5 rounded-full hover:bg-white/10 text-white active:scale-95 transition-all cursor-pointer"
+                    aria-label="Back to homepage"
+                  >
+                    <ChevronLeft className="w-6 h-6 stroke-[2.6]" />
+                    <span className="text-[15.5px] sm:text-base font-bold tracking-tight">{floatingPageLabel}</span>
+                  </button>
+                ) : (
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setFloatingExpand((prev) =>
+                        prev === 'menu' || prev === 'profile' ? 'none' : 'menu'
+                      );
+                    }}
+                    className="p-2 -ml-1.5 rounded-full hover:bg-white/10 text-white active:scale-90 transition-all cursor-pointer flex items-center justify-center"
+                    aria-label={
+                      floatingExpand === 'menu' || floatingExpand === 'profile'
+                        ? 'Collapse menu'
+                        : 'Open menu'
+                    }
+                  >
+                    <span className="relative w-5 h-5 flex items-center justify-center">
+                      <span
+                        className={`absolute w-5 h-[2px] bg-white rounded-full transition-all duration-300 ease-out ${
+                          floatingExpand === 'menu' || floatingExpand === 'profile'
+                            ? 'translate-y-0 rotate-45'
+                            : '-translate-y-[5.5px] rotate-0'
+                        }`}
+                      />
+                      <span
+                        className={`absolute w-5 h-[2px] bg-white rounded-full transition-all duration-200 ease-out ${
+                          floatingExpand === 'menu' || floatingExpand === 'profile'
+                            ? 'opacity-0 scale-x-0'
+                            : 'opacity-100 scale-x-100'
+                        }`}
+                      />
+                      <span
+                        className={`absolute w-5 h-[2px] bg-white rounded-full transition-all duration-300 ease-out ${
+                          floatingExpand === 'menu' || floatingExpand === 'profile'
+                            ? 'translate-y-0 -rotate-45'
+                            : 'translate-y-[5.5px] rotate-0'
+                        }`}
+                      />
+                    </span>
+                  </button>
+                )}
+
+                {/* At top (!isScrolled): clicking Hamburger shows page links inline right next to it (like classic navbar, zero background drawer) */}
+                {!isScrolled && !isSharePage && floatingExpand === 'menu' && (
+                  <nav className="flex items-center gap-1 sm:gap-1.5 text-[15px] animate-in fade-in slide-in-from-left-2 duration-150">
+                    {(
+                      [
+                        { id: 'series' as const, label: 'Series' },
+                        { id: 'movies' as const, label: 'Movies' },
+                        { id: 'categories' as const, label: 'Categories' },
+                        { id: 'watchlist' as const, label: 'My List' }
+                      ]
+                    ).map((item) => {
+                      const isActive = !searchQuery.trim() && activeFilter === item.id;
+                      return (
+                        <button
+                          key={item.id}
+                          type="button"
+                          onClick={() => {
+                            setFloatingExpand('none');
+                            setFloatingSearchDraft('');
+                            onSearchChange('');
+                            onSelectCategory(item.id);
+                            setActiveMenu('none');
+                          }}
+                          className={`px-3.5 py-1.5 rounded-full transition-colors cursor-pointer font-medium shrink-0 ${
+                            isActive
+                              ? 'bg-white/20 text-white font-semibold shadow-sm'
+                              : 'text-zinc-200 hover:bg-white/15 hover:text-white'
+                          }`}
+                        >
+                          {item.label}
+                        </button>
+                      );
+                    })}
+                  </nav>
+                )}
+              </div>
+
+              {/* Center: Platform Logo */}
+              <button
+                onClick={() => {
+                  setFloatingExpand('none');
+                  setFloatingSearchDraft('');
+                  onSearchChange('');
+                  onSelectCategory('all');
+                  setActiveMenu('none');
+                }}
+                className={`absolute left-1/2 -translate-x-1/2 flex items-center gap-1 cursor-pointer shrink-0 max-w-[130px] transition-opacity duration-150 ${
+                  !isScrolled && !isSharePage && floatingExpand === 'menu' && windowWidth < 1020
+                    ? 'opacity-0 pointer-events-none'
+                    : 'opacity-100'
+                }`}
+                aria-label="Dizi Home"
+              >
+                {useCustomLogo && customLogoUrl ? (
+                  <img
+                    src={customLogoUrl}
+                    alt="Brand Logo"
+                    referrerPolicy="no-referrer"
+                    className="h-7.5 w-auto max-w-[120px] object-contain"
+                  />
+                ) : (
+                  <DiziLogo variant="red" size="md" className="max-w-[120px] h-[34px]" />
+                )}
+              </button>
+
+              {/* Right: Search Icon / Classic Search at Top & Profile Avatar / Classic Dropdown at Top */}
+              <div className="flex items-center gap-2.5 z-10">
+                {!isScrolled && floatingExpand === 'search' ? (
+                  <div className="relative flex items-center w-8 h-8 justify-center shrink-0">
+                    <div
+                      onClick={(e) => e.stopPropagation()}
+                      className="absolute right-0 top-1/2 -translate-y-1/2 flex items-center bg-black/50 backdrop-blur-none border border-white/25 rounded-full h-[38px] pl-3.5 pr-1 text-sm text-white shadow-2xl z-50 transition-all"
+                    >
+                      <Search className="w-4 h-4 text-zinc-400 mr-2 shrink-0" />
+                      <div className="relative flex items-center w-56 sm:w-68 md:w-80 h-full overflow-hidden">
+                        {ghostSuffix && (
+                          <div
+                            aria-hidden="true"
+                            className="pointer-events-none absolute inset-0 flex items-center text-sm font-normal whitespace-pre overflow-hidden select-none"
+                          >
+                            <span className="invisible">{searchQuery}</span>
+                            <span className="text-zinc-400/60">{ghostSuffix}</span>
+                          </div>
+                        )}
+                        <input
+                          type="text"
+                          placeholder="Titles, actors, genres..."
+                          value={searchQuery}
+                          onChange={(e) => {
+                            setFloatingSearchDraft(e.target.value);
+                            onSearchChange(e.target.value);
+                          }}
+                          onKeyDown={(e) => {
+                            if (e.key === 'Tab' && fullPrediction) {
+                              e.preventDefault();
+                              setFloatingSearchDraft(fullPrediction);
+                              onSearchChange(fullPrediction);
+                              onExactSearchCommit?.(fullPrediction);
+                            } else if (e.key === 'Enter') {
+                              e.preventDefault();
+                              if (fullPrediction) {
+                                setFloatingSearchDraft(fullPrediction);
+                                onSearchChange(fullPrediction);
+                                onExactSearchCommit?.(fullPrediction);
+                              } else if (searchQuery.trim()) {
+                                onExactSearchCommit?.(searchQuery.trim());
+                              }
+                            }
+                          }}
+                          className="relative z-10 bg-transparent text-white placeholder-zinc-400/90 outline-none w-full text-sm font-normal h-full leading-none"
+                          autoFocus
+                        />
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setFloatingSearchDraft('');
+                          onSearchChange('');
+                          setFloatingExpand('none');
+                        }}
+                        className="w-7 h-7 flex items-center justify-center bg-white/15 hover:bg-white/25 text-white rounded-full cursor-pointer shrink-0 transition-colors ml-1"
+                        aria-label="Close search"
+                        data-no-tooltip="true"
+                      >
+                        <X className="w-4 h-4" />
+                      </button>
+                    </div>
+                  </div>
+                ) : (
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setFloatingExpand((prev) => {
+                        if (prev === 'search') return 'none';
+                        setFloatingSearchDraft(searchQuery || '');
+                        return 'search';
+                      });
+                    }}
+                    className={`w-8 h-8 flex items-center justify-center rounded-full hover:bg-white/15 text-zinc-100 hover:text-white transition-all cursor-pointer ${
+                      floatingExpand === 'search' ? 'bg-white/20 text-white' : ''
+                    }`}
+                    aria-label="Search"
+                  >
+                    <Search className="w-4.5 h-4.5 stroke-[2.2]" />
+                  </button>
+                )}
+
+                <div className="relative flex items-center">
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setFloatingExpand((prev) => (prev === 'profile' ? 'none' : 'profile'));
+                    }}
+                    className={`flex items-center gap-1.5 cursor-pointer group p-0.5 rounded-full active:scale-95 transition-transform ${
+                      floatingExpand === 'profile' && isScrolled ? 'ring-2 ring-white/40' : ''
+                    }`}
+                    aria-label="Profile"
+                  >
+                    <div
+                      data-desktop-nav-avatar="true"
+                      className="w-8 h-8 rounded-full overflow-hidden shrink-0 flex items-center justify-center bg-transparent border-0 shadow-none"
+                    >
+                      {userAvatar ? (
+                        <img
+                          src={userAvatar}
+                          alt="Profile"
+                          referrerPolicy="no-referrer"
+                          className={`w-full h-full object-cover ${
+                            hideProfileAvatar ? 'opacity-0' : 'opacity-100'
+                          }`}
+                        />
+                      ) : (
+                        <div
+                          className={`w-full h-full flex items-center justify-center bg-zinc-800 text-white ${
+                            hideProfileAvatar ? 'opacity-0' : 'opacity-100'
+                          }`}
+                        >
+                          <User className="w-4.5 h-4.5" />
+                        </div>
+                      )}
+                    </div>
+                  </button>
+
+                  {/* At top (!isScrolled): classic profile dropdown popover anchored right below avatar */}
+                  {!isScrolled && floatingExpand === 'profile' && (
+                    <div
+                      onClick={(e) => e.stopPropagation()}
+                      className="absolute right-0 top-11 w-56 bg-[#141414]/98 backdrop-blur-xl border border-[#333333] rounded-xl shadow-2xl py-2 z-50 text-[14.5px] overflow-hidden animate-in fade-in zoom-in-95 duration-150"
+                    >
+                      <div className="absolute -top-1.5 right-3 w-3 h-3 bg-[#141414] border-t border-l border-[#333333] rotate-45 z-10" />
+
+                      <div className="space-y-0.5">
+                        <div
+                          onClick={() => {
+                            onProfileMenuAction?.();
+                            onSearchChange('');
+                            onOpenAccount?.();
+                            setFloatingExpand('none');
+                          }}
+                          className="flex items-center gap-3.5 px-4.5 py-2.5 text-zinc-200 hover:text-white hover:bg-white/5 cursor-pointer transition-colors"
+                        >
+                          <User className="w-5 h-5 text-zinc-300 shrink-0" />
+                          <span className="font-medium">Account</span>
+                        </div>
+
+                        <div
+                          onClick={() => {
+                            onProfileMenuAction?.();
+                            onSearchChange('');
+                            onOpenAppSettings?.();
+                            setFloatingExpand('none');
+                          }}
+                          className="flex items-center gap-3.5 px-4.5 py-2.5 text-zinc-200 hover:text-white hover:bg-white/5 cursor-pointer transition-colors"
+                        >
+                          <Settings className="w-5 h-5 text-zinc-300 shrink-0" />
+                          <span className="font-medium">Settings</span>
+                        </div>
+
+                        <div
+                          onClick={() => {
+                            onProfileMenuAction?.();
+                            onSearchChange('');
+                            onRequestContent?.();
+                            setFloatingExpand('none');
+                          }}
+                          className="flex items-center gap-3.5 px-4.5 py-2.5 text-zinc-200 hover:text-white hover:bg-white/5 cursor-pointer transition-colors"
+                        >
+                          <Plus className="w-5 h-5 text-zinc-300 shrink-0" />
+                          <span className="font-medium">Request Content</span>
+                        </div>
+
+                        <div
+                          onClick={() => {
+                            onProfileMenuAction?.();
+                            onSearchChange('');
+                            onOpenDownloadModal();
+                            setFloatingExpand('none');
+                          }}
+                          className="flex items-center gap-3.5 px-4.5 py-2.5 text-zinc-200 hover:text-white hover:bg-white/5 cursor-pointer transition-colors"
+                        >
+                          <Download className="w-5 h-5 text-zinc-300 shrink-0" />
+                          <span className="font-medium">Download App</span>
+                        </div>
+                      </div>
+
+                      <div className="border-t border-zinc-800 my-1.5" />
+
+                      {!isLoggedIn && (
+                        <div
+                          onClick={() => {
+                            onProfileMenuAction?.();
+                            if (onOpenCreateAccount) {
+                              onOpenCreateAccount();
+                            } else {
+                              onToggleAuth?.();
+                            }
+                            setFloatingExpand('none');
+                          }}
+                          className="px-4 py-2 text-white hover:bg-white/10 cursor-pointer font-semibold transition-colors"
+                        >
+                          Create Account
+                        </div>
+                      )}
+
+                      <div
+                        onClick={() => {
+                          onProfileMenuAction?.();
+                          onToggleAuth?.();
+                          setFloatingExpand('none');
+                        }}
+                        className="px-4 py-2 text-zinc-200 hover:text-white hover:bg-white/5 cursor-pointer font-medium transition-colors"
+                      >
+                        {isLoggedIn ? 'Sign out of Dizi' : 'Sign in to Dizi'}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              </div>
+            </div>
+
+            {/* Scrolled Pill Expanded Section 1: Hamburger Horizontal Menu */}
+            {isScrolled && !isSharePage && floatingExpand === 'menu' && (
+              <div className="w-full pt-1.5 pb-4 border-t border-white/10 flex items-center justify-center gap-2 sm:gap-4 flex-wrap animate-in fade-in duration-150">
+                {(
+                  [
+                    { id: 'series' as const, label: 'Series' },
+                    { id: 'movies' as const, label: 'Movies' },
+                    { id: 'categories' as const, label: 'Categories' },
+                    { id: 'watchlist' as const, label: 'My List' }
+                  ]
+                ).map((item) => {
+                  const isActive = !searchQuery.trim() && !isSharePage && activeFilter === item.id;
+                  return (
+                    <button
+                      key={item.id}
+                      type="button"
+                      onClick={() => {
+                        setFloatingExpand('none');
+                        setFloatingSearchDraft('');
+                        onSearchChange('');
+                        onSelectCategory(item.id);
+                        setActiveMenu('none');
+                      }}
+                      className={`px-4 py-1.5 rounded-full text-sm font-semibold transition-colors cursor-pointer ${
+                        isActive
+                          ? 'bg-white text-black shadow-sm'
+                          : 'text-zinc-200 hover:text-white hover:bg-white/15'
+                      }`}
+                    >
+                      {item.label}
+                    </button>
+                  );
+                })}
+              </div>
+            )}
+
+            {/* Scrolled Pill Expanded Section 2: Floating Spotlight Search (Input + Clear, max 3 Suggestions, 3 larger 16:9 Cards) */}
+            {isScrolled && floatingExpand === 'search' && (
+              <div
+                onClick={(e) => e.stopPropagation()}
+                className="w-full pt-2 pb-5 border-t border-white/10 space-y-4 animate-in fade-in duration-150"
+              >
+                <div className="flex items-center h-11 px-4 rounded-full border border-white/25 bg-black/25 focus-within:border-white/50 transition-colors">
+                  <Search className="w-4.5 h-4.5 text-zinc-300 mr-3 shrink-0" />
+                  <input
+                    type="text"
+                    placeholder="Search titles, actors, genres..."
+                    value={floatingSearchDraft}
+                    onChange={(e) => setFloatingSearchDraft(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter' && floatingSearchDraft.trim()) {
+                        e.preventDefault();
+                        commitFloatingSearch(floatingSearchDraft);
+                      }
+                    }}
+                    className="flex-1 bg-transparent text-white placeholder-zinc-400 text-sm font-semibold outline-none"
+                    autoFocus
+                  />
+                  {floatingSearchDraft && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setFloatingSearchDraft('');
+                        if (searchQuery) onSearchChange('');
+                      }}
+                      className="text-xs sm:text-sm font-semibold text-white hover:text-zinc-300 cursor-pointer ml-3 shrink-0"
+                    >
+                      Clear
+                    </button>
+                  )}
+                </div>
+
+                {/* Vertical Stack of max 3 Suggested Terms */}
+                {floatingMatchedSuggestions.length > 0 && (
+                  <div className="flex flex-col items-start gap-2 px-1">
+                    {floatingMatchedSuggestions.map((sug) => (
+                      <button
+                        key={sug}
+                        type="button"
+                        onClick={() => commitFloatingSearch(sug)}
+                        className="text-left text-sm font-bold text-white hover:text-zinc-300 transition-colors cursor-pointer"
+                      >
+                        {sug}
+                      </button>
+                    ))}
+                  </div>
+                )}
+
+                {/* Horizontal Row of 3 slightly bigger 16:9 Cards */}
+                {floatingMatchedShows.length > 0 && (
+                  <div className="grid grid-cols-3 gap-3.5 pt-1">
+                    {floatingMatchedShows.map((s) => (
+                      <button
+                        key={s.id}
+                        type="button"
+                        onClick={() => {
+                          setFloatingExpand('none');
+                          onOpenShowById?.(s.id);
+                        }}
+                        className="group relative aspect-video w-full rounded-md overflow-hidden bg-zinc-900 cursor-pointer text-left"
+                        title={s.title}
+                      >
+                        <img
+                          src={s.posterLandscapeUrl || s.backdropUrl || s.posterVerticalUrl}
+                          alt={s.title}
+                          referrerPolicy="no-referrer"
+                          className="w-full h-full object-cover"
+                        />
+                        <div className="absolute inset-0 bg-gradient-to-t from-black/70 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity flex items-end p-2.5">
+                          <span className="text-xs sm:text-sm font-bold text-white line-clamp-1">{s.title}</span>
+                        </div>
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* Scrolled Pill Expanded Section 3: Profile Horizontal Row (single row, normal size, Sign In / Sign Out only) */}
+            {isScrolled && floatingExpand === 'profile' && (
+              <div className="w-full pt-2.5 pb-4 border-t border-white/10 flex items-center justify-center gap-2 md:gap-3 lg:gap-5 flex-nowrap whitespace-nowrap animate-in fade-in duration-150">
+                <button
+                  type="button"
+                  onClick={() => {
+                    onProfileMenuAction?.();
+                    onSearchChange('');
+                    onOpenAccount?.();
+                    setFloatingExpand('none');
+                  }}
+                  className="flex items-center gap-2 px-3.5 py-2 rounded-full text-[14px] lg:text-[15px] font-semibold text-zinc-200 hover:text-white hover:bg-white/15 transition-colors cursor-pointer shrink-0"
+                >
+                  <User className="w-[17px] h-[17px] shrink-0" />
+                  <span>Account</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    onProfileMenuAction?.();
+                    onSearchChange('');
+                    onOpenAppSettings?.();
+                    setFloatingExpand('none');
+                  }}
+                  className="flex items-center gap-2 px-3.5 py-2 rounded-full text-[14px] lg:text-[15px] font-semibold text-zinc-200 hover:text-white hover:bg-white/15 transition-colors cursor-pointer shrink-0"
+                >
+                  <Settings className="w-[17px] h-[17px] shrink-0" />
+                  <span>Settings</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    onProfileMenuAction?.();
+                    onSearchChange('');
+                    onRequestContent?.();
+                    setFloatingExpand('none');
+                  }}
+                  className="flex items-center gap-2 px-3.5 py-2 rounded-full text-[14px] lg:text-[15px] font-semibold text-zinc-200 hover:text-white hover:bg-white/15 transition-colors cursor-pointer shrink-0"
+                >
+                  <Plus className="w-[17px] h-[17px] shrink-0" />
+                  <span>Request Content</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    onProfileMenuAction?.();
+                    onToggleAuth?.();
+                    setFloatingExpand('none');
+                  }}
+                  className="flex items-center gap-2 px-3.5 py-2 rounded-full text-[14px] lg:text-[15px] font-semibold text-zinc-200 hover:text-white hover:bg-white/15 transition-colors cursor-pointer shrink-0"
+                >
+                  {isLoggedIn ? <LogOut className="w-[17px] h-[17px] shrink-0" /> : <LogIn className="w-[17px] h-[17px] shrink-0" />}
+                  <span>{isLoggedIn ? 'Sign Out' : 'Sign In'}</span>
+                </button>
+              </div>
+            )}
+          </div>
+        </div>
+      ) : isSharePage ? (
+        <div className="hidden md:flex w-full px-4 md:px-8 xl:px-12 py-3.5 items-center justify-between bg-transparent">
           <div className="flex items-center gap-4">
             <button
               onClick={() => onOpenHamburgerDrawer?.()}
-              className="p-1.5 -ml-1.5 text-white hover:text-white/80 active:scale-90 transition-transform cursor-pointer"
+              className="p-1.5 -ml-1.5 text-white hover:text-white/80 active:scale-90 transition-transform cursor-pointer drop-shadow-[0_1px_2px_rgba(0,0,0,0.28)]"
               aria-label="Open menu"
             >
               <Menu className="w-6 h-6 text-white" />
@@ -304,7 +1022,7 @@ export const Navbar: React.FC<NavbarProps> = ({
                 onSelectCategory('all');
                 setActiveMenu('none');
               }}
-              className="flex items-center gap-1 group cursor-pointer text-left shrink-0 max-w-[95px] sm:max-w-[110px] md:max-w-[125px]"
+              className="flex items-center gap-1 group cursor-pointer text-left shrink-0 max-w-[95px] sm:max-w-[110px] md:max-w-[125px] drop-shadow-[0_1px_2px_rgba(0,0,0,0.18)]"
               aria-label="Dizi Home"
             >
               {useCustomLogo && customLogoUrl ? (
@@ -319,7 +1037,9 @@ export const Navbar: React.FC<NavbarProps> = ({
               )}
             </button>
           </div>
-        ) : (
+        </div>
+      ) : (
+      <div className="hidden md:flex w-full px-4 md:px-8 xl:px-12 py-3.5 items-center justify-between">
           <>
             {/* Left: Brand Logo & Navigation */}
             <div className="flex items-center gap-4 lg:gap-8">
@@ -508,25 +1228,52 @@ export const Navbar: React.FC<NavbarProps> = ({
 
         {/* Right: Search, Notifications, Profile (Only ONE menu visible at a time) */}
         <div className="flex items-center gap-2 sm:gap-3">
-          {/* Search: maintains stable height and position; does not push right-side elements */}
+          {/* Search: maintains exact Navbar height (container stays w-8 h-8), expanded pill h-[38px] bg-black/50 no blur */}
           <div ref={searchContainerRef} className="relative flex items-center w-8 h-8 justify-center shrink-0">
             {activeMenu === 'search' ? (
-              <div className="absolute right-0 top-1/2 -translate-y-1/2 flex items-center bg-[#141414] border border-zinc-600/90 rounded-full h-[30px] pl-2.5 pr-0.5 text-sm text-white shadow-2xl z-50 transition-all">
-                <Search className="w-3.5 h-3.5 text-zinc-400 mr-1.5 shrink-0" />
-                <input
-                  type="text"
-                  placeholder="Titles, actors, genres..."
-                  value={searchQuery}
-                  onChange={(e) => onSearchChange(e.target.value)}
-                  className="bg-transparent text-white placeholder-zinc-400 outline-none w-40 sm:w-56 text-xs sm:text-sm h-full leading-none"
-                  autoFocus
-                />
+              <div className="absolute right-0 top-1/2 -translate-y-1/2 flex items-center bg-black/50 backdrop-blur-none border border-white/25 rounded-full h-[38px] pl-3.5 pr-1 text-sm text-white shadow-2xl z-50 transition-all">
+                <Search className="w-4 h-4 text-zinc-400 mr-2 shrink-0" />
+                <div className="relative flex items-center w-56 sm:w-68 md:w-80 h-full overflow-hidden">
+                  {/* Inline dull predictive ghost overlay aligned right behind typed input */}
+                  {ghostSuffix && (
+                    <div
+                      aria-hidden="true"
+                      className="pointer-events-none absolute inset-0 flex items-center text-sm font-normal whitespace-pre overflow-hidden select-none"
+                    >
+                      <span className="invisible">{searchQuery}</span>
+                      <span className="text-zinc-400/60">{ghostSuffix}</span>
+                    </div>
+                  )}
+                  <input
+                    type="text"
+                    placeholder="Titles, actors, genres..."
+                    value={searchQuery}
+                    onChange={(e) => onSearchChange(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Tab' && fullPrediction) {
+                        e.preventDefault();
+                        onSearchChange(fullPrediction);
+                        onExactSearchCommit?.(fullPrediction);
+                      } else if (e.key === 'Enter') {
+                        e.preventDefault();
+                        if (fullPrediction) {
+                          onSearchChange(fullPrediction);
+                          onExactSearchCommit?.(fullPrediction);
+                        } else if (searchQuery.trim()) {
+                          onExactSearchCommit?.(searchQuery.trim());
+                        }
+                      }
+                    }}
+                    className="relative z-10 bg-transparent text-white placeholder-zinc-400/90 outline-none w-full text-sm font-normal h-full leading-none"
+                    autoFocus
+                  />
+                </div>
                 <button
                   onClick={() => {
                     onSearchChange('');
                     setActiveMenu('none');
                   }}
-                  className="w-7 h-7 flex items-center justify-center text-zinc-400 hover:text-white hover:bg-white/10 rounded-full cursor-pointer shrink-0 transition-colors"
+                  className="w-7 h-7 flex items-center justify-center bg-white/15 hover:bg-white/25 text-white rounded-full cursor-pointer shrink-0 transition-colors ml-1"
                   aria-label="Close search"
                   data-no-tooltip="true"
                 >
@@ -638,26 +1385,35 @@ export const Navbar: React.FC<NavbarProps> = ({
             )}
           </div>
 
-          {/* Profile Avatar: Circular profile icon matching image */}
+          {/* Profile Avatar: transparent layout box when locked so zero empty circle appears; no blue background */}
           <div ref={profileContainerRef} className="relative flex items-center">
             <button
               onClick={(e) => {
                 e.stopPropagation();
                 openMenu('profile');
               }}
-              className="flex items-center gap-1.5 cursor-pointer group p-0.5 rounded-full active:scale-95 transition-all"
+              className="flex items-center gap-1.5 cursor-pointer group p-0.5 rounded-full active:scale-95 transition-transform"
               aria-label="Profile"
             >
-              <div className="w-8 h-8 rounded-full overflow-hidden bg-gradient-to-tr from-sky-600 to-blue-500 shadow-md shrink-0 flex items-center justify-center">
+              <div
+                data-desktop-nav-avatar="true"
+                className="w-8 h-8 rounded-full overflow-hidden shrink-0 flex items-center justify-center bg-transparent border-0 shadow-none"
+              >
                 {userAvatar ? (
                   <img
                     src={userAvatar}
                     alt="Profile"
                     referrerPolicy="no-referrer"
-                    className="w-full h-full object-cover"
+                    className={`w-full h-full object-cover ${
+                      hideProfileAvatar ? 'opacity-0' : 'opacity-100'
+                    }`}
                   />
                 ) : (
-                  <div className="w-full h-full flex items-center justify-center bg-gradient-to-tr from-sky-600 to-blue-500 text-white">
+                  <div
+                    className={`w-full h-full flex items-center justify-center bg-zinc-800 text-white ${
+                      hideProfileAvatar ? 'opacity-0' : 'opacity-100'
+                    }`}
+                  >
                     <User className="w-4.5 h-4.5" />
                   </div>
                 )}
@@ -731,6 +1487,24 @@ export const Navbar: React.FC<NavbarProps> = ({
                 {/* Divider Line */}
                 <div className="border-t border-zinc-800 my-1.5" />
 
+                {/* Create Account when guest */}
+                {!isLoggedIn && (
+                  <div
+                    onClick={() => {
+                      onProfileMenuAction?.();
+                      if (onOpenCreateAccount) {
+                        onOpenCreateAccount();
+                      } else if (onToggleAuth) {
+                        onToggleAuth();
+                      }
+                      setActiveMenu('none');
+                    }}
+                    className="px-4 py-2 text-white hover:bg-white/10 cursor-pointer font-semibold transition-colors"
+                  >
+                    Create Account
+                  </div>
+                )}
+
                 {/* Sign out / Sign in */}
                 <div
                   onClick={() => {
@@ -747,8 +1521,8 @@ export const Navbar: React.FC<NavbarProps> = ({
           </div>
         </div>
         </>
-      )}
       </div>
+      )}
     </header>
   );
 };

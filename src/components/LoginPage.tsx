@@ -1,7 +1,7 @@
 import React, { useState, useMemo, useRef, useEffect } from 'react';
 import { Show } from '../types';
 import { DiziLogo } from './DiziLogo';
-import { Eye, EyeOff, Volume2, VolumeX, Play, Pause, ChevronLeft, ChevronRight } from 'lucide-react';
+import { Eye, EyeOff, Volume2, VolumeX, ChevronLeft, ChevronRight } from 'lucide-react';
 import { attachHlsVideo } from '../utils/hlsHelper';
 import { MediaImage } from './MediaImage';
 
@@ -10,6 +10,7 @@ interface LoginPageProps {
   platformName?: string;
   customLogoUrl?: string;
   initialEmail?: string;
+  initialAuthMode?: 'login' | 'create';
   isGlobalMuted?: boolean;
   onToggleGlobalMute?: (muted: boolean) => void;
   onAuthSuccess: (data: { email: string; password: string; mode: 'login' | 'create' }) => void;
@@ -21,12 +22,16 @@ export const LoginPage: React.FC<LoginPageProps> = ({
   platformName = 'DiziUrdu',
   customLogoUrl,
   initialEmail = '',
+  initialAuthMode = 'login',
   isGlobalMuted = true,
   onToggleGlobalMute,
   onAuthSuccess,
   onBrowseFree
 }) => {
-  const [authMode, setAuthMode] = useState<'login' | 'create'>('login');
+  const [authMode, setAuthMode] = useState<'login' | 'create'>(initialAuthMode);
+  useEffect(() => {
+    setAuthMode(initialAuthMode);
+  }, [initialAuthMode]);
   const [email, setEmail] = useState<string>(initialEmail);
   const [password, setPassword] = useState<string>('');
   const [showPassword, setShowPassword] = useState<boolean>(false);
@@ -548,9 +553,14 @@ export const LoginPage: React.FC<LoginPageProps> = ({
                       className={desktopRecButtonStyle}
                     >
                       {isPlayingPreview ? (
-                        <Pause className="w-3.5 h-3.5 sm:w-4 sm:h-4 fill-current text-white" />
+                        <svg className="w-3.5 h-3.5 sm:w-4 sm:h-4 fill-current text-white" viewBox="0 0 24 24">
+                          <rect x="5" y="4" width="4.8" height="16" rx="1" />
+                          <rect x="14.2" y="4" width="4.8" height="16" rx="1" />
+                        </svg>
                       ) : (
-                        <Play className="w-3.5 h-3.5 sm:w-4 sm:h-4 fill-current ml-0.5 text-white" />
+                        <svg className="w-3.5 h-3.5 sm:w-4 sm:h-4 fill-current ml-0.5 text-white" viewBox="0 0 24 24">
+                          <polygon points="6,4 20,12 6,20" />
+                        </svg>
                       )}
                     </button>
 

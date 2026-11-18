@@ -10,6 +10,8 @@ export interface MobileBottomNavProps {
   navbarStyle?: 'floating' | 'bottom_fixed';
   navbarTheme?: 'solid' | 'glass';
   showLabels?: boolean;
+  isHiddenBehindLock?: boolean;
+  hideProfileAvatar?: boolean;
 }
 
 export const MobileBottomNav: React.FC<MobileBottomNavProps> = ({
@@ -19,7 +21,9 @@ export const MobileBottomNav: React.FC<MobileBottomNavProps> = ({
   userAvatar = 'https://images.unsplash.com/photo-1553284965-83fd3e82fa5a?auto=format&fit=crop&w=120&q=80',
   navbarStyle = 'floating',
   navbarTheme = 'solid',
-  showLabels = true
+  showLabels = true,
+  isHiddenBehindLock = false,
+  hideProfileAvatar = false
 }) => {
   const isBottomFixed = navbarStyle === 'bottom_fixed';
   const isGlass = navbarTheme === 'glass';
@@ -60,7 +64,9 @@ export const MobileBottomNav: React.FC<MobileBottomNavProps> = ({
               }
             : undefined
         }
-        className={`md:hidden fixed bottom-0 left-0 right-0 z-[120] pointer-events-auto w-full ${
+        className={`md:hidden fixed bottom-0 left-0 right-0 z-[120] w-full transition-opacity duration-500 ${
+          isHiddenBehindLock ? 'opacity-0 pointer-events-none' : 'opacity-100 pointer-events-auto'
+        } ${
           isGlass
             ? ''
             : 'bg-[#0a0a0a] border-t border-white/10 shadow-[0_-2px_12px_rgba(0,0,0,0.85)]'
@@ -71,6 +77,7 @@ export const MobileBottomNav: React.FC<MobileBottomNavProps> = ({
         }`}
       >
         <nav
+          data-mobile-bottom-navbar={isHiddenBehindLock ? undefined : 'true'}
           aria-label="Mobile Navigation"
           className={`flex items-center justify-around w-full max-w-md mx-auto ${
             showLabels ? 'h-[50px]' : 'h-[42px]'
@@ -151,11 +158,14 @@ export const MobileBottomNav: React.FC<MobileBottomNavProps> = ({
             }`}
             aria-label="Profile and My List"
           >
-            <div className={`${iconWrapperClass} flex items-center justify-center`}>
+            <div className={`${iconWrapperClass} flex items-center justify-center relative`}>
               <img
+                data-mobile-nav-avatar="true"
                 src={userAvatar}
                 alt="Profile"
-                className={`${iconSizeClass} rounded-full object-cover transition-all ${
+                className={`${iconSizeClass} rounded-full object-cover ${
+                  hideProfileAvatar ? 'opacity-0' : 'opacity-100'
+                } ${
                   activeTab === 'profile'
                     ? isGlass
                       ? 'ring-2 ring-[#1ab2ff] shadow-sm'
@@ -181,9 +191,14 @@ export const MobileBottomNav: React.FC<MobileBottomNavProps> = ({
   };
 
   return (
-    <div className="md:hidden fixed bottom-4 left-1/2 -translate-x-1/2 z-[120] pointer-events-auto">
+    <div
+      className={`md:hidden fixed bottom-4 left-1/2 -translate-x-1/2 z-[120] transition-opacity duration-500 ${
+        isHiddenBehindLock ? 'opacity-0 pointer-events-none' : 'opacity-100 pointer-events-auto'
+      }`}
+    >
       {/* Floating Nav Pill: Solid Dark or High-Transparency Crystal Glass UI */}
       <nav
+        data-mobile-bottom-navbar={isHiddenBehindLock ? undefined : 'true'}
         aria-label="Mobile Navigation"
         style={
           isGlass
@@ -301,11 +316,14 @@ export const MobileBottomNav: React.FC<MobileBottomNavProps> = ({
           }`}
           aria-label="Profile and My List"
         >
-          <div className={`${iconWrapperClass} flex items-center justify-center`}>
+          <div className={`${iconWrapperClass} flex items-center justify-center relative`}>
             <img
+              data-mobile-nav-avatar="true"
               src={userAvatar}
               alt="Profile"
-              className={`${iconSizeClass} rounded-full object-cover transition-all ${
+              className={`${iconSizeClass} rounded-full object-cover ${
+                hideProfileAvatar ? 'opacity-0' : 'opacity-100'
+              } ${
                 activeTab === 'profile'
                   ? isGlass
                     ? 'ring-2 ring-[#1ab2ff] shadow-sm'

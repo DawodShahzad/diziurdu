@@ -32,37 +32,27 @@ export interface WatchProgressItem {
 }
 
 /**
- * Format remaining or elapsed time matching the user's exact screenshot reference:
- * e.g., "35 of 63m" or "1h 5m of 2h 10m"
+ * Format remaining time in "hm left" style (e.g., "1h 15m left", "10m left").
  */
 export function formatProgressTime(currentSec: number, totalSec: number): string {
   const cur = Math.max(0, Math.floor(currentSec || 0));
   const tot = Math.max(0, Math.floor(totalSec || 0));
 
   if (tot <= 0) {
-    const curMins = Math.floor(cur / 60);
-    return `${curMins}m`;
+    return '';
   }
 
-  const curHours = Math.floor(cur / 3600);
-  const curMins = Math.floor((cur % 3600) / 60);
-
-  const totHours = Math.floor(tot / 3600);
-  const totMins = Math.floor((tot % 3600) / 60);
-
-  let curStr = '';
-  if (curHours > 0) {
-    curStr = `${curHours}h ${curMins}m`;
-  } else {
-    curStr = `${curMins}`;
+  const remSec = Math.max(0, tot - cur);
+  if (remSec === 0) {
+    return '0m left';
   }
 
-  let totStr = '';
-  if (totHours > 0) {
-    totStr = `${totHours}h ${totMins}m`;
-  } else {
-    totStr = `${totMins}m`;
-  }
+  const remMins = Math.max(1, Math.round(remSec / 60));
+  const remHours = Math.floor(remMins / 60);
+  const remM = remMins % 60;
 
-  return `${curStr} of ${totStr}`;
+  if (remHours > 0) {
+    return remM > 0 ? `${remHours}h ${remM}m left` : `${remHours}h left`;
+  }
+  return `${remM}m left`;
 }

@@ -6,12 +6,14 @@ import {
   Lock,
   ChevronRight,
   Check,
-  ArrowLeft,
+  ChevronLeft,
   Shield,
-  AlertCircle
+  AlertCircle,
+  Fingerprint
 } from 'lucide-react';
 import { DiziLogo } from './DiziLogo';
 import { ProfileLockScreen } from './ProfileLockScreen';
+import { isFingerprintUnlockEnabled, registerNativeFingerprint, setFingerprintUnlockEnabled } from '../utils/biometricUnlock';
 import fullBackupData from '../full_backup.json';
 
 const INITIAL_PROFILE_PICTURE_GROUPS = ((fullBackupData as any)?.profilePictureGroups) || [];
@@ -50,11 +52,11 @@ export const EditProfilePage: React.FC<EditProfilePageProps> = ({
 }) => {
   const [view, setView] = useState<'edit' | 'choose-icon'>('edit');
   const [avatar, setAvatar] = useState<string>(userAvatar);
-  const [name, setName] = useState<string>(userName || 'Good');
-  const [handle, setHandle] = useState<string>(userHandle || 'NeoGuide873');
-  const [email, setEmail] = useState<string>(userEmail || 'abc@example.com');
-  const [whatsapp, setWhatsapp] = useState<string>(userWhatsapp || '+1 (555) 382-9014');
-  const [password, setPassword] = useState<string>(userPassword || '••••••••••••');
+  const [name, setName] = useState<string>(userName || '');
+  const [handle, setHandle] = useState<string>(userHandle || '');
+  const [email, setEmail] = useState<string>(userEmail || '');
+  const [whatsapp, setWhatsapp] = useState<string>(userWhatsapp || '');
+  const [password, setPassword] = useState<string>(userPassword || '');
 
   // Profile Lock State
   const [isProfileLockEnabled, setIsProfileLockEnabled] = useState<boolean>(() => {
@@ -64,6 +66,8 @@ export const EditProfilePage: React.FC<EditProfilePageProps> = ({
       return false;
     }
   });
+  const [isFingerprintEnabled, setIsFingerprintEnabled] = useState<boolean>(() => isFingerprintUnlockEnabled());
+  const [isBiometricSetupBusy, setIsBiometricSetupBusy] = useState<boolean>(false);
   const [isPinSetupModalOpen, setIsPinSetupModalOpen] = useState<boolean>(false);
   const [isPinDisablePromptOpen, setIsPinDisablePromptOpen] = useState<boolean>(false);
   const [disablePinInput, setDisablePinInput] = useState<string>('');
@@ -123,10 +127,10 @@ export const EditProfilePage: React.FC<EditProfilePageProps> = ({
     } catch {}
     onSaveProfile({
       avatar: iconUrl,
-      name: name.trim() || 'Good',
-      handle: handle.trim() || 'NeoGuide873',
-      email: email.trim() || 'abc@example.com',
-      whatsapp: whatsapp.trim() || '+1 (555) 382-9014',
+      name: name.trim(),
+      handle: handle.trim(),
+      email: email.trim(),
+      whatsapp: whatsapp.trim(),
       password: password
     });
     setSaveToast('Profile icon updated');
@@ -146,10 +150,10 @@ export const EditProfilePage: React.FC<EditProfilePageProps> = ({
     e.preventDefault();
     onSaveProfile({
       avatar,
-      name: name.trim() || 'Good',
-      handle: handle.trim() || 'NeoGuide873',
-      email: email.trim() || 'abc@example.com',
-      whatsapp: whatsapp.trim() || '+1 (555) 382-9014',
+      name: name.trim(),
+      handle: handle.trim(),
+      email: email.trim(),
+      whatsapp: whatsapp.trim(),
       password: password
     });
     onClose();
@@ -171,11 +175,11 @@ export const EditProfilePage: React.FC<EditProfilePageProps> = ({
           {/* Left: Back Arrow button */}
           <button
             onClick={() => setView('edit')}
-            className="w-9 h-9 rounded-full hover:bg-white/10 flex items-center justify-center transition-colors cursor-pointer text-white"
+            className="p-1 -ml-1 text-white hover:text-white/80 active:scale-90 flex items-center justify-center transition-transform cursor-pointer"
             title="Back to Edit Profile"
             aria-label="Back to Edit Profile"
           >
-            <ArrowLeft className="w-5 h-5 stroke-[2.5]" />
+            <ChevronLeft className="w-7 h-7 stroke-[2.2]" />
           </button>
 
           {/* Center: Title & Subtitle */}
@@ -184,9 +188,9 @@ export const EditProfilePage: React.FC<EditProfilePageProps> = ({
               Choose a profile icon
             </h2>
             <div className="flex items-center justify-center gap-1.5 text-xs text-zinc-400 font-medium mt-0.5">
-              <span>For {name}</span>
+              <span>For {name || 'Guest'}</span>
               <div className="w-4 h-4 rounded-full overflow-hidden border border-white/20 shadow-xs inline-block bg-zinc-800">
-                <img src={avatar} alt={name} className="w-full h-full object-cover" />
+                <img src={avatar} alt={name || 'Profile'} className="w-full h-full object-cover" />
               </div>
             </div>
           </div>
@@ -244,11 +248,11 @@ export const EditProfilePage: React.FC<EditProfilePageProps> = ({
           <div className="mb-6">
             <button
               onClick={() => setView('edit')}
-              className="w-10 h-10 -ml-2 rounded-full hover:bg-white/10 flex items-center justify-center transition-colors cursor-pointer mb-2 text-white"
+              className="p-1 -ml-1.5 text-white hover:text-white/80 active:scale-90 flex items-center justify-center transition-transform cursor-pointer mb-2"
               title="Back to Edit Profile"
               aria-label="Back"
             >
-              <ArrowLeft className="w-6 h-6 stroke-[2.5]" />
+              <ChevronLeft className="w-7 h-7 stroke-[2.2]" />
             </button>
 
             <h1 className="text-2xl sm:text-3xl md:text-4xl font-extrabold text-white tracking-tight font-sans">
@@ -256,9 +260,9 @@ export const EditProfilePage: React.FC<EditProfilePageProps> = ({
             </h1>
 
             <div className="flex items-center gap-2 mt-1.5 text-zinc-400 text-sm sm:text-base font-medium">
-              <span>For {name}</span>
+              <span>For {name || 'Guest'}</span>
               <div className="w-5 h-5 rounded-full overflow-hidden border border-white/20 shadow-xs inline-block bg-zinc-800">
-                <img src={avatar} alt={name} className="w-full h-full object-cover" />
+                <img src={avatar} alt={name || 'Profile'} className="w-full h-full object-cover" />
               </div>
             </div>
           </div>
@@ -325,307 +329,281 @@ export const EditProfilePage: React.FC<EditProfilePageProps> = ({
           </div>
         </main>
       ) : (
-        /* VIEW 2: EDIT PROFILE FULL PAGE (Dark mode matching homepage color) */
-        <main className="flex-1 w-full max-w-[560px] mx-auto px-4 sm:px-6 py-8 md:py-12 animate-in fade-in duration-200">
-          <form onSubmit={handleSave} className="space-y-8">
-            <div>
-              <h1 className="text-3xl sm:text-4xl font-extrabold text-white tracking-tight font-sans">
-                Edit Profile
-              </h1>
-            </div>
-
-            {/* Section 1: Profile Avatar with Pencil Overlay + Profile Name Input */}
-            <div className="flex items-start gap-4 sm:gap-6 pt-1">
-              <div
-                onClick={handleOpenChooseIcon}
-                className="relative w-24 h-24 sm:w-28 sm:h-28 rounded-xl overflow-hidden bg-zinc-800 shrink-0 cursor-pointer shadow group border border-white/10"
-                title="Change Profile Icon"
-              >
-                <img
-                  src={avatar}
-                  alt="Profile Icon"
-                  referrerPolicy="no-referrer"
-                  className="w-full h-full object-cover"
-                />
-                <div className="absolute inset-0 bg-black/40 group-hover:bg-black/60 transition-colors flex items-center justify-center">
-                  <div className="w-8 h-8 rounded-full bg-black/70 border border-white/60 flex items-center justify-center shadow-md">
-                    <Pencil className="w-4 h-4 text-white stroke-[2.5]" />
-                  </div>
-                </div>
-              </div>
-
-              {/* Profile Name Box */}
-              <div className="flex-1">
-                <div className="border border-white/15 focus-within:border-white rounded-xl px-3.5 py-2.5 bg-[#1e1f24] transition-colors">
-                  <label className="text-[11px] text-zinc-400 font-medium block leading-tight mb-1">
-                    Profile name
-                  </label>
-                  <input
-                    type="text"
-                    value={name}
-                    onChange={(e) => setName(e.target.value)}
-                    placeholder="Enter profile name"
-                    className="w-full text-base font-medium text-white focus:outline-none bg-transparent"
-                  />
-                </div>
-              </div>
-            </div>
-
-            {/* Section 2: Profile Handel */}
-            <div className="space-y-3 pt-2">
+        /* VIEW 2: EDIT PROFILE FULL PAGE (Compact non-scrolling single-screen 2-column desktop layout) */
+        <main className="flex-1 w-full max-w-4xl mx-auto px-4 sm:px-6 py-4 md:py-6 flex items-center animate-in fade-in duration-200">
+          <form onSubmit={handleSave} className="w-full space-y-5">
+            {/* Compact Header Row with Inline Action Buttons on Desktop */}
+            <div className="flex flex-wrap items-center justify-between gap-3 border-b border-white/10 pb-3.5">
               <div>
-                <h2 className="text-xl font-bold text-white tracking-tight">
-                  Profile Handel
-                </h2>
-                <p className="text-xs sm:text-[13px] text-zinc-400 leading-relaxed mt-1">
-                  Your handle is a unique name that&apos;ll be used to identify your account across all {platformName} features.
+                <h1 className="text-2xl sm:text-3xl font-extrabold text-white tracking-tight font-sans">
+                  Edit Profile
+                </h1>
+                <p className="text-xs text-zinc-400 mt-0.5">
+                  Manage your profile details, security credentials, and startup PIN lock.
                 </p>
               </div>
-
-              {/* Handle Input Box with @ Symbol */}
-              <div className="border border-white/15 focus-within:border-white rounded-xl px-3.5 py-2.5 bg-[#1e1f24] flex items-center gap-3 transition-colors">
-                <span className="text-lg font-black text-zinc-400 shrink-0 select-none w-5 text-center leading-none">@</span>
-                <div className="flex-1 min-w-0">
-                  <label className="text-[11px] text-zinc-400 font-medium block leading-tight mb-0.5">
-                    Profile Handel
-                  </label>
-                  <input
-                    type="text"
-                    value={handle}
-                    onChange={(e) => setHandle(e.target.value)}
-                    placeholder="Enter profile handle"
-                    className="w-full text-sm sm:text-base font-medium text-white focus:outline-none bg-transparent truncate"
-                  />
-                </div>
+              <div className="flex items-center gap-2.5">
+                <button
+                  type="button"
+                  onClick={onClose}
+                  className="px-5 py-2 border border-white/20 hover:border-white text-zinc-300 hover:text-white rounded-xl font-bold text-xs sm:text-sm transition-colors cursor-pointer"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  className="px-6 py-2 bg-white hover:bg-zinc-200 text-black font-bold rounded-xl text-xs sm:text-sm tracking-wide transition-colors shadow cursor-pointer"
+                >
+                  Save Changes
+                </button>
               </div>
             </div>
 
-            {/* Divider Line */}
-            <div className="border-b border-white/10 pt-2" />
-
-            {/* Section 3: Contact Info (Email, WhatsApp, Account Password) with icons matching desktop reference */}
-            <div className="space-y-3.5">
-              <div>
-                <h2 className="text-xl font-bold text-white tracking-tight">
-                  Contact info
-                </h2>
-              </div>
-
-              <div className="border border-white/10 rounded-xl overflow-hidden bg-[#1e1f24] divide-y divide-white/10">
-                {/* 1. Email */}
-                <div
-                  onClick={() => setActiveEditingField(activeEditingField === 'email' ? null : 'email')}
-                  className="p-3.5 sm:p-4 hover:bg-white/[0.04] transition-colors cursor-pointer"
-                >
-                  <div className="flex items-center justify-between gap-3">
-                    <div className="flex items-center gap-3.5 min-w-0">
-                      <Mail className="w-5 h-5 text-zinc-400 shrink-0" />
-                      <div className="min-w-0">
-                        <p className="text-sm font-semibold text-white">Email</p>
-                        <p className="text-xs text-zinc-400 truncate mt-0.5 font-normal">
-                          {email}
-                        </p>
-                      </div>
-                    </div>
-                    <ChevronRight
-                      className={`w-5 h-5 text-zinc-500 shrink-0 transition-transform ${
-                        activeEditingField === 'email' ? 'rotate-90' : ''
-                      }`}
-                    />
-                  </div>
-
-                  {activeEditingField === 'email' && (
-                    <div className="mt-3 pt-3 border-t border-white/10 flex items-center gap-2" onClick={(e) => e.stopPropagation()}>
-                      <input
-                        type="email"
-                        value={email}
-                        onChange={(e) => setEmail(e.target.value)}
-                        className="flex-1 text-xs sm:text-sm border border-white/20 bg-[#141414] text-white rounded-lg px-2.5 py-1.5 focus:outline-none focus:border-white"
-                        placeholder="your.email@example.com"
-                      />
-                      <button
-                        type="button"
-                        onClick={() => setActiveEditingField(null)}
-                        className="px-3 py-1.5 bg-white text-black text-xs font-bold rounded-lg cursor-pointer hover:bg-zinc-200"
-                      >
-                        Done
-                      </button>
-                    </div>
-                  )}
-                </div>
-
-                {/* 2. WhatsApp */}
-                <div
-                  onClick={() => setActiveEditingField(activeEditingField === 'whatsapp' ? null : 'whatsapp')}
-                  className="p-3.5 sm:p-4 hover:bg-white/[0.04] transition-colors cursor-pointer"
-                >
-                  <div className="flex items-center justify-between gap-3">
-                    <div className="flex items-center gap-3.5 min-w-0">
-                      <Phone className="w-5 h-5 text-zinc-400 shrink-0" />
-                      <div className="min-w-0">
-                        <p className="text-sm font-semibold text-white">WhatsApp</p>
-                        <p className="text-xs text-zinc-400 truncate mt-0.5 font-normal">
-                          {whatsapp}
-                        </p>
-                      </div>
-                    </div>
-                    <ChevronRight
-                      className={`w-5 h-5 text-zinc-500 shrink-0 transition-transform ${
-                        activeEditingField === 'whatsapp' ? 'rotate-90' : ''
-                      }`}
-                    />
-                  </div>
-
-                  {activeEditingField === 'whatsapp' && (
-                    <div className="mt-3 pt-3 border-t border-white/10 flex items-center gap-2" onClick={(e) => e.stopPropagation()}>
-                      <input
-                        type="tel"
-                        value={whatsapp}
-                        onChange={(e) => setWhatsapp(e.target.value)}
-                        className="flex-1 text-xs sm:text-sm border border-white/20 bg-[#141414] text-white rounded-lg px-2.5 py-1.5 focus:outline-none focus:border-white"
-                        placeholder="+1 (555) 000-0000"
-                      />
-                      <button
-                        type="button"
-                        onClick={() => setActiveEditingField(null)}
-                        className="px-3 py-1.5 bg-white text-black text-xs font-bold rounded-lg cursor-pointer hover:bg-zinc-200"
-                      >
-                        Done
-                      </button>
-                    </div>
-                  )}
-                </div>
-
-                {/* 3. Account Password */}
-                <div
-                  onClick={() => setActiveEditingField(activeEditingField === 'password' ? null : 'password')}
-                  className="p-3.5 sm:p-4 hover:bg-white/[0.04] transition-colors cursor-pointer"
-                >
-                  <div className="flex items-center justify-between gap-3">
-                    <div className="flex items-center gap-3.5 min-w-0">
-                      <Lock className="w-5 h-5 text-zinc-400 shrink-0" />
-                      <div className="min-w-0">
-                        <p className="text-sm font-semibold text-white">Account Password</p>
-                        <p className="text-xs text-zinc-400 tracking-widest mt-0.5 font-mono">
-                          {password.length > 0 ? '••••••••••••' : 'Not set'}
-                        </p>
-                      </div>
-                    </div>
-                    <ChevronRight
-                      className={`w-5 h-5 text-zinc-500 shrink-0 transition-transform ${
-                        activeEditingField === 'password' ? 'rotate-90' : ''
-                      }`}
-                    />
-                  </div>
-
-                  {activeEditingField === 'password' && (
-                    <div className="mt-3 pt-3 border-t border-white/10 flex items-center gap-2" onClick={(e) => e.stopPropagation()}>
-                      <input
-                        type="password"
-                        value={password}
-                        onChange={(e) => setPassword(e.target.value)}
-                        className="flex-1 text-xs sm:text-sm border border-white/20 bg-[#141414] text-white rounded-lg px-2.5 py-1.5 focus:outline-none focus:border-white"
-                        placeholder="New password"
-                      />
-                      <button
-                        type="button"
-                        onClick={() => setActiveEditingField(null)}
-                        className="px-3 py-1.5 bg-white text-black text-xs font-bold rounded-lg cursor-pointer hover:bg-zinc-200"
-                      >
-                        Done
-                      </button>
-                    </div>
-                  )}
-                </div>
-              </div>
-            </div>
-
-            {/* Section 4: Profile Lock (PIN Protection) */}
-            <div className="space-y-3.5 pt-2">
-              <div>
-                <h2 className="text-xl font-bold text-white tracking-tight flex items-center gap-2">
-                  <Lock className="w-5 h-5 text-red-500" />
-                  <span>Profile Lock</span>
-                </h2>
-                <p className="text-xs sm:text-[13px] text-zinc-400 leading-relaxed mt-1">
-                  Require a 4-digit PIN code to access this profile when visiting {platformName}.
-                </p>
-              </div>
-
-              <div className="border border-white/10 rounded-xl p-4 bg-[#1e1f24] space-y-3.5">
-                <div className="flex items-center justify-between gap-3">
-                  <div className="flex items-center gap-3 min-w-0">
-                    <div className="w-10 h-10 rounded-full bg-white/10 flex items-center justify-center text-white shrink-0">
-                      <Shield className="w-5 h-5 text-red-500" />
-                    </div>
-                    <div className="min-w-0">
-                      <p className="text-sm font-semibold text-white">Require 4-digit PIN</p>
-                      <p className="text-xs text-zinc-400 mt-0.5">
-                        {isProfileLockEnabled ? 'Profile lock is currently enabled' : 'Turn on to require a PIN code on startup'}
-                      </p>
-                    </div>
-                  </div>
-
-                  {/* Toggle Switch */}
-                  <button
-                    type="button"
-                    onClick={() => {
-                      if (isProfileLockEnabled) {
-                        setDisablePinInput('');
-                        setDisablePinError('');
-                        setIsPinDisablePromptOpen(true);
-                      } else {
-                        setIsPinSetupModalOpen(true);
-                      }
-                    }}
-                    className={`relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none ${
-                      isProfileLockEnabled ? 'bg-red-600' : 'bg-zinc-700'
-                    }`}
-                    role="switch"
-                    aria-checked={isProfileLockEnabled}
+            {/* 2-Column Single-Screen Grid */}
+            <div className="grid grid-cols-1 md:grid-cols-12 gap-5 items-start">
+              {/* Left Column (4 cols): Profile Identity (Avatar + Name + Handle) */}
+              <div className="md:col-span-5 bg-[#1a1b20] border border-white/10 rounded-2xl p-5 space-y-4">
+                <div className="flex items-center gap-4">
+                  <div
+                    onClick={handleOpenChooseIcon}
+                    className="relative w-20 h-20 rounded-xl overflow-hidden bg-zinc-800 shrink-0 cursor-pointer shadow group border border-white/15"
+                    title="Change Profile Icon"
                   >
-                    <span
-                      aria-hidden="true"
-                      className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow-lg ring-0 transition duration-200 ease-in-out ${
-                        isProfileLockEnabled ? 'translate-x-5' : 'translate-x-0'
-                      }`}
+                    <img
+                      src={avatar}
+                      alt="Profile Icon"
+                      referrerPolicy="no-referrer"
+                      className="w-full h-full object-cover"
                     />
-                  </button>
-                </div>
-
-                {isProfileLockEnabled && (
-                  <div className="pt-3 border-t border-white/10 flex items-center justify-between">
-                    <span className="text-xs text-emerald-400 font-semibold flex items-center gap-1.5">
-                      <Check className="w-3.5 h-3.5 stroke-[3]" />
-                      <span>4-Digit PIN Active</span>
-                    </span>
+                    <div className="absolute inset-0 bg-black/40 group-hover:bg-black/60 transition-colors flex items-center justify-center">
+                      <div className="w-7 h-7 rounded-full bg-black/75 border border-white/60 flex items-center justify-center shadow-md">
+                        <Pencil className="w-3.5 h-3.5 text-white stroke-[2.5]" />
+                      </div>
+                    </div>
+                  </div>
+                  <div className="min-w-0">
+                    <p className="text-sm font-bold text-white truncate">{name || 'Profile'}</p>
+                    <p className="text-xs text-zinc-400 truncate mt-0.5">@{handle.replace(/^@/, '') || 'handle'}</p>
                     <button
                       type="button"
-                      onClick={() => setIsPinSetupModalOpen(true)}
-                      className="text-xs text-zinc-300 hover:text-white font-semibold underline underline-offset-2 transition-colors cursor-pointer"
+                      onClick={handleOpenChooseIcon}
+                      className="text-xs text-red-400 hover:text-red-300 font-semibold mt-1.5 cursor-pointer"
                     >
-                      Change PIN Code
+                      Change avatar
                     </button>
                   </div>
-                )}
-              </div>
-            </div>
+                </div>
 
-            {/* Section 5: Action Buttons */}
-            <div className="pt-4 space-y-3">
-              <button
-                type="submit"
-                className="w-full bg-white hover:bg-zinc-200 text-black font-bold py-3.5 px-6 rounded-xl text-sm sm:text-base tracking-wide transition-colors shadow cursor-pointer text-center"
-              >
-                Save
-              </button>
-              <button
-                type="button"
-                onClick={onClose}
-                className="w-full border border-white/20 hover:border-white text-zinc-300 hover:text-white py-2.5 rounded-xl font-bold text-sm transition-colors text-center cursor-pointer"
-              >
-                Cancel
-              </button>
+                <div className="space-y-3 pt-1">
+                  <div className="border border-white/15 focus-within:border-white rounded-xl px-3.5 py-2 bg-[#141414] transition-colors">
+                    <label className="text-[11px] text-zinc-400 font-medium block leading-tight mb-0.5">
+                      Profile name
+                    </label>
+                    <input
+                      type="text"
+                      value={name}
+                      onChange={(e) => setName(e.target.value)}
+                      placeholder="Enter profile name"
+                      className="w-full text-sm font-medium text-white focus:outline-none bg-transparent"
+                    />
+                  </div>
+
+                  <div className="border border-white/15 focus-within:border-white rounded-xl px-3.5 py-2 bg-[#141414] flex items-center gap-2.5 transition-colors">
+                    <span className="text-base font-black text-zinc-400 shrink-0 select-none">@</span>
+                    <div className="flex-1 min-w-0">
+                      <label className="text-[11px] text-zinc-400 font-medium block leading-tight mb-0.5">
+                        Profile Handle
+                      </label>
+                      <input
+                        type="text"
+                        value={handle.replace(/^@/, '')}
+                        onChange={(e) => setHandle(e.target.value.replace(/^@/, ''))}
+                        placeholder="username"
+                        className="w-full text-sm font-medium text-white focus:outline-none bg-transparent truncate"
+                      />
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              {/* Right Column (8 cols): Inline Contact Fields + Profile Lock PIN Card */}
+              <div className="md:col-span-7 space-y-4">
+                {/* Inline Contact & Password Card */}
+                <div className="bg-[#1a1b20] border border-white/10 rounded-2xl p-5 space-y-3.5">
+                  <h2 className="text-sm font-bold text-zinc-200 uppercase tracking-wider">
+                    Contact & Security
+                  </h2>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    <div className="border border-white/12 focus-within:border-white rounded-xl px-3.5 py-2.5 bg-[#141414] flex items-center gap-2.5 transition-colors">
+                      <Mail className="w-4 h-4 text-zinc-400 shrink-0" />
+                      <div className="flex-1 min-w-0">
+                        <label className="text-[10px] text-zinc-400 font-medium block leading-tight">Email</label>
+                        <input
+                          type="email"
+                          value={email}
+                          onChange={(e) => setEmail(e.target.value)}
+                          placeholder="your.email@example.com"
+                          className="w-full text-xs sm:text-sm font-medium text-white bg-transparent focus:outline-none mt-0.5 truncate"
+                        />
+                      </div>
+                    </div>
+
+                    <div className="border border-white/12 focus-within:border-white rounded-xl px-3.5 py-2.5 bg-[#141414] flex items-center gap-2.5 transition-colors">
+                      <Phone className="w-4 h-4 text-zinc-400 shrink-0" />
+                      <div className="flex-1 min-w-0">
+                        <label className="text-[10px] text-zinc-400 font-medium block leading-tight">WhatsApp</label>
+                        <input
+                          type="tel"
+                          value={whatsapp}
+                          onChange={(e) => setWhatsapp(e.target.value)}
+                          placeholder="+1 (555) 000-0000"
+                          className="w-full text-xs sm:text-sm font-medium text-white bg-transparent focus:outline-none mt-0.5 truncate"
+                        />
+                      </div>
+                    </div>
+
+                    <div className="sm:col-span-2 border border-white/12 focus-within:border-white rounded-xl px-3.5 py-2.5 bg-[#141414] flex items-center gap-2.5 transition-colors">
+                      <Lock className="w-4 h-4 text-zinc-400 shrink-0" />
+                      <div className="flex-1 min-w-0">
+                        <label className="text-[10px] text-zinc-400 font-medium block leading-tight">
+                          Account Password
+                        </label>
+                        <input
+                          type="password"
+                          value={password}
+                          onChange={(e) => setPassword(e.target.value)}
+                          placeholder="New password"
+                          className="w-full text-xs sm:text-sm font-medium text-white bg-transparent focus:outline-none mt-0.5"
+                        />
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Inline Profile Lock Card */}
+                <div className="bg-[#1a1b20] border border-white/10 rounded-2xl p-5 space-y-3">
+                  <div className="flex items-center justify-between gap-3">
+                    <div className="flex items-center gap-3 min-w-0">
+                      <div className="w-10 h-10 rounded-full bg-white/10 flex items-center justify-center text-white shrink-0">
+                        <Shield className="w-5 h-5 text-red-500" />
+                      </div>
+                      <div className="min-w-0">
+                        <p className="text-sm font-bold text-white">Profile Lock (4-Digit PIN)</p>
+                        <p className="text-xs text-zinc-400 mt-0.5">
+                          {isProfileLockEnabled
+                            ? `PIN protection is enabled on ${platformName}`
+                            : `Require a 4-digit PIN to unlock on startup`}
+                        </p>
+                      </div>
+                    </div>
+
+                    <button
+                      type="button"
+                      onClick={() => {
+                        if (isProfileLockEnabled) {
+                          setDisablePinInput('');
+                          setDisablePinError('');
+                          setIsPinDisablePromptOpen(true);
+                        } else {
+                          setIsPinSetupModalOpen(true);
+                        }
+                      }}
+                      className={`relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none ${
+                        isProfileLockEnabled ? 'bg-red-600' : 'bg-zinc-700'
+                      }`}
+                      role="switch"
+                      aria-checked={isProfileLockEnabled}
+                    >
+                      <span
+                        aria-hidden="true"
+                        className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow-lg ring-0 transition duration-200 ease-in-out ${
+                          isProfileLockEnabled ? 'translate-x-5' : 'translate-x-0'
+                        }`}
+                      />
+                    </button>
+                  </div>
+
+                  {isProfileLockEnabled && (
+                    <div className="pt-2.5 border-t border-white/10 flex items-center justify-between">
+                      <span className="text-xs text-emerald-400 font-semibold flex items-center gap-1.5">
+                        <Check className="w-3.5 h-3.5 stroke-[3]" />
+                        <span>4-Digit PIN Active</span>
+                      </span>
+                      <button
+                        type="button"
+                        onClick={() => setIsPinSetupModalOpen(true)}
+                        className="text-xs text-zinc-300 hover:text-white font-semibold underline underline-offset-2 transition-colors cursor-pointer"
+                      >
+                        Change PIN Code
+                      </button>
+                    </div>
+                  )}
+                </div>
+
+                {/* Fingerprint Unlock Card */}
+                <div className="bg-[#1a1b20] border border-white/10 rounded-2xl p-5 space-y-2.5">
+                  <div className="flex items-center justify-between gap-3">
+                    <div className="flex items-center gap-3 min-w-0">
+                      <div className="w-10 h-10 rounded-full bg-white/10 flex items-center justify-center text-white shrink-0">
+                        <Fingerprint className="w-5 h-5 text-[#ff2e55]" />
+                      </div>
+                      <div className="min-w-0">
+                        <p className="text-sm font-bold text-white">Fingerprint Unlock</p>
+                        <p className="text-xs text-zinc-400 mt-0.5">
+                          {isFingerprintEnabled
+                            ? 'Native mobile fingerprint unlock is enabled'
+                            : 'Unlock profile with your mobile fingerprint sensor'}
+                        </p>
+                      </div>
+                    </div>
+
+                    <button
+                      type="button"
+                      disabled={isBiometricSetupBusy}
+                      onClick={async () => {
+                        if (isFingerprintEnabled) {
+                          setFingerprintUnlockEnabled(false);
+                          setIsFingerprintEnabled(false);
+                          setSaveToast('Fingerprint unlock disabled');
+                          setTimeout(() => setSaveToast(null), 3000);
+                        } else {
+                          setIsBiometricSetupBusy(true);
+                          try {
+                            const res = await registerNativeFingerprint(name || 'Profile', platformName);
+                            if (res.ok) {
+                              setIsFingerprintEnabled(true);
+                              setSaveToast(res.message || 'Fingerprint unlock enabled');
+                            } else {
+                              setSaveToast(res.message || 'Fingerprint setup cancelled');
+                            }
+                            setTimeout(() => setSaveToast(null), 3000);
+                          } finally {
+                            setIsBiometricSetupBusy(false);
+                          }
+                        }
+                      }}
+                      className={`relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none disabled:opacity-60 ${
+                        isFingerprintEnabled ? 'bg-red-600' : 'bg-zinc-700'
+                      }`}
+                      role="switch"
+                      aria-checked={isFingerprintEnabled}
+                    >
+                      <span
+                        aria-hidden="true"
+                        className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow-lg ring-0 transition duration-200 ease-in-out ${
+                          isFingerprintEnabled ? 'translate-x-5' : 'translate-x-0'
+                        }`}
+                      />
+                    </button>
+                  </div>
+
+                  {isFingerprintEnabled && !isProfileLockEnabled && (
+                    <p className="text-[11px] text-amber-400/90 pt-1">
+                      Enable Profile Lock (4-Digit PIN) above to prompt on startup.
+                    </p>
+                  )}
+                </div>
+              </div>
             </div>
           </form>
         </main>

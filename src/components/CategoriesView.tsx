@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { Show, CategoryItem } from '../types';
 import fullBackupData from '../full_backup.json';
-import { ArrowLeft } from 'lucide-react';
+import { ChevronLeft, ChevronRight } from 'lucide-react';
 import { MediaImage } from './MediaImage';
 
 const INITIAL_CATEGORIES: CategoryItem[] = ((fullBackupData as any)?.categoriesList as CategoryItem[]) || [];
@@ -17,8 +17,10 @@ interface CategoriesViewProps {
   onIncrementPoints: (showId: string) => void;
   onCloseCategories?: () => void;
   onSelectCategoryCard?: (category: CategoryItem) => void;
+  onCategorySelectionChange?: (category: CategoryItem | null) => void;
   resetKey?: number;
   initialCategory?: CategoryItem | null;
+  mobileCategoriesStyle?: 'grid' | 'stacked_cards';
 }
 
 export const CATEGORIES_DATA: CategoryItem[] = INITIAL_CATEGORIES || [];
@@ -33,22 +35,27 @@ export const CategoriesView: React.FC<CategoriesViewProps> = ({
   onIncrementPoints,
   onCloseCategories,
   onSelectCategoryCard,
+  onCategorySelectionChange,
   resetKey,
-  initialCategory
+  initialCategory,
+  mobileCategoriesStyle = 'grid'
 }) => {
   const [selectedCategory, setSelectedCategory] = useState<CategoryItem | null>(initialCategory || null);
   const categoryScrollPosRef = useRef<number>(0);
 
   // Sync when initialCategory changes
   useEffect(() => {
-    if (initialCategory) {
-      setSelectedCategory(initialCategory);
-    }
+    setSelectedCategory(initialCategory || null);
   }, [initialCategory]);
+
+  // Notify parent whenever internal selectedCategory changes
+  useEffect(() => {
+    onCategorySelectionChange?.(selectedCategory);
+  }, [selectedCategory, onCategorySelectionChange]);
 
   // When resetKey changes (e.g. user re-clicks Categories in filter strip), return to categories list
   useEffect(() => {
-    if (resetKey !== undefined) {
+    if (resetKey !== undefined && resetKey > 0) {
       setSelectedCategory(null);
     }
   }, [resetKey]);
@@ -95,22 +102,49 @@ export const CategoriesView: React.FC<CategoriesViewProps> = ({
     : [];
 
   return (
-    <div className="pt-2 sm:pt-4 md:pt-36 lg:pt-40 pb-36 px-3 sm:px-4 md:px-8 xl:px-12 w-full animate-in fade-in duration-300">
-      {/* If a category is selected: directly display posters grid without top Back to Categories bar */}
+    <div
+      className={`pb-36 w-full animate-in fade-in duration-300 ${
+        selectedCategory
+          ? 'pt-14 md:pt-36 lg:pt-40 px-2.5 sm:px-4 md:px-8 xl:px-12'
+          : 'pt-2 sm:pt-4 md:pt-36 lg:pt-40 px-3 sm:px-4 md:px-8 xl:px-12'
+      }`}
+    >
+      {/* If a category is selected: mobile shows Top 10 List Page style header & More Like This 3-column 2:3 grid */}
       {selectedCategory ? (
         <div className="pt-2 md:pt-4">
-          {/* Posters Grid for Selected Genre: 2:3 vertical posters */}
-          <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-6 gap-3 sm:gap-4 md:gap-5">
+          {/* Mobile Fixed Header matching Top 10 List Page */}
+          <div className="md:hidden fixed top-0 inset-x-0 z-50 h-14 bg-black px-4 flex items-center justify-between border-b border-white/10 select-none">
+            <div className="flex items-center gap-3 min-w-0">
+              <button
+                onClick={() => {
+                  setSelectedCategory(null);
+                  onCategorySelectionChange?.(null);
+                  window.scrollTo({ top: categoryScrollPosRef.current || 0, behavior: 'instant' });
+                }}
+                className="p-1 -ml-1.5 text-white hover:text-white/80 active:scale-90 transition-transform cursor-pointer shrink-0"
+                aria-label="Back to categories"
+              >
+                <ChevronLeft className="w-7 h-7 stroke-[2.2]" />
+              </button>
+              <h1 className="text-lg font-black text-white tracking-tight truncate">
+                {selectedCategory.name}
+              </h1>
+            </div>
+          </div>
+
+          {/* Posters Grid for Selected Category: exact match to Mobile DetailModal More Like This */}
+          <div className="grid grid-cols-3 gap-2 sm:gap-2.5 md:grid-cols-5 lg:grid-cols-6 md:gap-5">
             {getShowsForCategory(selectedCategory).map((show) => (
               <div
                 key={show.id}
+                data-show-id={show.id}
                 onClick={() => onOpenDetails(show)}
-                className="aspect-[2/3] rounded-md overflow-hidden bg-black shadow cursor-pointer group active:scale-95 transition-transform border border-white/5"
+                className="aspect-[2/3] rounded-md overflow-hidden bg-black shadow cursor-pointer group active:scale-95 transition-transform"
               >
                 <MediaImage
                   src={show.posterVerticalUrl || show.posterUrl || show.posterLandscapeUrl}
                   fallbackTitle={show.title}
-                  fallbackClassName="w-full h-full bg-[#181818] flex items-center justify-center p-2.5 text-center select-none"
+                  fallbackClassName="w-full h-full bg-[#111] md:bg-[#181818] flex items-center justify-center p-2.5 text-center select-none"
                   className="w-full h-full object-cover group-hover:scale-105 transition-transform"
                 />
               </div>
@@ -123,9 +157,107 @@ export const CategoriesView: React.FC<CategoriesViewProps> = ({
           <p className="text-xs text-zinc-500 mt-1">Add categories from the Admin Panel or link your full_backup.json.</p>
         </div>
       ) : (
-        /* Main Categories View: Landscape categories on desktop (16:9), portrait on mobile (2:3) with generous top padding */
+        /* Main Categories View */
         <div className="w-full">
-          <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-3 lg:grid-cols-4 gap-2.5 sm:gap-3 md:gap-4 lg:gap-5">
+          {/* Mobile Stacked Landscape Cards Option (matching image_471696e6.png) */}
+          {mobileCategoriesStyle === 'stacked_cards' && (
+            <div className="md:hidden space-y-3 pb-4">
+              {activeCategories.map((cat) => {
+                const matchedShows = getShowsForCategory(cat);
+                const subtitleText =
+                  cat.description?.trim() ||
+                  (matchedShows.length > 0
+                    ? Array.from(new Set(matchedShows.flatMap((s) => s.genres || [])))
+                        .slice(0, 3)
+                        .join(', ')
+                    : `${cat.name} Collection`);
+                const collageImages = [
+                  ...matchedShows.slice(0, 4).map((s) => s.posterLandscapeUrl || s.backdropUrl || s.posterVerticalUrl),
+                  cat.imageUrl
+                ].filter(Boolean);
+
+                return (
+                  <div
+                    key={`stacked-${cat.id}`}
+                    onClick={() => {
+                      handleSelectCategory(cat);
+                      if (onSelectCategoryCard) {
+                        onSelectCategoryCard(cat);
+                      }
+                    }}
+                    className="group relative w-full h-[106px] rounded-[10px] overflow-hidden bg-[#141416] border border-white/[0.08] flex items-center justify-between cursor-pointer active:scale-[0.985] transition-all duration-200 shadow-lg"
+                  >
+                    {/* Right Artwork Zone */}
+                    <div className="absolute right-0 top-0 bottom-0 w-[64%] overflow-hidden pointer-events-none">
+                      {cat.narrowLandscapeUrl ? (
+                        <MediaImage
+                          src={cat.narrowLandscapeUrl}
+                          fallbackTitle={cat.name}
+                          hideFallback={true}
+                          className="w-full h-full object-cover object-center group-hover:scale-105 transition-transform duration-300"
+                        />
+                      ) : collageImages.length >= 2 ? (
+                        <div className="w-full h-full grid grid-cols-2 grid-rows-2 gap-1 rotate-[-10deg] scale-125 opacity-90">
+                          {[0, 1, 2, 3].map((slotIdx) => (
+                            <div key={slotIdx} className="w-full h-full overflow-hidden rounded-[3px] bg-zinc-900">
+                              <img
+                                src={collageImages[slotIdx % collageImages.length]}
+                                alt=""
+                                referrerPolicy="no-referrer"
+                                className="w-full h-full object-cover"
+                              />
+                            </div>
+                          ))}
+                        </div>
+                      ) : (
+                        <MediaImage
+                          src={cat.imageUrl}
+                          fallbackTitle={cat.name}
+                          hideFallback={true}
+                          className="w-full h-full object-cover object-center"
+                        />
+                      )}
+
+                      {/* Left-to-right gradient fade blending artwork smoothly into dark card background */}
+                      <div
+                        className="absolute inset-0 pointer-events-none"
+                        style={{
+                          background:
+                            'linear-gradient(90deg, #141416 0%, rgba(20,20,22,0.92) 18%, rgba(20,20,22,0.45) 52%, rgba(0,0,0,0.22) 100%)'
+                        }}
+                      />
+                    </div>
+
+                    {/* Left Title & Subtitle */}
+                    <div className="relative z-10 flex-1 pl-4 pr-3 py-3 min-w-0 max-w-[60%]">
+                      <h3 className="text-white font-bold text-[17px] tracking-tight truncate leading-snug drop-shadow">
+                        {cat.name}
+                      </h3>
+                      <p className="text-zinc-400 text-[12px] font-medium truncate mt-0.5 leading-snug">
+                        {subtitleText}
+                      </p>
+                    </div>
+
+                    {/* Right subtle circular chevron indicator */}
+                    <div className="relative z-10 pr-3.5 shrink-0">
+                      <div className="w-7 h-7 rounded-full bg-zinc-900/80 border border-white/15 flex items-center justify-center text-white/90 shadow-md">
+                        <ChevronRight className="w-4 h-4 stroke-[2.2]" />
+                      </div>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+
+          {/* Grid Categories View (Desktop always; Mobile when mobileCategoriesStyle === 'grid') */}
+          <div
+            className={`${
+              mobileCategoriesStyle === 'stacked_cards'
+                ? 'hidden md:grid'
+                : 'grid grid-cols-2 sm:grid-cols-3'
+            } md:grid-cols-3 lg:grid-cols-4 gap-2.5 sm:gap-3 md:gap-4 lg:gap-5`}
+          >
             {activeCategories.map((cat) => {
               return (
                 <div
@@ -136,7 +268,7 @@ export const CategoriesView: React.FC<CategoriesViewProps> = ({
                       onSelectCategoryCard(cat);
                     }
                   }}
-                  className="group relative aspect-[2/3] md:aspect-[16/9] w-full rounded-lg overflow-hidden bg-[#16171d] border border-zinc-400/[0.09] cursor-pointer shadow-md transition-all duration-200 active:scale-95 hover:border-zinc-300/30"
+                  className="group relative aspect-[2/3] md:aspect-[16/9] w-full rounded-2xl overflow-hidden bg-black md:bg-[#16171d] border border-zinc-400/[0.09] cursor-pointer shadow-md transition-all duration-200 active:scale-95 hover:border-zinc-300/30"
                 >
                   {/* Category Background Image */}
                   <MediaImage

@@ -1,7 +1,5 @@
 import React, { useState, useRef, useEffect, useCallback } from 'react';
 import {
-  Play,
-  Pause,
   Volume2,
   Volume1,
   VolumeX,
@@ -10,7 +8,7 @@ import {
   RotateCcw,
   RotateCw,
   Check,
-  ArrowLeft
+  ChevronLeft
 } from 'lucide-react';
 import { attachHlsVideo, setHlsQuality } from '../utils/hlsHelper';
 
@@ -644,8 +642,17 @@ export const CustomPlayer: React.FC<CustomPlayerProps> = ({
       {centerIcon && (
         <div className="absolute inset-0 flex items-center justify-center pointer-events-none z-35 animate-in fade-in zoom-in-95 duration-150">
           <div className="w-14 h-14 sm:w-16 sm:h-16 rounded-2xl bg-black/10 flex items-center justify-center text-white">
-            {centerIcon === 'play' && <Play className="w-7 h-7 sm:w-8 sm:h-8 fill-white ml-0.5" />}
-            {centerIcon === 'pause' && <Pause className="w-7 h-7 sm:w-8 sm:h-8 fill-white" />}
+            {centerIcon === 'play' && (
+              <svg className="w-7 h-7 sm:w-8 sm:h-8 fill-white ml-0.5" viewBox="0 0 24 24">
+                <polygon points="6,4 20,12 6,20" />
+              </svg>
+            )}
+            {centerIcon === 'pause' && (
+              <svg className="w-7 h-7 sm:w-8 sm:h-8 fill-white" viewBox="0 0 24 24">
+                <rect x="5" y="4" width="4.8" height="16" rx="1" />
+                <rect x="14.2" y="4" width="4.8" height="16" rx="1" />
+              </svg>
+            )}
             {centerIcon === 'volume' && <Volume2 className="w-7 h-7 sm:w-8 sm:h-8" />}
             {centerIcon === 'volume-low' && <Volume1 className="w-7 h-7 sm:w-8 sm:h-8" />}
             {centerIcon === 'volume-mute' && <VolumeX className="w-7 h-7 sm:w-8 sm:h-8" />}
@@ -744,10 +751,10 @@ export const CustomPlayer: React.FC<CustomPlayerProps> = ({
             <button
               onClick={onClose}
               data-no-tooltip="true"
-              className="text-white hover:text-zinc-300 transition-colors cursor-pointer p-1.5 rounded-full hover:bg-white/10"
+              className="text-white hover:text-white/80 transition-transform active:scale-90 cursor-pointer p-1 -ml-1"
               aria-label="Back"
             >
-              <ArrowLeft className="w-6 h-6 md:w-7 md:h-7" />
+              <ChevronLeft className="w-7 h-7 md:w-8 md:h-8 stroke-[2.2]" />
             </button>
           )}
         </div>
@@ -869,9 +876,14 @@ export const CustomPlayer: React.FC<CustomPlayerProps> = ({
               aria-label={isPlaying ? 'Pause' : 'Play'}
             >
               {isPlaying ? (
-                <Pause className="w-6 h-6 fill-white" />
+                <svg className="w-6 h-6 fill-white" viewBox="0 0 24 24">
+                  <rect x="5" y="4" width="4.8" height="16" rx="1" />
+                  <rect x="14.2" y="4" width="4.8" height="16" rx="1" />
+                </svg>
               ) : (
-                <Play className="w-6 h-6 fill-white ml-0.5" />
+                <svg className="w-6 h-6 fill-white ml-0.5" viewBox="0 0 24 24">
+                  <polygon points="6,4 20,12 6,20" />
+                </svg>
               )}
             </button>
 

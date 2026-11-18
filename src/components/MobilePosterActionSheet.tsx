@@ -1,6 +1,7 @@
 import React, { useEffect, useState, useRef, useMemo } from 'react';
 import { Show } from '../types';
-import { X, Play, Film, Plus, Check, Info, RotateCcw, Download, Share2, Trash2 } from 'lucide-react';
+import { X, Play, Film, Plus, Check, Info, RotateCcw, Download, Trash2 } from 'lucide-react';
+import { ShareArrowIcon } from './ShareArrowIcon';
 
 interface MobilePosterActionSheetProps {
   show: Show | null;
@@ -149,7 +150,7 @@ export const MobilePosterActionSheet: React.FC<MobilePosterActionSheetProps> = (
           transform: dragY > 0 ? `translateY(${dragY}px)` : undefined,
           transition: isDragging ? 'none' : 'transform 0.25s cubic-bezier(0.16, 1, 0.3, 1)'
         }}
-        className="w-full max-h-[85vh] overflow-y-auto bg-[#0d0e14] border-t border-white/10 rounded-t-3xl px-5 pt-1.5 pb-[max(env(safe-area-inset-bottom),28px)] shadow-2xl animate-in slide-in-from-bottom duration-250 select-none custom-scrollbar relative"
+        className="w-full max-h-[85vh] overflow-y-auto bg-[#161618] border-t border-white/10 rounded-t-3xl px-5 pt-1.5 pb-[max(env(safe-area-inset-bottom),28px)] shadow-2xl animate-in slide-in-from-bottom duration-250 select-none custom-scrollbar relative"
       >
         {/* Swiping bar */}
         <div
@@ -276,7 +277,7 @@ export const MobilePosterActionSheet: React.FC<MobilePosterActionSheetProps> = (
                 className="w-full flex items-center gap-3.5 py-2.5 px-2 rounded-lg text-white hover:bg-white/10 active:bg-white/15 transition-colors cursor-pointer text-left"
               >
                 <div className="w-5 flex items-center justify-center">
-                  <Share2 className="w-4.5 h-4.5 text-white/90" />
+                  <ShareArrowIcon className="w-4.5 h-4.5 text-white/90" />
                 </div>
                 <span className="text-sm font-semibold">Share</span>
               </button>
@@ -309,7 +310,7 @@ export const MobilePosterActionSheet: React.FC<MobilePosterActionSheetProps> = (
                   <Trash2 className="w-4.5 h-4.5 text-red-400" />
                 </div>
                 <span className="text-sm font-semibold text-red-400">
-                  Remove from Continue watching
+                  Remove from Keep watching
                 </span>
               </button>
             </div>
@@ -369,7 +370,7 @@ export const MobilePosterActionSheet: React.FC<MobilePosterActionSheetProps> = (
                 className="w-full flex items-center gap-3.5 py-2.5 px-2 rounded-lg text-white hover:bg-white/10 active:bg-white/15 transition-colors cursor-pointer text-left"
               >
                 <div className="w-5 flex items-center justify-center">
-                  <Share2 className="w-4.5 h-4.5 text-white/90" />
+                  <ShareArrowIcon className="w-4.5 h-4.5 text-white/90" />
                 </div>
                 <span className="text-sm font-semibold">Share</span>
               </button>

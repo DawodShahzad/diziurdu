@@ -1,7 +1,7 @@
 import React, { useRef, useState, useEffect, useCallback, useMemo } from 'react';
-import { Show, FeedConfig } from '../types';
+import { Show, FeedConfig, DetailsOriginMeta } from '../types';
 import { ShowCard, triggerGlobalScroll, getGlobalMousePos } from './ShowCard';
-import { ChevronLeft, ChevronRight, Volume2, VolumeX, Play, Plus, Check } from 'lucide-react';
+import { ChevronLeft, ChevronRight, Volume2, VolumeX, Play, Plus, Check, Loader2 } from 'lucide-react';
 import { ShowTitleLogo } from './ShowTitleLogo';
 import { attachHlsVideo } from '../utils/hlsHelper';
 import { WatchProgressItem } from '../utils/watchProgress';
@@ -14,7 +14,7 @@ interface FeedStripProps {
   watchlist: string[];
   watchHistory?: Record<string, WatchProgressItem>;
   onToggleWatchlist: (showId: string) => void;
-  onOpenDetails: (show: Show) => void;
+  onOpenDetails: (show: Show, originMeta?: DetailsOriginMeta) => void;
   onPlayShow: (show: Show) => void;
   onIncrementPoints: (showId: string) => void;
   isGlobalMuted?: boolean;
@@ -30,6 +30,11 @@ interface FeedStripProps {
   showTop10Badges?: boolean;
   modernTop10RankList?: boolean;
   top10RankStyle?: 'classic' | 'modern' | 'inside_card';
+  likedShowIds?: string[];
+  onToggleLike?: (showId: string) => void;
+  feedIndex?: number;
+  isPaused?: boolean;
+  desktopPopoutStyle?: 'classic' | 'overlay_red' | 'immersive_fade';
 }
 
 // Global Active Feed Strip tracking:
@@ -78,13 +83,19 @@ export const FeedStrip: React.FC<FeedStripProps> = ({
   enableStretchableCards = false,
   showTop10Badges = true,
   modernTop10RankList = false,
-  top10RankStyle
+  top10RankStyle,
+  likedShowIds,
+  onToggleLike,
+  feedIndex = 0,
+  isPaused = false,
+  desktopPopoutStyle = 'classic'
 }) => {
   const effectiveTop10Style: 'classic' | 'modern' | 'inside_card' =
     top10RankStyle || (modernTop10RankList === false ? 'classic' : 'modern');
   const isContinueWatchingFeed =
     feed.id.includes('continue-watching') ||
-    feed.title.toLowerCase().includes('continue watching');
+    feed.title.toLowerCase().includes('continue watching') ||
+    feed.title.toLowerCase().includes('keep watching');
 
   const isWatchlistFeed =
     feed.id === 'watchlist' ||
@@ -104,12 +115,10 @@ export const FeedStrip: React.FC<FeedStripProps> = ({
 
   // In tablet view or mobile view, the titles in the special feed are ALWAYS in landscape 16:9 as in desktop view.
   // In mobile and tablet layout, stretch feed uses aspect ratio 9:16.
-  // In mobile layout, My List feed uses 16:9 matching continue watching.
+  // In mobile layout, My List feed uses normal 2:3 poster cards (3 cards + edge of 4th).
   // Standard feeds on mobile use 2:3.
   // Normal desktop and tablet feeds use landscape 16:9.
   const cardAspectRatio = isContinueWatchingFeed
-    ? '16:9'
-    : (isMobile && isWatchlistFeed)
     ? '16:9'
     : feed.isSpecialFeed
     ? '16:9'
@@ -123,6 +132,13 @@ export const FeedStrip: React.FC<FeedStripProps> = ({
   const disablePopout = Boolean(isMobile || isTablet || isStretchableFeed);
 
   const feedStripRef = useRef<HTMLDivElement>(null);
+  const [isRowInViewport, setIsRowInViewport] = useState<boolean>(
+    () =>
+      feedIndex === 0 ||
+      isContinueWatchingFeed ||
+      isWatchlistFeed ||
+      feed.id.startsWith('my-list')
+  );
   const [isAnyCardHovered, setIsAnyCardHovered] = useState<boolean>(false);
   const [isBtnHovered, setIsBtnHovered] = useState<boolean>(false);
 
@@ -165,7 +181,7 @@ export const FeedStrip: React.FC<FeedStripProps> = ({
       ro.disconnect();
       window.removeEventListener('resize', updateNavPosition);
     };
-  }, [updateNavPosition, feed.isSpecialFeed]);
+  }, [updateNavPosition, feed.isSpecialFeed, isRowInViewport, isMobile, isTablet]);
 
   // Active cursor tracking: STRICTLY ONLY 1 row active across entire page at a time
   // Left/right navigation badges only appear when cursor/pointer is strictly on the rows of titles (not above or below)
@@ -173,8 +189,10 @@ export const FeedStrip: React.FC<FeedStripProps> = ({
     const handleCheckPointer = (e?: MouseEvent) => {
       if (!feedStripRef.current || !scrollContainerRef.current) return;
       const { x, y } = e ? { x: e.clientX, y: e.clientY } : getGlobalMousePos();
-      
-      const firstCard = scrollContainerRef.current.querySelector('[data-show-card="true"]') as HTMLElement | null;
+
+      const firstCard = (scrollContainerRef.current.querySelector('[data-card-thumb="true"]') ||
+        scrollContainerRef.current.querySelector('[data-top10-card="true"]') ||
+        scrollContainerRef.current.querySelector('[data-show-card="true"]')) as HTMLElement | null;
       let isInside = false;
       if (firstCard) {
         const cardRect = firstCard.getBoundingClientRect();
@@ -189,7 +207,9 @@ export const FeedStrip: React.FC<FeedStripProps> = ({
         let inAnyCardRow = false;
         allStrips.forEach((strip) => {
           const sc = strip.querySelector('.overflow-x-auto');
-          const fc = sc?.querySelector('[data-show-card="true"]') as HTMLElement | null;
+          const fc = (sc?.querySelector('[data-card-thumb="true"]') ||
+            sc?.querySelector('[data-top10-card="true"]') ||
+            sc?.querySelector('[data-show-card="true"]')) as HTMLElement | null;
           if (fc) {
             const cr = fc.getBoundingClientRect();
             if (x >= 0 && x <= window.innerWidth && y >= cr.top && y <= cr.bottom) {
@@ -203,13 +223,14 @@ export const FeedStrip: React.FC<FeedStripProps> = ({
       }
     };
 
-    window.addEventListener('scroll', () => handleCheckPointer(), { passive: true, capture: true });
+    const handleScrollCheck = () => handleCheckPointer();
+    window.addEventListener('scroll', handleScrollCheck, { passive: true, capture: true });
     window.addEventListener('mousemove', handleCheckPointer, { passive: true });
     return () => {
-      window.removeEventListener('scroll', () => handleCheckPointer(), { capture: true });
+      window.removeEventListener('scroll', handleScrollCheck, { capture: true });
       window.removeEventListener('mousemove', handleCheckPointer);
     };
-  }, [feed.id]);
+  }, [feed.id, isRowInViewport, isMobile, isTablet]);
 
   const [isAnyCardExpanded, setIsAnyCardExpanded] = useState<boolean>(false);
   const [isPopoutHideNav, setIsPopoutHideNav] = useState<boolean>(false);
@@ -347,6 +368,65 @@ export const FeedStrip: React.FC<FeedStripProps> = ({
   const [canScrollLeft, setCanScrollLeft] = useState<boolean>(false);
   const [canScrollRight, setCanScrollRight] = useState<boolean>(false);
 
+  // Progressive feed-by-feed vertical gating & horizontal in-view card gating
+  const [loadedCardIndices, setLoadedCardIndices] = useState<Set<number>>(
+    () => new Set([0, 1, 2, 3, 4, 5])
+  );
+
+  useEffect(() => {
+    const el = feedStripRef.current;
+    if (!el || isRowInViewport) return;
+
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (entries.some((entry) => entry.isIntersecting)) {
+          setIsRowInViewport(true);
+          observer.disconnect();
+        }
+      },
+      { rootMargin: '140px 0px', threshold: 0.01 }
+    );
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, [isRowInViewport]);
+
+  useEffect(() => {
+    if (!isRowInViewport) return;
+    const container = scrollContainerRef.current;
+    if (!container) return;
+
+    const children = Array.from(container.children) as HTMLElement[];
+    children.forEach((child, idx) => {
+      child.dataset.cardIndex = String(idx);
+    });
+
+    const observer = new IntersectionObserver(
+      (entries) => {
+        setLoadedCardIndices((prev) => {
+          let changed = false;
+          const next = new Set(prev);
+          entries.forEach((entry) => {
+            if (entry.isIntersecting) {
+              const rawIdx = (entry.target as HTMLElement).dataset.cardIndex;
+              if (rawIdx !== undefined) {
+                const idx = Number(rawIdx);
+                if (!next.has(idx)) {
+                  next.add(idx);
+                  changed = true;
+                }
+              }
+            }
+          });
+          return changed ? next : prev;
+        });
+      },
+      { root: container, rootMargin: '0px 140px 0px 140px', threshold: 0.01 }
+    );
+
+    children.forEach((child) => observer.observe(child));
+    return () => observer.disconnect();
+  }, [isRowInViewport, filteredShows.length, isMobile]);
+
   // Check if More Info page or any modal is currently open
   const [isModalOpen, setIsModalOpen] = useState<boolean>(() => {
     if (typeof document === 'undefined') return false;
@@ -398,16 +478,16 @@ export const FeedStrip: React.FC<FeedStripProps> = ({
       if (el.scrollTop !== 0) {
         el.scrollTop = 0;
       }
-      const firstCard = el.querySelector('[data-show-card="true"]') as HTMLElement | null;
+      const firstCard = (el.querySelector('[data-card-thumb="true"]') ||
+        el.querySelector('[data-top10-card="true"]') ||
+        el.querySelector('[data-show-card="true"]')) as HTMLElement | null;
       if (!firstCard) return;
       const cardRect = firstCard.getBoundingClientRect();
       const y = e.clientY;
 
-      // The feed does NOT scroll when the cursor or pointer is not in the line row of feed cards:
-      // Don't scroll any row when cursor pointer is on top or bottom
+      // The feed row does NOT scroll horizontally when the cursor pointer is outside the vertical bounds of the cards
       if (y < cardRect.top || y > cardRect.bottom) {
         e.preventDefault();
-        // Forward vertical scrolling to the window so page scrolls vertically as normal
         if (Math.abs(e.deltaY) > 0) {
           window.scrollBy({ top: e.deltaY, left: 0, behavior: 'auto' });
         }
@@ -423,7 +503,7 @@ export const FeedStrip: React.FC<FeedStripProps> = ({
       el.removeEventListener('wheel', handleContainerWheel);
       window.removeEventListener('resize', updateScrollButtons);
     };
-  }, [updateScrollButtons, filteredShows.length]);
+  }, [updateScrollButtons, updateNavPosition, filteredShows.length, isRowInViewport, isMobile, isTablet, feed.isSpecialFeed]);
 
   // Gentle scroll settling: smoothly glides to nearest card boundary without any jerk
   const settleTimeoutRef = useRef<number | null>(null);
@@ -538,7 +618,7 @@ export const FeedStrip: React.FC<FeedStripProps> = ({
         cancelAnimationFrame(settleAnimRef.current);
       }
     };
-  }, [isAnyCardHovered, filteredShows.length, updateScrollButtons]);
+  }, [isAnyCardHovered, filteredShows.length, updateScrollButtons, isRowInViewport, isMobile, isTablet, feed.isStretchableFeed]);
 
   const handleScroll = (direction: 'left' | 'right') => {
     if (!scrollContainerRef.current) return;
@@ -599,21 +679,25 @@ export const FeedStrip: React.FC<FeedStripProps> = ({
     isMobileSpecialFeedCyclic ? showCount : 0
   );
   const [isMobileVideoPlaying, setIsMobileVideoPlaying] = useState<boolean>(false);
+  const [isMobileVideoLoading, setIsMobileVideoLoading] = useState<boolean>(false);
   const [isPosterCountdownDone, setIsPosterCountdownDone] = useState<boolean>(false);
   const [previewProgressPercent, setPreviewProgressPercent] = useState<number>(0);
   const mobileCarouselRef = useRef<HTMLDivElement>(null);
   const mobileCardRefs = useRef<(HTMLDivElement | null)[]>([]);
   const mobileVideoRef = useRef<HTMLVideoElement>(null);
   const [isStripInViewport, setIsStripInViewport] = useState<boolean>(true);
+  const [isMobileCardClearBetweenNavbars, setIsMobileCardClearBetweenNavbars] = useState<boolean>(false);
   const posterCountdownTimerRef = useRef<number | null>(null);
   const progressIntervalRef = useRef<number | null>(null);
   const boundaryResetTimerRef = useRef<number | null>(null);
+  const isMobileTouchingRef = useRef<boolean>(false);
+  const mobileScrollSyncTimerRef = useRef<number | null>(null);
 
   // Active show mapped from virtual index
   const realActiveIndex = isMobileSpecialFeedCyclic ? mobileVirtualIndex % showCount : mobileVirtualIndex;
   const activeMobileShow = filteredShows[realActiveIndex] || filteredShows[0];
 
-  // Initial scroll positioning to center Set 1's first card without smooth animation
+  // Initial scroll positioning to center Set 1's first card cleanly without smooth conflict
   useEffect(() => {
     if (!isMobileSpecialFeedCyclic) return;
     const container = mobileCarouselRef.current;
@@ -626,11 +710,7 @@ export const FeedStrip: React.FC<FeedStripProps> = ({
       const targetEl = mobileCardRefs.current[initialIdx];
       if (targetEl && container) {
         const elCenter = targetEl.offsetLeft + targetEl.clientWidth / 2;
-        container.classList.remove('scroll-smooth');
         container.scrollLeft = elCenter - container.clientWidth / 2;
-        requestAnimationFrame(() => {
-          container.classList.add('scroll-smooth');
-        });
       }
     };
 
@@ -639,24 +719,89 @@ export const FeedStrip: React.FC<FeedStripProps> = ({
     return () => clearTimeout(timer);
   }, [isMobileSpecialFeedCyclic, showCount]);
 
-  // Monitor viewport intersection for this strip
+  // Strict check: full active card must sit completely between top navbar and bottom navbar (never touching either)
+  const evaluateMobileSpecialCardClearance = useCallback(() => {
+    if (!feed.isSpecialFeed || !isMobile) {
+      setIsMobileCardClearBetweenNavbars(true);
+      return;
+    }
+    const cardEl = mobileCardRefs.current[mobileVirtualIndex];
+    if (!cardEl) {
+      setIsMobileCardClearBetweenNavbars(false);
+      return;
+    }
+
+    const rect = cardEl.getBoundingClientRect();
+    const vw = window.innerWidth || document.documentElement.clientWidth;
+    const vh = window.innerHeight || document.documentElement.clientHeight;
+
+    let topLimit = 0;
+    document.querySelectorAll<HTMLElement>('[data-mobile-top-navbar="true"]').forEach((navEl) => {
+      const nr = navEl.getBoundingClientRect();
+      if (nr.width > 0 && nr.height > 0 && nr.bottom > 0 && nr.top < vh / 2) {
+        topLimit = Math.max(topLimit, nr.bottom);
+      }
+    });
+
+    let bottomLimit = vh;
+    document.querySelectorAll<HTMLElement>('[data-mobile-bottom-navbar="true"]').forEach((navEl) => {
+      const nr = navEl.getBoundingClientRect();
+      if (nr.width > 0 && nr.height > 0 && nr.top < vh && nr.bottom > vh / 2) {
+        bottomLimit = Math.min(bottomLimit, nr.top);
+      }
+    });
+
+    const clearance = 2;
+    const isClear =
+      rect.width > 0 &&
+      rect.height > 0 &&
+      rect.top > topLimit + clearance &&
+      rect.bottom < bottomLimit - clearance &&
+      rect.left >= 0 &&
+      rect.right <= vw;
+
+    setIsMobileCardClearBetweenNavbars(isClear);
+    if (!isClear) {
+      if (posterCountdownTimerRef.current) {
+        window.clearTimeout(posterCountdownTimerRef.current);
+        posterCountdownTimerRef.current = null;
+      }
+      setIsPosterCountdownDone(false);
+      setIsMobileVideoLoading(false);
+      setIsMobileVideoPlaying(false);
+      setPreviewProgressPercent(0);
+      if (mobileVideoRef.current && !mobileVideoRef.current.paused) {
+        mobileVideoRef.current.pause();
+      }
+    }
+  }, [feed.isSpecialFeed, isMobile, mobileVirtualIndex]);
+
+  // Monitor viewport intersection & scroll position between mobile navbars
   useEffect(() => {
     if (!feed.isSpecialFeed || !isMobile) return;
     const observer = new IntersectionObserver(
       ([entry]) => {
         setIsStripInViewport(entry.isIntersecting);
+        evaluateMobileSpecialCardClearance();
         if (!entry.isIntersecting && mobileVideoRef.current && !mobileVideoRef.current.paused) {
           mobileVideoRef.current.pause();
           setIsMobileVideoPlaying(false);
         }
       },
-      { threshold: 0.2 }
+      { threshold: [0, 0.2, 0.5, 0.85, 1] }
     );
     if (feedStripRef.current) {
       observer.observe(feedStripRef.current);
     }
-    return () => observer.disconnect();
-  }, [feed.isSpecialFeed, isMobile]);
+    evaluateMobileSpecialCardClearance();
+    window.addEventListener('scroll', evaluateMobileSpecialCardClearance, { passive: true, capture: true });
+    window.addEventListener('resize', evaluateMobileSpecialCardClearance, { passive: true });
+    return () => {
+      observer.disconnect();
+      window.removeEventListener('scroll', evaluateMobileSpecialCardClearance, { capture: true } as EventListenerOptions);
+      window.removeEventListener('resize', evaluateMobileSpecialCardClearance);
+    };
+  }, [feed.isSpecialFeed, isMobile, evaluateMobileSpecialCardClearance]);
 
   // Tab switch or page blur: pause mobile special feed preview
   useEffect(() => {
@@ -676,15 +821,17 @@ export const FeedStrip: React.FC<FeedStripProps> = ({
     };
   }, []);
 
-  // 3-second poster display before playing preview video
+  // 1.5-second poster display before starting preview + loading indicator (only while full card clears navbars)
   useEffect(() => {
-    if (!feed.isSpecialFeed || !isMobile || !isStripInViewport || isModalOpen) {
+    if (!feed.isSpecialFeed || !isMobile || !isStripInViewport || !isMobileCardClearBetweenNavbars || isModalOpen || isPaused) {
       setIsPosterCountdownDone(false);
+      setIsMobileVideoLoading(false);
       setPreviewProgressPercent(0);
       return;
     }
 
     setIsPosterCountdownDone(false);
+    setIsMobileVideoLoading(false);
     setPreviewProgressPercent(0);
 
     if (posterCountdownTimerRef.current) {
@@ -697,25 +844,28 @@ export const FeedStrip: React.FC<FeedStripProps> = ({
 
     posterCountdownTimerRef.current = window.setTimeout(() => {
       setIsPosterCountdownDone(true);
-    }, 3000);
+    }, 1500);
 
     return () => {
       if (posterCountdownTimerRef.current) window.clearTimeout(posterCountdownTimerRef.current);
       if (progressIntervalRef.current) window.clearInterval(progressIntervalRef.current);
     };
-  }, [mobileVirtualIndex, feed.isSpecialFeed, isMobile, isStripInViewport, isModalOpen]);
+  }, [mobileVirtualIndex, feed.isSpecialFeed, isMobile, isStripInViewport, isMobileCardClearBetweenNavbars, isModalOpen, isPaused]);
 
-  // Video attachment effect for active mobile special feed card (starts ONLY after 3s poster countdown)
+  // Video attachment effect for active mobile special feed card (starts ONLY after 1.5s poster countdown + navbar clearance)
   useEffect(() => {
     if (
       !feed.isSpecialFeed ||
       !isMobile ||
       !activeMobileShow?.trailerUrl ||
       !isStripInViewport ||
+      !isMobileCardClearBetweenNavbars ||
       isModalOpen ||
+      isPaused ||
       !isPosterCountdownDone
     ) {
       setIsMobileVideoPlaying(false);
+      setIsMobileVideoLoading(false);
       return;
     }
 
@@ -723,6 +873,7 @@ export const FeedStrip: React.FC<FeedStripProps> = ({
     if (!video) return;
 
     setIsMobileVideoPlaying(false);
+    setIsMobileVideoLoading(true);
     const cleanup = attachHlsVideo(video, activeMobileShow.trailerUrl, {
       autoPlay: true,
       muted: Boolean(isGlobalMuted)
@@ -730,6 +881,7 @@ export const FeedStrip: React.FC<FeedStripProps> = ({
 
     return () => {
       setIsMobileVideoPlaying(false);
+      setIsMobileVideoLoading(false);
       if (cleanup) cleanup();
     };
   }, [
@@ -738,7 +890,9 @@ export const FeedStrip: React.FC<FeedStripProps> = ({
     mobileVirtualIndex,
     activeMobileShow?.trailerUrl,
     isStripInViewport,
+    isMobileCardClearBetweenNavbars,
     isModalOpen,
+    isPaused,
     isPosterCountdownDone
   ]);
 
@@ -779,22 +933,18 @@ export const FeedStrip: React.FC<FeedStripProps> = ({
         });
       }
 
-      // If next card advanced past middle set (into Set 2), normalize smoothly back to Set 1 once scroll lands (~450ms)
+      // If next card advanced past middle set (into Set 2), normalize silently back to Set 1 once scroll lands (~480ms)
       if (nextVirtual >= 2 * showCount) {
         window.setTimeout(() => {
           const normalizedVirtual = showCount + (nextVirtual % showCount);
           const normEl = mobileCardRefs.current[normalizedVirtual];
           const container = mobileCarouselRef.current;
           if (normEl && container) {
-            container.classList.remove('scroll-smooth');
             const elCenter = normEl.offsetLeft + normEl.clientWidth / 2;
             container.scrollLeft = elCenter - container.clientWidth / 2;
             setMobileVirtualIndex(normalizedVirtual);
-            requestAnimationFrame(() => {
-              container.classList.add('scroll-smooth');
-            });
           }
-        }, 500);
+        }, 480);
       }
     } else {
       const nextIdx = (mobileVirtualIndex + 1) % filteredShows.length;
@@ -810,85 +960,66 @@ export const FeedStrip: React.FC<FeedStripProps> = ({
     }
   };
 
+  // Jutter-free native CSS snap scroll synchronization (debounced so it never fights touch inertia)
+  const syncMobileCarouselAfterSettle = () => {
+    if (mobileScrollSyncTimerRef.current) {
+      window.clearTimeout(mobileScrollSyncTimerRef.current);
+    }
+    mobileScrollSyncTimerRef.current = window.setTimeout(() => {
+      if (isMobileTouchingRef.current) return;
+      const container = mobileCarouselRef.current;
+      if (!container) return;
+      const center = container.scrollLeft + container.clientWidth / 2;
+      let closestVirtual = 0;
+      let minDist = Infinity;
+      mobileCardRefs.current.forEach((el, idx) => {
+        if (!el) return;
+        const elCenter = el.offsetLeft + el.clientWidth / 2;
+        const dist = Math.abs(center - elCenter);
+        if (dist < minDist) {
+          minDist = dist;
+          closestVirtual = idx;
+        }
+      });
+
+      if (isMobileSpecialFeedCyclic && (closestVirtual < showCount || closestVirtual >= 2 * showCount)) {
+        const normalizedVirtual = showCount + (closestVirtual % showCount);
+        const targetEl = mobileCardRefs.current[normalizedVirtual];
+        if (targetEl) {
+          const elCenter = targetEl.offsetLeft + targetEl.clientWidth / 2;
+          container.scrollLeft = elCenter - container.clientWidth / 2;
+          setMobileVirtualIndex(normalizedVirtual);
+          setIsPosterCountdownDone(false);
+          setIsMobileVideoLoading(false);
+          setPreviewProgressPercent(0);
+          return;
+        }
+      }
+
+      if (closestVirtual !== mobileVirtualIndex) {
+        setMobileVirtualIndex(closestVirtual);
+        setIsPosterCountdownDone(false);
+        setIsMobileVideoLoading(false);
+        setPreviewProgressPercent(0);
+      }
+    }, 120);
+  };
+
   const handleMobileCarouselScroll = () => {
-    const container = mobileCarouselRef.current;
-    if (!container) return;
-    const center = container.scrollLeft + container.clientWidth / 2;
-    let closestVirtual = 0;
-    let minDist = Infinity;
-    mobileCardRefs.current.forEach((el, idx) => {
-      if (!el) return;
-      const elCenter = el.offsetLeft + el.clientWidth / 2;
-      const dist = Math.abs(center - elCenter);
-      if (dist < minDist) {
-        minDist = dist;
-        closestVirtual = idx;
-      }
-    });
+    evaluateMobileSpecialCardClearance();
+    syncMobileCarouselAfterSettle();
+  };
 
-    if (closestVirtual !== mobileVirtualIndex) {
-      setMobileVirtualIndex(closestVirtual);
-      setIsPosterCountdownDone(false);
-      setPreviewProgressPercent(0);
-    }
-
-    // Silent cyclic boundary normalization when scrolling comes to a stop in Set 0 or Set 2
-    if (isMobileSpecialFeedCyclic) {
-      if (boundaryResetTimerRef.current) {
-        window.clearTimeout(boundaryResetTimerRef.current);
-      }
-      boundaryResetTimerRef.current = window.setTimeout(() => {
-        if (closestVirtual < showCount || closestVirtual >= 2 * showCount) {
-          const normalizedVirtual = showCount + (closestVirtual % showCount);
-          const targetEl = mobileCardRefs.current[normalizedVirtual];
-          if (targetEl && mobileCarouselRef.current) {
-            const elCenter = targetEl.offsetLeft + targetEl.clientWidth / 2;
-            const scrollContainer = mobileCarouselRef.current;
-            scrollContainer.classList.remove('scroll-smooth');
-            scrollContainer.scrollLeft = elCenter - scrollContainer.clientWidth / 2;
-            setMobileVirtualIndex(normalizedVirtual);
-            requestAnimationFrame(() => {
-              scrollContainer.classList.add('scroll-smooth');
-            });
-          }
-        }
-      }, 160);
+  const handleSpecialFeedTouchStart = () => {
+    isMobileTouchingRef.current = true;
+    if (boundaryResetTimerRef.current) {
+      window.clearTimeout(boundaryResetTimerRef.current);
     }
   };
 
-  // Mobile special feed: strictly 1 card scroll per swipe
-  const specialFeedTouchStartXRef = useRef<number>(0);
-  const specialFeedTouchStartYRef = useRef<number>(0);
-
-  const handleSpecialFeedTouchStart = (e: React.TouchEvent) => {
-    specialFeedTouchStartXRef.current = e.touches[0].clientX;
-    specialFeedTouchStartYRef.current = e.touches[0].clientY;
-  };
-
-  const handleSpecialFeedTouchEnd = (e: React.TouchEvent) => {
-    const deltaX = e.changedTouches[0].clientX - specialFeedTouchStartXRef.current;
-    const deltaY = e.changedTouches[0].clientY - specialFeedTouchStartYRef.current;
-    if (Math.abs(deltaX) > 35 && Math.abs(deltaX) > Math.abs(deltaY)) {
-      if (deltaX < 0) {
-        const nextVirtual = mobileVirtualIndex + 1;
-        const targetEl = mobileCardRefs.current[nextVirtual];
-        if (targetEl && mobileCarouselRef.current) {
-          targetEl.scrollIntoView({ behavior: 'smooth', inline: 'center', block: 'nearest' });
-          setMobileVirtualIndex(nextVirtual);
-          setIsPosterCountdownDone(false);
-          setPreviewProgressPercent(0);
-        }
-      } else {
-        const prevVirtual = Math.max(0, mobileVirtualIndex - 1);
-        const targetEl = mobileCardRefs.current[prevVirtual];
-        if (targetEl && mobileCarouselRef.current) {
-          targetEl.scrollIntoView({ behavior: 'smooth', inline: 'center', block: 'nearest' });
-          setMobileVirtualIndex(prevVirtual);
-          setIsPosterCountdownDone(false);
-          setPreviewProgressPercent(0);
-        }
-      }
-    }
+  const handleSpecialFeedTouchEnd = () => {
+    isMobileTouchingRef.current = false;
+    syncMobileCarouselAfterSettle();
   };
 
   // If customShows was explicitly passed and is empty (e.g. cleared watchlist or cleared history), hide feed strip completely
@@ -914,9 +1045,7 @@ export const FeedStrip: React.FC<FeedStripProps> = ({
           ref={feedStripRef}
           data-feed-strip="true"
           data-feed-id={feed.id}
-          className={`relative group/strip transition-all my-6 w-full min-h-[340px] lg:min-h-[385px] flex items-center overflow-visible bg-[#141414] ${
-            isAnyCardHovered || isAnyCardExpanded ? 'z-[100]' : 'z-0'
-          }`}
+          className="relative group/strip transition-all my-6 w-full min-h-[340px] lg:min-h-[385px] flex items-center overflow-visible bg-[#141414] z-0"
         >
           {/* Backdrop Picture & Admin-Controlled Darkness Overlay (No yellow glare, seamless top/bottom #141414 fade) */}
           <div
@@ -1042,7 +1171,7 @@ export const FeedStrip: React.FC<FeedStripProps> = ({
                 ref={scrollContainerRef}
                 className="flex items-center gap-3.5 lg:gap-4 overflow-x-auto no-scrollbar py-2 pr-6 md:pr-10 scroll-smooth"
               >
-                {filteredShows.map((show) => {
+                {filteredShows.map((show, sIdx) => {
                   const poster2x3 =
                     show.desktopTop10Image2x3Url ||
                     show.posterVerticalUrl ||
@@ -1055,12 +1184,14 @@ export const FeedStrip: React.FC<FeedStripProps> = ({
                       key={`${feed.id}-2x3-${show.id}`}
                       data-show-card="true"
                       data-card-thumb="true"
-                      onClick={() => onOpenDetails(show)}
-                      className="relative w-[calc((100%-36px)/3.32)] min-w-[165px] aspect-[2/3] shrink-0 rounded-xl overflow-hidden bg-[#14151b] cursor-pointer shadow-2xl transition-transform duration-200 hover:scale-[1.03] group/spcard"
+                      onClick={(e) => onOpenDetails(show, { element: e.currentTarget, sourceFeedType: 'other', posterUrl: poster2x3 })}
+                      className="relative w-[calc((100vw-100px)/4.5)] md:w-[calc((100vw-128px)/6.22)] lg:w-[calc((100vw-128px)/6.22)] xl:w-[calc((100vw-144px)/6.22)] min-w-[140px] aspect-[2/3] shrink-0 rounded-xl overflow-hidden bg-[#14151b] cursor-pointer shadow-2xl transition-transform duration-200 hover:scale-[1.03] group/spcard"
                     >
                       <MediaImage
                         src={poster2x3}
                         fallbackTitle={show.title}
+                        deferLoad={!isRowInViewport || !loadedCardIndices.has(sIdx)}
+                        skeletonDelayMs={sIdx * 150}
                         fallbackClassName="w-full h-full bg-[#14151b] flex items-center justify-center p-3 text-center select-none"
                         className="w-full h-full object-cover"
                       />
@@ -1080,9 +1211,7 @@ export const FeedStrip: React.FC<FeedStripProps> = ({
         ref={feedStripRef}
         data-feed-strip="true"
         data-feed-id={feed.id}
-        className={`relative group/strip transition-all my-5 sm:my-6 w-full min-h-[440px] sm:min-h-[375px] md:min-h-[412px] lg:min-h-[435px] flex items-center justify-center pb-8 sm:pb-4 ${
-          isAnyCardHovered || isAnyCardExpanded ? 'z-[100]' : 'z-0'
-        }`}
+        className="relative group/strip transition-all my-5 sm:my-6 w-full min-h-[440px] sm:min-h-[375px] md:min-h-[412px] lg:min-h-[435px] flex items-center justify-center pb-8 sm:pb-4 z-0"
       >
         {/* 1. Full-bleed Background Picture seamlessly starting right below top feed */}
         <div
@@ -1223,7 +1352,9 @@ export const FeedStrip: React.FC<FeedStripProps> = ({
                   onScroll={handleMobileCarouselScroll}
                   onTouchStart={handleSpecialFeedTouchStart}
                   onTouchEnd={handleSpecialFeedTouchEnd}
-                  className="flex items-center overflow-x-auto snap-x snap-mandatory scroll-smooth no-scrollbar pl-2 pr-6 gap-2.5 py-1 select-none w-full [scroll-snap-stop:always]"
+                  onTouchCancel={handleSpecialFeedTouchEnd}
+                  style={{ touchAction: 'pan-x pan-y' }}
+                  className="flex items-center overflow-x-auto snap-x snap-mandatory no-scrollbar pl-2 pr-6 gap-2.5 py-1 select-none w-full [scroll-snap-stop:always]"
                 >
                   {(isMobileSpecialFeedCyclic
                     ? [0, 1, 2].flatMap((setNum) =>
@@ -1247,12 +1378,13 @@ export const FeedStrip: React.FC<FeedStripProps> = ({
                     return (
                       <div
                         key={item.key}
+                        data-show-id={show.id}
                         ref={(el) => {
                           mobileCardRefs.current[item.virtualIdx] = el;
                         }}
-                        onClick={() => onOpenDetails(show)}
-                        className={`w-[80vw] max-w-[340px] shrink-0 snap-center snap-always aspect-[16/9] rounded-xl overflow-hidden relative shadow-none bg-[#16171d] border-0 transition-transform duration-300 cursor-pointer ${
-                          isActive ? 'scale-100' : 'scale-95 opacity-80'
+                        onClick={(e) => onOpenDetails(show, { element: e.currentTarget, sourceFeedType: 'other', posterUrl: backdrop })}
+                        className={`w-[80vw] max-w-[340px] shrink-0 snap-center snap-always aspect-[16/9] rounded-xl overflow-hidden relative shadow-none bg-black border-0 transition-transform duration-300 cursor-pointer opacity-100 ${
+                          isActive ? 'scale-100' : 'scale-95'
                         }`}
                       >
                         {/* 1px inner border overlay with exact same opacity as in recommendation */}
@@ -1262,20 +1394,23 @@ export const FeedStrip: React.FC<FeedStripProps> = ({
                         <MediaImage
                           src={backdrop}
                           fallbackTitle={show.title}
+                          deferLoad={!isRowInViewport}
                           hideFallback={isActive && isMobileVideoPlaying}
                           fallbackClassName="absolute inset-0 w-full h-full bg-[#16171d] flex items-center justify-center p-4 text-center select-none"
                           className="absolute inset-0 w-full h-full object-cover"
                         />
 
-                        {/* Video preview overlay on active card (shows ONLY after 3s poster countdown, fills container without black bars) */}
-                        {isActive && isPosterCountdownDone && show.trailerUrl && isStripInViewport && !isModalOpen && (
+                        {/* Video preview overlay on active card (shows ONLY after 1.5s poster countdown & navbar clearance) */}
+                        {isActive && isPosterCountdownDone && show.trailerUrl && isStripInViewport && isMobileCardClearBetweenNavbars && !isModalOpen && !isPaused && (
                           <video
                             ref={mobileVideoRef}
                             poster={backdrop}
                             autoPlay
                             muted={Boolean(isGlobalMuted)}
                             playsInline
+                            onWaiting={() => setIsMobileVideoLoading(true)}
                             onPlaying={() => {
+                              setIsMobileVideoLoading(false);
                               setIsMobileVideoPlaying(true);
                             }}
                             onTimeUpdate={handleVideoTimeUpdate}
@@ -1286,39 +1421,36 @@ export const FeedStrip: React.FC<FeedStripProps> = ({
                           />
                         )}
 
-                        {/* Subtle bottom glare matching popout view */}
-                        <div
-                          className="absolute inset-0 pointer-events-none z-10"
-                          style={{
-                            background:
-                              'radial-gradient(ellipse 75% 65% at 0% 100%, rgba(0,0,0,0.7) 0%, rgba(0,0,0,0.3) 35%, rgba(0,0,0,0.05) 60%, transparent 80%)'
-                          }}
-                        />
-
-                        {/* Top-Right Mute / Unmute Button on active card */}
-                        {isActive && onToggleGlobalMute && isMobileVideoPlaying && (
+                        {/* Top-Right Loading Spinner (after 1.5s poster while preview loads) -> Mute / Unmute Button once playing */}
+                        {isActive && show.trailerUrl && isPosterCountdownDone && isStripInViewport && isMobileCardClearBetweenNavbars && !isModalOpen && !isPaused && (
                           <div className="absolute top-2.5 right-2.5 z-30">
-                            <button
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                const nextMuted = !isGlobalMuted;
-                                if (mobileVideoRef.current) {
-                                  mobileVideoRef.current.muted = nextMuted;
-                                  if (!nextMuted) {
-                                    mobileVideoRef.current.volume = 1.0;
+                            {isMobileVideoLoading || !isMobileVideoPlaying ? (
+                              <div className="w-7 h-7 rounded-full bg-black/20 text-white flex items-center justify-center border border-white/10">
+                                <Loader2 className="w-3.5 h-3.5 animate-spin text-white" />
+                              </div>
+                            ) : onToggleGlobalMute ? (
+                              <button
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  const nextMuted = !isGlobalMuted;
+                                  if (mobileVideoRef.current) {
+                                    mobileVideoRef.current.muted = nextMuted;
+                                    if (!nextMuted) {
+                                      mobileVideoRef.current.volume = 1.0;
+                                    }
                                   }
-                                }
-                                onToggleGlobalMute(nextMuted);
-                              }}
-                              className="w-7 h-7 rounded-full bg-black/60 hover:bg-black/80 text-white flex items-center justify-center cursor-pointer shadow backdrop-blur-sm"
-                              aria-label="Toggle mute"
-                            >
-                              {isGlobalMuted ? (
-                                <VolumeX className="w-3.5 h-3.5 text-white" />
-                              ) : (
-                                <Volume2 className="w-3.5 h-3.5 text-white" />
-                              )}
-                            </button>
+                                  onToggleGlobalMute(nextMuted);
+                                }}
+                                className="w-7 h-7 rounded-full bg-black/20 hover:bg-black/40 text-white flex items-center justify-center cursor-pointer transition-colors"
+                                aria-label="Toggle mute"
+                              >
+                                {isGlobalMuted ? (
+                                  <VolumeX className="w-3.5 h-3.5 text-white" />
+                                ) : (
+                                  <Volume2 className="w-3.5 h-3.5 text-white" />
+                                )}
+                              </button>
+                            ) : null}
                           </div>
                         )}
                       </div>
@@ -1369,7 +1501,7 @@ export const FeedStrip: React.FC<FeedStripProps> = ({
               /* Tablet and Desktop: Standard row track showing only 2 cards and edge of 3rd at old card size */
               <div
                 ref={scrollContainerRef}
-                className="flex items-center gap-2 sm:gap-2.5 md:gap-3 lg:gap-4 overflow-x-auto no-scrollbar pt-1 pb-1 md:pt-24 md:-mt-24 md:pb-48 md:-mb-48 pl-1 pr-0 w-full"
+                className="flex items-center gap-2 sm:gap-2.5 md:gap-3 lg:gap-4 overflow-x-auto no-scrollbar pt-1 pb-1 pl-1 pr-0 w-full"
               >
                 {filteredShows.map((show, index) => (
                   <div
@@ -1385,7 +1517,9 @@ export const FeedStrip: React.FC<FeedStripProps> = ({
                       isLast={index === filteredShows.length - 1}
                       isInWatchlist={watchlist.includes(show.id)}
                       onToggleWatchlist={onToggleWatchlist}
-                      onOpenDetails={onOpenDetails}
+                      onOpenDetails={(item, meta) =>
+                        onOpenDetails(item, meta ? { ...meta, sourceFeedType: 'other' } : { sourceFeedType: 'other' })
+                      }
                       onPlay={onPlayShow}
                       onIncrementPoints={onIncrementPoints}
                       isGlobalMuted={isGlobalMuted}
@@ -1400,6 +1534,7 @@ export const FeedStrip: React.FC<FeedStripProps> = ({
                       disablePopout={disablePopout}
                       isStretchable={isStretchableFeed}
                       onLongPress={onLongPressShow}
+                      popoutStyle={desktopPopoutStyle}
                     />
                   </div>
                 ))}
@@ -1425,11 +1560,11 @@ export const FeedStrip: React.FC<FeedStripProps> = ({
         ref={feedStripRef}
         data-feed-strip="true"
         data-feed-id={feed.id}
-        className="relative group/modernstrip transition-all my-5 sm:my-7 select-none overflow-visible"
+        className="relative group/modernstrip transition-all my-2 sm:my-3 select-none overflow-visible"
       >
         {/* Header Container */}
-        <div className="relative z-30 w-full pl-2.5 sm:pl-4 md:pl-8 xl:pl-12 pr-2.5 sm:pr-4 md:pr-8 xl:pr-12 mb-3">
-          <h3 className="text-base sm:text-lg md:text-xl font-bold text-white tracking-tight">
+        <div className="relative z-30 w-full pl-2.5 sm:pl-4 md:pl-8 xl:pl-12 pr-2.5 sm:pr-4 md:pr-8 xl:pr-12 mb-1 sm:mb-1.5">
+          <h3 className="text-[15px] sm:text-base md:text-[17px] font-semibold text-white/95 tracking-tight">
             {feed.title}
           </h3>
         </div>
@@ -1501,6 +1636,7 @@ export const FeedStrip: React.FC<FeedStripProps> = ({
                 <div
                   key={`modern-top10-${feed.id}-${show.id}`}
                   data-show-card="true"
+                  data-show-id={show.id}
                   className={`relative shrink-0 flex items-center select-none group/top10item ${
                     isInsideCardStyle
                       ? 'w-[calc((100vw-38px)/2.55)] sm:w-[calc((100vw-56px)/3.5)] md:w-[calc((100vw-128px)/6.22)] lg:w-[calc((100vw-128px)/6.22)] xl:w-[calc((100vw-144px)/6.22)]'
@@ -1561,7 +1697,7 @@ export const FeedStrip: React.FC<FeedStripProps> = ({
                   {/* Poster Card */}
                   <div
                     data-top10-card="true"
-                    onClick={() => onOpenDetails(show)}
+                    onClick={(e) => onOpenDetails(show, { element: e.currentTarget, sourceFeedType: 'other', posterUrl: posterArtwork })}
                     className={`${
                       isInsideCardStyle ? 'ml-0' : '-ml-2 sm:-ml-2.5 md:-ml-3 lg:-ml-3.5'
                     } relative z-10 flex-1 aspect-[2/3] shrink-0 rounded-xl overflow-visible cursor-pointer transition-transform duration-300 ease-out group-hover/top10item:scale-[1.05]`}
@@ -1580,6 +1716,7 @@ export const FeedStrip: React.FC<FeedStripProps> = ({
                       <MediaImage
                         src={posterArtwork}
                         fallbackTitle={show.title}
+                        deferLoad={!isRowInViewport || !loadedCardIndices.has(index)}
                         fallbackClassName="absolute inset-0 w-full h-full bg-[#14151b] flex items-center justify-center p-3 text-center select-none"
                         className="absolute inset-0 w-full h-full object-cover"
                       />
@@ -1675,99 +1812,129 @@ export const FeedStrip: React.FC<FeedStripProps> = ({
       ref={feedStripRef}
       data-feed-strip="true"
       data-feed-id={feed.id}
-      className={`relative group/strip transition-all ${
-        isAnyCardHovered || isAnyCardExpanded ? 'z-[100]' : 'z-0'
-      }`}
+      className="relative group/strip transition-all z-0"
     >
       {/* Header Container */}
-      <div className="relative z-30 w-full pl-2.5 sm:pl-4 md:pl-8 xl:pl-12 pr-2.5 sm:pr-4 md:pr-8 xl:pr-12 mb-3 flex items-end justify-between">
+      <div className="relative z-30 w-full pl-2.5 sm:pl-4 md:pl-8 xl:pl-12 pr-2.5 sm:pr-4 md:pr-8 xl:pr-12 mb-1 sm:mb-1.5 flex items-end justify-between">
         <div>
-          <h3 className="text-base sm:text-lg md:text-xl font-bold text-white tracking-tight">
-            {feed.title}
-          </h3>
+          {!isRowInViewport ? (
+            <div className="w-36 sm:w-44 h-5 sm:h-6 rounded skeleton-wave" />
+          ) : (
+            <h3 className="text-[15px] sm:text-base md:text-[17px] font-semibold text-white/95 tracking-tight">
+              {feed.title}
+            </h3>
+          )}
         </div>
       </div>
 
-      {/* Horizontal Cards Row */}
-      <div
-        onMouseEnter={() => setGlobalActiveFeedId(feed.id)}
-        className="relative w-full"
-      >
-        {/* Native CSS Navigation Chevrons: ONLY show for the single active feed the user cursor/pointer is on */}
-        {!isModalOpen && !isMobile && !isTablet && isThisStripActive && !isPopoutHideNav && (
-          <>
-            {canScrollLeft && (
-              <button
-                onClick={(e) => {
-                  e.stopPropagation();
-                  handleScroll('left');
-                }}
-                aria-label="Scroll left"
-                style={{
-                  top: navButtonTop !== null ? `${navButtonTop}px` : '0px',
-                  height: navButtonHeight !== null ? `${navButtonHeight}px` : '100%'
-                }}
-                className="group/nav absolute left-0 z-40 w-11 sm:w-12 md:w-14 rounded-r-xl rounded-l-none bg-black/35 text-white flex items-center justify-center cursor-pointer border-0 select-none"
-              >
-                <ChevronLeft className="w-8 h-8 stroke-[2.5] group-active/nav:scale-75 transition-transform duration-100" />
-              </button>
-            )}
-
-            {canScrollRight && (
-              <button
-                onClick={(e) => {
-                  e.stopPropagation();
-                  handleScroll('right');
-                }}
-                aria-label="Scroll right"
-                style={{
-                  top: navButtonTop !== null ? `${navButtonTop}px` : '0px',
-                  height: navButtonHeight !== null ? `${navButtonHeight}px` : '100%'
-                }}
-                className="group/nav absolute right-0 z-40 w-11 sm:w-12 md:w-14 rounded-l-xl rounded-r-none bg-black/35 text-white flex items-center justify-center cursor-pointer border-0 select-none"
-              >
-                <ChevronRight className="w-8 h-8 stroke-[2.5] group-active/nav:scale-75 transition-transform duration-100" />
-              </button>
-            )}
-          </>
-        )}
-
-        <div
-          ref={scrollContainerRef}
-          className={`flex items-center gap-2 sm:gap-2.5 md:gap-3 lg:gap-4 overflow-x-auto no-scrollbar ${
-            isStretchableFeed ? 'pt-1 pb-1 md:pt-2 md:pb-6' : 'pt-1 pb-1 md:pt-24 md:-mt-24 md:pb-48 md:-mb-48'
-          } pl-2.5 sm:pl-4 md:pl-8 xl:pl-12 pr-3.5 sm:pr-4 md:pr-8 xl:pr-12`}
-        >
-          {filteredShows.map((show, index) => (
-            <ShowCard
-              key={`${feed.id}-${show.id}`}
-              show={show}
-              rankNumber={feed.showRankNumbers ? index + 1 : undefined}
-              showTop10Badge={showTop10Badges !== false && !isTop10Feed && top10ShowIds.includes(show.id)}
-              isFirst={index === 0}
-              isLast={index === filteredShows.length - 1}
-              isInWatchlist={watchlist.includes(show.id)}
-              onToggleWatchlist={onToggleWatchlist}
-              onOpenDetails={onOpenDetails}
-              onPlay={onPlayShow}
-              onIncrementPoints={onIncrementPoints}
-              isGlobalMuted={isGlobalMuted}
-              onToggleGlobalMute={onToggleGlobalMute}
-              onHoverPreviewStart={handleCardHoverStart}
-              onHoverPreviewEnd={handleCardHoverEnd}
-              onPopoutViewOpen={handlePopoutOpen}
-              onPopoutViewClose={handlePopoutClose}
-              aspectRatio={cardAspectRatio}
-              isContinueWatching={isContinueWatchingFeed}
-              isWatchlistLandscape={Boolean(isMobile && isWatchlistFeed)}
-              watchProgress={watchHistory?.[show.id]}
-              disablePopout={disablePopout}
-              isStretchable={isStretchableFeed}
-              onLongPress={onLongPressShow}
+      {!isRowInViewport ? (
+        /* Feed-by-feed staggered wave loading skeleton UI */
+        <div className="flex items-center gap-2 sm:gap-2.5 md:gap-3 lg:gap-4 overflow-hidden pl-2.5 sm:pl-4 md:pl-8 xl:pl-12 pr-3.5 sm:pr-4 md:pr-8 xl:pr-12 py-1">
+          {Array.from({ length: isMobile ? 4 : 5 }).map((_, skIdx) => (
+            <div
+              key={`feed-skel-${feed.id}-${skIdx}`}
+              style={{ animationDelay: `${skIdx * 150}ms` }}
+              className={`shrink-0 skeleton-wave ${
+                cardAspectRatio === '2:3'
+                  ? 'w-[calc((100vw-24px)/3.22)] sm:w-[140px] aspect-[2/3] rounded-[6px] md:rounded-[10px]'
+                  : cardAspectRatio === '9:16'
+                  ? 'w-[calc((100vw-24px)/2.5)] sm:w-[180px] md:w-[calc((100vw-112px)/4.05)] md:aspect-video aspect-[9/16] rounded-[6px] md:rounded-[10px]'
+                  : 'w-[calc((100vw-20px)/2.12)] sm:w-[265px] md:w-[290px] lg:w-[calc((100vw-112px)/4.05)] max-w-[340px] aspect-video rounded-[6px] md:rounded-[10px]'
+              }`}
             />
           ))}
         </div>
-      </div>
+      ) : (
+        /* Horizontal Cards Row */
+        <div
+          onMouseEnter={() => {
+            setGlobalActiveFeedId(feed.id);
+            updateNavPosition();
+            updateScrollButtons();
+          }}
+          className="relative w-full"
+        >
+          {/* Native CSS Navigation Chevrons: ONLY show for the single active feed the user cursor/pointer is on */}
+          {!isModalOpen && !isMobile && !isTablet && isThisStripActive && !isPopoutHideNav && (
+            <>
+              {canScrollLeft && (
+                <button
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    handleScroll('left');
+                  }}
+                  aria-label="Scroll left"
+                  style={{
+                    top: navButtonTop !== null ? `${navButtonTop}px` : '0px',
+                    height: navButtonHeight !== null ? `${navButtonHeight}px` : '100%'
+                  }}
+                  className="group/nav absolute left-0 z-40 w-11 sm:w-12 md:w-14 rounded-r-xl rounded-l-none bg-black/35 text-white flex items-center justify-center cursor-pointer border-0 select-none"
+                >
+                  <ChevronLeft className="w-8 h-8 stroke-[2.5] group-active/nav:scale-75 transition-transform duration-100" />
+                </button>
+              )}
+
+              {canScrollRight && (
+                <button
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    handleScroll('right');
+                  }}
+                  aria-label="Scroll right"
+                  style={{
+                    top: navButtonTop !== null ? `${navButtonTop}px` : '0px',
+                    height: navButtonHeight !== null ? `${navButtonHeight}px` : '100%'
+                  }}
+                  className="group/nav absolute right-0 z-40 w-11 sm:w-12 md:w-14 rounded-l-xl rounded-r-none bg-black/35 text-white flex items-center justify-center cursor-pointer border-0 select-none"
+                >
+                  <ChevronRight className="w-8 h-8 stroke-[2.5] group-active/nav:scale-75 transition-transform duration-100" />
+                </button>
+              )}
+            </>
+          )}
+
+          <div
+            ref={scrollContainerRef}
+            className={`flex items-center gap-2 sm:gap-2.5 md:gap-3 lg:gap-4 overflow-x-auto no-scrollbar ${
+              isStretchableFeed ? 'pt-1 pb-1 md:pt-2 md:pb-6' : 'pt-1 pb-1'
+            } pl-2.5 sm:pl-4 md:pl-8 xl:pl-12 pr-3.5 sm:pr-4 md:pr-8 xl:pr-12`}
+          >
+            {filteredShows.map((show, index) => (
+              <ShowCard
+                key={`${feed.id}-${show.id}`}
+                show={show}
+                rankNumber={feed.showRankNumbers ? index + 1 : undefined}
+                showTop10Badge={showTop10Badges !== false && !isTop10Feed && top10ShowIds.includes(show.id)}
+                isFirst={index === 0}
+                isLast={index === filteredShows.length - 1}
+                isInWatchlist={watchlist.includes(show.id)}
+                onToggleWatchlist={onToggleWatchlist}
+                onOpenDetails={onOpenDetails}
+                onPlay={onPlayShow}
+                onIncrementPoints={onIncrementPoints}
+                isGlobalMuted={isGlobalMuted}
+                onToggleGlobalMute={onToggleGlobalMute}
+                onHoverPreviewStart={handleCardHoverStart}
+                onHoverPreviewEnd={handleCardHoverEnd}
+                onPopoutViewOpen={handlePopoutOpen}
+                onPopoutViewClose={handlePopoutClose}
+                aspectRatio={cardAspectRatio}
+                isContinueWatching={isContinueWatchingFeed}
+                isWatchlistLandscape={false}
+                watchProgress={watchHistory?.[show.id]}
+                disablePopout={disablePopout}
+                isStretchable={isStretchableFeed}
+                onLongPress={onLongPressShow}
+                isLiked={likedShowIds ? likedShowIds.includes(show.id) : false}
+                onToggleLike={onToggleLike}
+                deferImageLoad={!loadedCardIndices.has(index)}
+                skeletonDelayMs={index * 150}
+                popoutStyle={desktopPopoutStyle}
+              />
+            ))}
+          </div>
+        </div>
+      )}
     </div>
   );
 };

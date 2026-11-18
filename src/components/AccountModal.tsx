@@ -7,7 +7,7 @@ import {
   ChevronRight,
   Sparkles,
   Camera,
-  ArrowLeft,
+  ChevronLeft,
   Check,
   CheckCircle2,
   Tv,
@@ -158,6 +158,7 @@ interface AccountModalProps {
   isOpen: boolean;
   onClose: () => void;
   userEmail?: string;
+  userName?: string;
   currentAvatar: string;
   onSelectAvatar: (avatarUrl: string) => void;
   platformName?: string;
@@ -166,7 +167,8 @@ interface AccountModalProps {
 export const AccountModal: React.FC<AccountModalProps> = ({
   isOpen,
   onClose,
-  userEmail = 'dawoodshahzad75@gmail.com',
+  userEmail = '',
+  userName = '',
   currentAvatar,
   onSelectAvatar,
   platformName = 'Dizi Urdu'
@@ -215,10 +217,10 @@ export const AccountModal: React.FC<AccountModalProps> = ({
             {view === 'choose-avatar' ? (
               <button
                 onClick={() => setView('account')}
-                className="w-8 h-8 rounded-full bg-white/10 hover:bg-white/20 text-white flex items-center justify-center transition-colors cursor-pointer"
+                className="p-1 -ml-1 text-white hover:text-white/80 flex items-center justify-center transition-transform active:scale-90 cursor-pointer"
                 title="Back to Account"
               >
-                <ArrowLeft className="w-4 h-4" />
+                <ChevronLeft className="w-6 h-6 stroke-[2.2]" />
               </button>
             ) : null}
 
@@ -292,12 +294,12 @@ export const AccountModal: React.FC<AccountModalProps> = ({
 
                     <div>
                       <div className="flex items-center gap-2">
-                        <h4 className="font-bold text-white text-base">Ertuğrul Member</h4>
+                        <h4 className="font-bold text-white text-base">{userName || 'Guest Profile'}</h4>
                         <span className="px-2 py-0.5 rounded-full bg-red-600/20 text-red-400 text-[10px] font-bold">
                           Primary
                         </span>
                       </div>
-                      <p className="text-zinc-400 text-xs mt-0.5">{userEmail}</p>
+                      {userEmail && <p className="text-zinc-400 text-xs mt-0.5">{userEmail}</p>}
                       <button
                         onClick={() => setView('choose-avatar')}
                         className="text-red-400 hover:text-red-300 text-xs font-semibold mt-1 flex items-center gap-1 cursor-pointer"

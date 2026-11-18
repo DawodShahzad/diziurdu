@@ -1,18 +1,18 @@
-import React, { useState, useMemo, useRef, useEffect } from 'react';
-import { Show, Episode, AdminSettings, WhereToWatch, TrailerItem, CastMember } from '../types';
+import React, { useState, useMemo, useRef, useEffect, useLayoutEffect } from 'react';
+import { createPortal } from 'react-dom';
+import { Show, Episode, AdminSettings, WhereToWatch, TrailerItem, CastMember, DetailsOriginMeta } from '../types';
 import {
   Plus,
   Check,
   ThumbsUp,
-  Share2,
   ChevronDown,
   ChevronLeft,
   ChevronRight,
   Volume2,
   VolumeX,
-  Play,
   X
 } from 'lucide-react';
+import { ShareArrowIcon } from './ShareArrowIcon';
 import { ShareModal } from './ShareModal';
 import { WatchProgressItem } from '../utils/watchProgress';
 import { MediaImage } from './MediaImage';
@@ -27,12 +27,15 @@ interface ShareTitleDesktopPageProps {
   onToggleWatchlist: (showId: string) => void;
   onPlayShow: (show: Show, episode?: Episode | null) => void;
   onPlayTrailer?: (show: Show, trailer: TrailerItem) => void;
-  onOpenDetails: (show: Show) => void;
+  onOpenDetails: (show: Show, originMeta?: DetailsOriginMeta) => void;
   onSelectActor?: (actor: CastMember) => void;
-  onBackToBrowse: () => void;
+  onBackToBrowse: (skipHistoryPush?: boolean) => void;
   platformName?: string;
   isGlobalMuted?: boolean;
   onToggleGlobalMute?: () => void;
+  likedShowIds?: string[];
+  onToggleLike?: (showId: string) => void;
+  originMeta?: DetailsOriginMeta | null;
 }
 
 export const ShareTitleDesktopPage: React.FC<ShareTitleDesktopPageProps> = ({
@@ -47,21 +50,163 @@ export const ShareTitleDesktopPage: React.FC<ShareTitleDesktopPageProps> = ({
   onPlayTrailer,
   onOpenDetails,
   onSelectActor,
+  onBackToBrowse,
   platformName = 'Dizi Urdu',
   isGlobalMuted = true,
-  onToggleGlobalMute
+  onToggleGlobalMute,
+  likedShowIds,
+  onToggleLike,
+  originMeta
 }) => {
+  const rootRef = useRef<HTMLDivElement>(null);
+  const [pageAnimStyle, setPageAnimStyle] = useState<{
+    transform: string;
+    opacity: number;
+    transition: string;
+    borderRadius?: string;
+  } | null>(null);
+  const [isClosingPage, setIsClosingPage] = useState<boolean>(false);
+  const isNormalOrigin = originMeta?.sourceFeedType === 'normal' && Boolean(originMeta.element?.isConnected);
+
+  useLayoutEffect(() => {
+    setIsClosingPage(false);
+    if (isNormalOrigin && originMeta?.element) {
+      const originRect = originMeta.element.getBoundingClientRect();
+      const vw = window.innerWidth;
+      const vh = window.innerHeight;
+      if (originRect.width > 10 && originRect.height > 10) {
+        const dx = originRect.left + originRect.width / 2 - vw / 2;
+        const dy = originRect.top + originRect.height / 2 - vh / 2;
+        const scaleX = Math.max(0.14, Math.min(0.6, originRect.width / Math.max(1, vw)));
+        const scaleY = Math.max(0.14, Math.min(0.6, originRect.height / Math.max(1, vh)));
+        setPageAnimStyle({
+          transform: `translate3d(${dx}px, ${dy}px, 0) scale(${scaleX}, ${scaleY})`,
+          opacity: 0.45,
+          borderRadius: '18px',
+          transition: 'none'
+        });
+        let innerRaf = 0;
+        let settleTimer = 0;
+        const outerRaf = requestAnimationFrame(() => {
+          innerRaf = requestAnimationFrame(() => {
+            setPageAnimStyle({
+              transform: 'translate3d(0, 0, 0) scale(1, 1)',
+              opacity: 1,
+              borderRadius: '0px',
+              transition: 'transform 340ms cubic-bezier(0.22, 1, 0.36, 1), opacity 220ms ease-out, border-radius 300ms ease'
+            });
+            settleTimer = window.setTimeout(() => {
+              setPageAnimStyle(null);
+            }, 370);
+          });
+        });
+        return () => {
+          cancelAnimationFrame(outerRaf);
+          cancelAnimationFrame(innerRaf);
+          window.clearTimeout(settleTimer);
+        };
+      }
+    }
+    setPageAnimStyle({
+      transform: 'translate3d(32px, 0, 0)',
+      opacity: 0,
+      transition: 'none'
+    });
+    let innerRaf = 0;
+    let settleTimer = 0;
+    const outerRaf = requestAnimationFrame(() => {
+      innerRaf = requestAnimationFrame(() => {
+        setPageAnimStyle({
+          transform: 'translate3d(0, 0, 0)',
+          opacity: 1,
+          transition: 'transform 260ms cubic-bezier(0.22, 1, 0.36, 1), opacity 200ms ease-out'
+        });
+        settleTimer = window.setTimeout(() => {
+          setPageAnimStyle(null);
+        }, 290);
+      });
+    });
+    return () => {
+      cancelAnimationFrame(outerRaf);
+      cancelAnimationFrame(innerRaf);
+      window.clearTimeout(settleTimer);
+    };
+  }, [show.id, isNormalOrigin]);
+
+  const triggerBackToBrowse = (skipHistoryPush = false) => {
+    if (isClosingPage) return;
+    setIsClosingPage(true);
+    if (videoRef.current && !videoRef.current.paused) {
+      videoRef.current.pause();
+    }
+    setPageAnimStyle({
+      transform: 'translate3d(0, 100vh, 0)',
+      opacity: 0.9,
+      transition: 'transform 280ms cubic-bezier(0.22, 1, 0.36, 1), opacity 220ms ease-in'
+    });
+    window.setTimeout(() => onBackToBrowse(skipHistoryPush), 285);
+  };
+
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape' && !isAboutModalOpen && !isShareModalOpen) {
+        e.preventDefault();
+        triggerBackToBrowse(false);
+      }
+    };
+    const onSystemBack = () => {
+      triggerBackToBrowse(true);
+    };
+    const onUiBack = () => {
+      triggerBackToBrowse(false);
+    };
+    window.addEventListener('keydown', onKey);
+    window.addEventListener('dizi-share-system-back', onSystemBack);
+    window.addEventListener('dizi-share-ui-back', onUiBack);
+    return () => {
+      window.removeEventListener('keydown', onKey);
+      window.removeEventListener('dizi-share-system-back', onSystemBack);
+      window.removeEventListener('dizi-share-ui-back', onUiBack);
+    };
+  });
   const [selectedSeasonNumber, setSelectedSeasonNumber] = useState<number>(1);
-  const [isLiked, setIsLiked] = useState<boolean>(() => {
+  const [localLiked, setLocalLiked] = useState<boolean>(() => {
     try {
       return localStorage.getItem(`dizi_liked_${show.id}`) === 'true';
     } catch {
       return false;
     }
   });
+  const isLiked = likedShowIds ? likedShowIds.includes(show.id) : localLiked;
   const [isShareModalOpen, setIsShareModalOpen] = useState<boolean>(false);
   const [isSeasonDropdownOpen, setIsSeasonDropdownOpen] = useState<boolean>(false);
   const [isAboutModalOpen, setIsAboutModalOpen] = useState<boolean>(false);
+
+  const getOverlayScroller = (): HTMLElement | null => {
+    try {
+      return (rootRef.current?.closest('[data-share-overlay-scroll]') as HTMLElement | null) || null;
+    } catch {
+      return null;
+    }
+  };
+
+  useEffect(() => {
+    if (!isAboutModalOpen) return;
+    const scroller = getOverlayScroller();
+    const prevScrollerOverflow = scroller ? scroller.style.overflowY : '';
+    const prevBodyOverflow = document.body.style.overflow;
+    if (scroller) scroller.style.overflowY = 'hidden';
+    document.body.style.overflow = 'hidden';
+    return () => {
+      if (scroller) scroller.style.overflowY = prevScrollerOverflow;
+      document.body.style.overflow = prevBodyOverflow;
+    };
+  }, [isAboutModalOpen]);
+
+  const getScrollTop = (): number => {
+    const scroller = getOverlayScroller();
+    return scroller ? scroller.scrollTop : window.scrollY;
+  };
 
   // Reset season / modal / preview state when navigating to a different show
   useEffect(() => {
@@ -74,8 +219,25 @@ export const ShareTitleDesktopPage: React.FC<ShareTitleDesktopPageProps> = ({
     isPreviewEndedRef.current = false;
     setIsPausedByScroll(false);
     isPausedByScrollRef.current = false;
+    setIsUserPausedPreview(false);
+    isUserPausedPreviewRef.current = false;
+    setShowBackdropOverPaused(false);
+    setPreviewToggleFlash(null);
+    if (previewFlashTimerRef.current) {
+      window.clearTimeout(previewFlashTimerRef.current);
+      previewFlashTimerRef.current = null;
+    }
+    if (pauseToBackdropTimerRef.current) {
+      window.clearTimeout(pauseToBackdropTimerRef.current);
+      pauseToBackdropTimerRef.current = null;
+    }
     setIsInactive(false);
-    window.scrollTo({ top: 0, behavior: 'instant' });
+    const scroller = getOverlayScroller();
+    if (scroller) {
+      scroller.scrollTo({ top: 0, behavior: 'instant' });
+    } else {
+      window.scrollTo({ top: 0, behavior: 'instant' });
+    }
   }, [show.id]);
 
   // 4-Second Preview Autoplay & Inactivity Transition State
@@ -84,11 +246,17 @@ export const ShareTitleDesktopPage: React.FC<ShareTitleDesktopPageProps> = ({
   const [isVideoPlaying, setIsVideoPlaying] = useState<boolean>(false);
   const [isPreviewEnded, setIsPreviewEnded] = useState<boolean>(false);
   const [isPausedByScroll, setIsPausedByScroll] = useState<boolean>(false);
+  const [isUserPausedPreview, setIsUserPausedPreview] = useState<boolean>(false);
+  const [showBackdropOverPaused, setShowBackdropOverPaused] = useState<boolean>(false);
+  const [previewToggleFlash, setPreviewToggleFlash] = useState<'play' | 'pause' | null>(null);
   const [isInactive, setIsInactive] = useState<boolean>(false);
   const [isMuted, setIsMuted] = useState<boolean>(isGlobalMuted);
   const videoRef = useRef<HTMLVideoElement>(null);
   const inactivityTimerRef = useRef<number | null>(null);
+  const previewFlashTimerRef = useRef<number | null>(null);
+  const pauseToBackdropTimerRef = useRef<number | null>(null);
   const isPausedByScrollRef = useRef<boolean>(false);
+  const isUserPausedPreviewRef = useRef<boolean>(false);
   const isPreviewEndedRef = useRef<boolean>(false);
 
   const episodesRowRef = useRef<HTMLDivElement>(null);
@@ -151,7 +319,7 @@ export const ShareTitleDesktopPage: React.FC<ShareTitleDesktopPageProps> = ({
   useEffect(() => {
     if (!previewVideoUrl || isPreviewEndedRef.current) return;
     const previewTimer = window.setTimeout(() => {
-      if (!isPreviewEndedRef.current && window.scrollY <= 150) {
+      if (!isPreviewEndedRef.current && getScrollTop() <= 150) {
         setShouldStartPreview(true);
       }
     }, 4000);
@@ -168,7 +336,7 @@ export const ShareTitleDesktopPage: React.FC<ShareTitleDesktopPageProps> = ({
       isVideoPlaying &&
       !isPausedByScrollRef.current &&
       !isPreviewEndedRef.current &&
-      window.scrollY <= 150 &&
+      getScrollTop() <= 150 &&
       Boolean(videoRef.current && !videoRef.current.paused && !videoRef.current.ended);
 
     if (!canSettleNow) {
@@ -191,7 +359,7 @@ export const ShareTitleDesktopPage: React.FC<ShareTitleDesktopPageProps> = ({
           !videoRef.current.ended &&
           !isPausedByScrollRef.current &&
           !isPreviewEndedRef.current &&
-          window.scrollY <= 150
+          getScrollTop() <= 150
       );
       if (stillActivelyPlaying) {
         setIsInactive(true);
@@ -202,7 +370,7 @@ export const ShareTitleDesktopPage: React.FC<ShareTitleDesktopPageProps> = ({
   };
 
   useEffect(() => {
-    if (isVideoPlaying && !isPausedByScroll && !isPreviewEnded && window.scrollY <= 150) {
+    if (isVideoPlaying && !isPausedByScroll && !isPreviewEnded && getScrollTop() <= 150) {
       if (inactivityTimerRef.current) {
         window.clearTimeout(inactivityTimerRef.current);
       }
@@ -213,7 +381,7 @@ export const ShareTitleDesktopPage: React.FC<ShareTitleDesktopPageProps> = ({
             !videoRef.current.ended &&
             !isPausedByScrollRef.current &&
             !isPreviewEndedRef.current &&
-            window.scrollY <= 150
+            getScrollTop() <= 150
         );
         if (stillActivelyPlaying) {
           setIsInactive(true);
@@ -237,7 +405,7 @@ export const ShareTitleDesktopPage: React.FC<ShareTitleDesktopPageProps> = ({
   // Pause preview when user scrolls down; keep info unsettled when paused or ended
   useEffect(() => {
     const handleScroll = () => {
-      if (window.scrollY > 150) {
+      if (getScrollTop() > 150) {
         setIsInactive(false);
         if (inactivityTimerRef.current) {
           window.clearTimeout(inactivityTimerRef.current);
@@ -256,6 +424,7 @@ export const ShareTitleDesktopPage: React.FC<ShareTitleDesktopPageProps> = ({
         }
         if (
           isPausedByScrollRef.current &&
+          !isUserPausedPreviewRef.current &&
           videoRef.current &&
           videoRef.current.paused &&
           shouldStartPreview &&
@@ -267,8 +436,13 @@ export const ShareTitleDesktopPage: React.FC<ShareTitleDesktopPageProps> = ({
         }
       }
     };
+    const scroller = getOverlayScroller();
+    scroller?.addEventListener('scroll', handleScroll, { passive: true });
     window.addEventListener('scroll', handleScroll, { passive: true });
-    return () => window.removeEventListener('scroll', handleScroll);
+    return () => {
+      scroller?.removeEventListener('scroll', handleScroll);
+      window.removeEventListener('scroll', handleScroll);
+    };
   }, [shouldStartPreview]);
 
   // Pause preview when tab or document is hidden
@@ -282,7 +456,8 @@ export const ShareTitleDesktopPage: React.FC<ShareTitleDesktopPageProps> = ({
         shouldStartPreview &&
         !isPreviewEndedRef.current &&
         !isPausedByScrollRef.current &&
-        window.scrollY <= 150
+        !isUserPausedPreviewRef.current &&
+        getScrollTop() <= 150
       ) {
         videoRef.current?.play().catch(() => {});
       }
@@ -290,6 +465,72 @@ export const ShareTitleDesktopPage: React.FC<ShareTitleDesktopPageProps> = ({
     document.addEventListener('visibilitychange', handleVisibility);
     return () => document.removeEventListener('visibilitychange', handleVisibility);
   }, [shouldStartPreview]);
+
+  const triggerPreviewFlash = (mode: 'play' | 'pause') => {
+    setPreviewToggleFlash(mode);
+    if (previewFlashTimerRef.current) {
+      window.clearTimeout(previewFlashTimerRef.current);
+    }
+    previewFlashTimerRef.current = window.setTimeout(() => {
+      setPreviewToggleFlash(null);
+      previewFlashTimerRef.current = null;
+    }, 300);
+  };
+
+  useEffect(() => {
+    return () => {
+      if (pauseToBackdropTimerRef.current) {
+        window.clearTimeout(pauseToBackdropTimerRef.current);
+      }
+      if (previewFlashTimerRef.current) {
+        window.clearTimeout(previewFlashTimerRef.current);
+      }
+    };
+  }, []);
+
+  const handleHeroCenterToggle = (e: React.MouseEvent<HTMLElement>) => {
+    e.stopPropagation();
+    if (!previewVideoUrl || !shouldStartPreview || isPreviewEndedRef.current || !videoRef.current) {
+      return;
+    }
+    if (!isVideoPlaying && !isUserPausedPreviewRef.current) {
+      return;
+    }
+
+    if (isUserPausedPreviewRef.current || videoRef.current.paused) {
+      if (pauseToBackdropTimerRef.current) {
+        window.clearTimeout(pauseToBackdropTimerRef.current);
+        pauseToBackdropTimerRef.current = null;
+      }
+      setShowBackdropOverPaused(false);
+      isUserPausedPreviewRef.current = false;
+      setIsUserPausedPreview(false);
+      setIsPausedByScroll(false);
+      isPausedByScrollRef.current = false;
+      triggerPreviewFlash('play');
+      videoRef.current.play().then(() => {
+        setIsVideoPlaying(true);
+      }).catch(() => {});
+    } else {
+      isUserPausedPreviewRef.current = true;
+      setIsUserPausedPreview(true);
+      setShowBackdropOverPaused(false);
+      setIsInactive(false);
+      if (inactivityTimerRef.current) {
+        window.clearTimeout(inactivityTimerRef.current);
+      }
+      videoRef.current.pause();
+      setIsVideoPlaying(false);
+      triggerPreviewFlash('pause');
+      if (pauseToBackdropTimerRef.current) {
+        window.clearTimeout(pauseToBackdropTimerRef.current);
+      }
+      pauseToBackdropTimerRef.current = window.setTimeout(() => {
+        setShowBackdropOverPaused(true);
+        pauseToBackdropTimerRef.current = null;
+      }, 2000);
+    }
+  };
 
   // Scroll helpers for horizontal rows
   const checkRowScroll = (
@@ -330,8 +571,12 @@ export const ShareTitleDesktopPage: React.FC<ShareTitleDesktopPageProps> = ({
   };
 
   const handleToggleLike = () => {
-    const next = !isLiked;
-    setIsLiked(next);
+    if (onToggleLike) {
+      onToggleLike(show.id);
+      return;
+    }
+    const next = !localLiked;
+    setLocalLiked(next);
     try {
       localStorage.setItem(`dizi_liked_${show.id}`, String(next));
     } catch {}
@@ -445,149 +690,214 @@ export const ShareTitleDesktopPage: React.FC<ShareTitleDesktopPageProps> = ({
 
   return (
     <div
+      ref={rootRef}
       onMouseMove={handleUserActivity}
-      className="relative w-full min-h-screen bg-[#181818] text-white select-none overflow-x-hidden font-sans"
+      style={
+        pageAnimStyle
+          ? {
+              transform: pageAnimStyle.transform,
+              opacity: pageAnimStyle.opacity,
+              transition: pageAnimStyle.transition,
+              borderRadius: pageAnimStyle.borderRadius,
+              overflow: pageAnimStyle.borderRadius && pageAnimStyle.borderRadius !== '0px' ? 'hidden' : undefined
+            }
+          : undefined
+      }
+      className={`relative w-full min-h-screen bg-[#181818] text-white select-none overflow-x-hidden font-sans ${
+        pageAnimStyle ? 'will-change-transform' : ''
+      }`}
     >
       {/* ========================================================================= */}
       {/* 1. HERO SECTION: Ends 0.2cm (8px) above screen bottom edge where glare    */}
       {/* reaches 100% #181818 maturity; glare begins 0.7cm (26px) above episode    */}
       {/* top edges, while episode tops peek strictly 0.7cm (26px) above bottom     */}
       {/* ========================================================================= */}
-      <section className="relative w-full h-screen min-h-[480px] flex flex-col justify-end overflow-hidden bg-black">
-        {/* Left-side pure black ambient backdrop (revealed when fixed-width poster/video is active) */}
-        <div className="absolute inset-0 w-full h-full pointer-events-none z-0 bg-black" />
+      {(() => {
+        const shouldRevealVideoLayer =
+          (isVideoPlaying || (isUserPausedPreview && !showBackdropOverPaused)) &&
+          !isPausedByScroll &&
+          !isPreviewEnded;
+        const canCenterToggle = Boolean(
+          previewVideoUrl && shouldStartPreview && !isPreviewEnded && (isVideoPlaying || isUserPausedPreview)
+        );
+        return (
+          <section className="relative w-full h-screen min-h-[480px] flex flex-col justify-end overflow-hidden bg-black">
+            {/* Left-side pure black ambient backdrop (revealed when fixed-width poster/video is active) */}
+            <div className="absolute inset-0 w-full h-full pointer-events-none z-0 bg-black" />
 
-        {/* Full-bleed or Height-Matched 16:9 Fixed-Width Backdrop Container */}
-        <div
-          className={`absolute inset-0 w-full h-full pointer-events-none overflow-hidden z-[1] transition-opacity duration-700 ease-in-out ${
-            isVideoPlaying ? 'opacity-0' : 'opacity-100'
-          }`}
-        >
-          {show.fullSizeMoreInfoFixedWidthPoster ? (
+            {/* Full-bleed or Height-Matched 16:9 Fixed-Width Backdrop Container */}
             <div
-              className="absolute top-0 bottom-0 right-0 h-full overflow-hidden"
-              style={{
-                width: 'min(100%, calc(100vh * 16 / 9))',
-                maskImage:
-                  'linear-gradient(to right, transparent 0%, rgba(0,0,0,0.28) 42px, rgba(0,0,0,0.68) 98px, black 160px)',
-                WebkitMaskImage:
-                  'linear-gradient(to right, transparent 0%, rgba(0,0,0,0.28) 42px, rgba(0,0,0,0.68) 98px, black 160px)'
-              }}
+              className={`absolute inset-0 w-full h-full pointer-events-none overflow-hidden z-[1] transition-opacity duration-700 ease-in-out ${
+                shouldRevealVideoLayer ? 'opacity-0' : 'opacity-100'
+              }`}
             >
-              <MediaImage
-                src={backdropSrc}
-                fallbackTitle={show.title}
-                fallbackClassName="w-full h-full bg-black flex items-center justify-center p-6 text-center select-none"
-                fallbackTextClassName="text-white/80 font-bold text-xl sm:text-2xl font-sans"
-                hideFallback={isVideoPlaying}
-                className="w-full h-full object-cover object-center"
-              />
+              {show.fullSizeMoreInfoFixedWidthPoster ? (
+                <div
+                  className="absolute top-0 bottom-0 right-0 h-full overflow-hidden"
+                  style={{
+                    width: 'min(100%, calc(100vh * 16 / 9))',
+                    maskImage:
+                      'linear-gradient(to right, transparent 0%, rgba(0,0,0,0.28) 42px, rgba(0,0,0,0.68) 98px, black 160px)',
+                    WebkitMaskImage:
+                      'linear-gradient(to right, transparent 0%, rgba(0,0,0,0.28) 42px, rgba(0,0,0,0.68) 98px, black 160px)'
+                  }}
+                >
+                  <MediaImage
+                    src={backdropSrc}
+                    fallbackTitle={show.title}
+                    fallbackClassName="w-full h-full bg-black flex items-center justify-center p-6 text-center select-none"
+                    fallbackTextClassName="text-white/80 font-bold text-xl sm:text-2xl font-sans"
+                    hideFallback={shouldRevealVideoLayer}
+                    className="w-full h-full object-cover object-center"
+                  />
+                </div>
+              ) : (
+                <MediaImage
+                  src={backdropSrc}
+                  fallbackTitle={show.title}
+                  fallbackClassName="w-full h-full bg-black flex items-center justify-center p-6 text-center select-none"
+                  fallbackTextClassName="text-white/80 font-bold text-xl sm:text-2xl font-sans"
+                  hideFallback={shouldRevealVideoLayer}
+                  className="w-full h-full object-cover object-center"
+                />
+              )}
             </div>
-          ) : (
-            <MediaImage
-              src={backdropSrc}
-              fallbackTitle={show.title}
-              fallbackClassName="w-full h-full bg-black flex items-center justify-center p-6 text-center select-none"
-              fallbackTextClassName="text-white/80 font-bold text-xl sm:text-2xl font-sans"
-              hideFallback={isVideoPlaying}
-              className="w-full h-full object-cover object-center"
-            />
-          )}
-        </div>
 
-        {/* 4-Second Preview Video: Hidden underneath poster while buffering, fades in onPlaying */}
-        {previewVideoUrl && shouldStartPreview && !isPreviewEnded && (
-          <div
-            className={`absolute inset-0 w-full h-full pointer-events-none z-[2] transition-opacity duration-700 ${
-              isVideoPlaying && !isPausedByScroll ? 'opacity-100' : 'opacity-0'
-            }`}
-          >
-            <div
-              className={
-                show.fullSizeMoreInfoFixedWidthVideo
-                  ? 'absolute top-0 bottom-0 right-0 h-full overflow-hidden'
-                  : 'absolute inset-0 w-full h-full overflow-hidden'
-              }
-              style={
-                show.fullSizeMoreInfoFixedWidthVideo
-                  ? {
-                      width: 'min(100%, calc(100vh * 16 / 9))',
-                      maskImage:
-                        'linear-gradient(to right, transparent 0%, rgba(0,0,0,0.28) 42px, rgba(0,0,0,0.68) 98px, black 160px)',
-                      WebkitMaskImage:
-                        'linear-gradient(to right, transparent 0%, rgba(0,0,0,0.28) 42px, rgba(0,0,0,0.68) 98px, black 160px)'
-                    }
-                  : undefined
-              }
-            >
-              <video
-                ref={videoRef}
-                src={previewVideoUrl}
-                autoPlay
-                playsInline
-                loop={false}
-                onPlaying={() => {
-                  if (!isPausedByScrollRef.current && !isPreviewEndedRef.current) {
-                    setIsVideoPlaying(true);
+            {/* 4-Second Preview Video: Hidden underneath poster while buffering, fades in onPlaying & holds paused frame for 2s */}
+            {previewVideoUrl && shouldStartPreview && !isPreviewEnded && (
+              <div
+                className={`absolute inset-0 w-full h-full pointer-events-none z-[2] transition-opacity duration-700 ${
+                  shouldRevealVideoLayer ? 'opacity-100' : 'opacity-0'
+                }`}
+              >
+                <div
+                  className={
+                    show.fullSizeMoreInfoFixedWidthVideo
+                      ? 'absolute top-0 bottom-0 right-0 h-full overflow-hidden'
+                      : 'absolute inset-0 w-full h-full overflow-hidden'
                   }
-                }}
-                onPause={() => {
-                  setIsVideoPlaying(false);
-                  setIsInactive(false);
-                }}
-                onEnded={() => {
-                  isPreviewEndedRef.current = true;
-                  isPausedByScrollRef.current = false;
-                  setIsPreviewEnded(true);
-                  setIsPausedByScroll(false);
-                  setIsVideoPlaying(false);
-                  setIsInactive(false);
-                  setShouldStartPreview(false);
-                }}
-                onError={() => {
-                  setIsVideoPlaying(false);
-                  setIsInactive(false);
-                  setShouldStartPreview(false);
-                }}
-                muted={isMuted}
-                className="w-full h-full object-cover object-center"
-              />
-            </div>
-          </div>
-        )}
-
-        {/* Unified Bottom Merge Overlay: Reaches 100% pure black (#000000) strictly at the bottom edge of the screen (100vh), never before */}
-        <div
-          className="absolute inset-x-0 bottom-0 h-[140px] pointer-events-none z-[15]"
-          style={{
-            background:
-              'linear-gradient(to bottom, transparent 0%, rgba(0,0,0,0.03) 20%, rgba(0,0,0,0.12) 40%, rgba(0,0,0,0.32) 60%, rgba(0,0,0,0.62) 80%, rgba(0,0,0,0.88) 93%, #000000 100%)'
-          }}
-        />
-
-        {/* Smaller Circular Mute Button in Bottom Right (visible only when video is actively playing) */}
-        {isVideoPlaying && !isPausedByScroll && !isPreviewEnded && Boolean(previewVideoUrl) && (
-          <button
-            onClick={(e) => {
-              e.stopPropagation();
-              const nextMuted = !isMuted;
-              setIsMuted(nextMuted);
-              if (videoRef.current) {
-                videoRef.current.muted = nextMuted;
-              }
-              onToggleGlobalMute?.();
-            }}
-            className="absolute bottom-[82px] right-8 md:right-12 z-30 w-8 h-8 rounded-full border border-white/45 hover:border-white bg-black/45 hover:bg-black/65 text-white flex items-center justify-center transition-all cursor-pointer shadow-lg backdrop-blur-xs active:scale-95 animate-in fade-in duration-300"
-            aria-label={isMuted ? 'Unmute video' : 'Mute video'}
-            title={isMuted ? 'Unmute' : 'Mute'}
-          >
-            {isMuted ? (
-              <VolumeX className="w-4 h-4 text-white" />
-            ) : (
-              <Volume2 className="w-4 h-4 text-white" />
+                  style={
+                    show.fullSizeMoreInfoFixedWidthVideo
+                      ? {
+                          width: 'min(100%, calc(100vh * 16 / 9))',
+                          maskImage:
+                            'linear-gradient(to right, transparent 0%, rgba(0,0,0,0.28) 42px, rgba(0,0,0,0.68) 98px, black 160px)',
+                          WebkitMaskImage:
+                            'linear-gradient(to right, transparent 0%, rgba(0,0,0,0.28) 42px, rgba(0,0,0,0.68) 98px, black 160px)'
+                        }
+                      : undefined
+                  }
+                >
+                  <video
+                    ref={videoRef}
+                    src={previewVideoUrl}
+                    autoPlay
+                    playsInline
+                    loop={false}
+                    onPlaying={() => {
+                      if (!isPausedByScrollRef.current && !isPreviewEndedRef.current) {
+                        setIsVideoPlaying(true);
+                      }
+                    }}
+                    onPause={() => {
+                      setIsVideoPlaying(false);
+                      setIsInactive(false);
+                    }}
+                    onEnded={() => {
+                      isPreviewEndedRef.current = true;
+                      isPausedByScrollRef.current = false;
+                      isUserPausedPreviewRef.current = false;
+                      setIsPreviewEnded(true);
+                      setIsPausedByScroll(false);
+                      setIsUserPausedPreview(false);
+                      setShowBackdropOverPaused(false);
+                      setIsVideoPlaying(false);
+                      setIsInactive(false);
+                      setShouldStartPreview(false);
+                    }}
+                    onError={() => {
+                      setIsVideoPlaying(false);
+                      setIsInactive(false);
+                      setShouldStartPreview(false);
+                    }}
+                    muted={isMuted}
+                    className="w-full h-full object-cover object-center"
+                  />
+                </div>
+              </div>
             )}
-          </button>
-        )}
+
+            {/* Reduced Centered Hit Zone for Preview Play/Pause */}
+            {canCenterToggle && (
+              <div
+                onClick={handleHeroCenterToggle}
+                role="button"
+                aria-label={isUserPausedPreview ? 'Resume preview' : 'Pause preview'}
+                className="absolute left-1/2 top-[42%] -translate-x-1/2 -translate-y-1/2 w-[34%] min-w-[220px] max-w-[460px] h-[34%] min-h-[150px] z-[25] cursor-pointer"
+              />
+            )}
+
+            {/* Top Glare Scrim under Transparent Floating Navbar */}
+            {adminSettings?.desktopNavbarStyle === 'floating_glass' && (
+              <div
+                className="hidden md:block absolute inset-x-0 top-0 h-28 pointer-events-none z-[15]"
+                style={{
+                  background:
+                    'linear-gradient(to bottom, rgba(0,0,0,0.62) 0%, rgba(0,0,0,0.28) 48%, transparent 100%)'
+                }}
+              />
+            )}
+
+            {/* Unified Bottom Merge Overlay: Reaches 100% pure black (#000000) strictly at the bottom edge of the screen (100vh), never before */}
+            <div
+              className="absolute inset-x-0 bottom-0 h-[140px] pointer-events-none z-[15]"
+              style={{
+                background:
+                  'linear-gradient(to bottom, transparent 0%, rgba(0,0,0,0.03) 20%, rgba(0,0,0,0.12) 40%, rgba(0,0,0,0.32) 60%, rgba(0,0,0,0.62) 80%, rgba(0,0,0,0.88) 93%, #000000 100%)'
+              }}
+            />
+
+            {/* Transparent Play/Pause Flash Icon shown for only 0.3s on click */}
+            {previewToggleFlash && (
+              <div className="absolute left-1/2 top-[42%] -translate-x-1/2 -translate-y-1/2 flex items-center justify-center pointer-events-none z-30">
+                <div className="bg-transparent border-0 text-white/95 drop-shadow-[0_2px_10px_rgba(0,0,0,0.45)] flex items-center justify-center animate-in zoom-in-75 fade-in duration-150">
+                  {previewToggleFlash === 'pause' ? (
+                    <svg className="w-12 h-12 fill-current" viewBox="0 0 24 24">
+                      <rect x="5" y="4" width="4.8" height="16" rx="1" />
+                      <rect x="14.2" y="4" width="4.8" height="16" rx="1" />
+                    </svg>
+                  ) : (
+                    <svg className="w-12 h-12 fill-current ml-1" viewBox="0 0 24 24">
+                      <polygon points="6,4 20,12 6,20" />
+                    </svg>
+                  )}
+                </div>
+              </div>
+            )}
+
+            {/* Smaller Circular Mute Button in Bottom Right (visible only when video is actively playing) */}
+            {isVideoPlaying && !isPausedByScroll && !isPreviewEnded && Boolean(previewVideoUrl) && (
+              <button
+                onClick={(e) => {
+                  e.stopPropagation();
+                  const nextMuted = !isMuted;
+                  setIsMuted(nextMuted);
+                  if (videoRef.current) {
+                    videoRef.current.muted = nextMuted;
+                  }
+                  onToggleGlobalMute?.();
+                }}
+                className="absolute bottom-[82px] right-8 md:right-12 z-30 w-8 h-8 rounded-full border border-white/45 hover:border-white bg-black/45 hover:bg-black/65 text-white flex items-center justify-center transition-all cursor-pointer shadow-lg backdrop-blur-xs active:scale-95 animate-in fade-in duration-300"
+                aria-label={isMuted ? 'Unmute video' : 'Mute video'}
+                title={isMuted ? 'Unmute' : 'Mute'}
+              >
+                {isMuted ? (
+                  <VolumeX className="w-4 h-4 text-white" />
+                ) : (
+                  <Volume2 className="w-4 h-4 text-white" />
+                )}
+              </button>
+            )}
 
         {/* Hero Left Content Column: positioned cleanly above transparent Season selector */}
         <div className="relative z-20 w-full h-full max-w-[1780px] mx-auto px-6 sm:px-8 lg:px-12 flex flex-col justify-end pb-[90px] sm:pb-[94px] pointer-events-none">
@@ -670,7 +980,7 @@ export const ShareTitleDesktopPage: React.FC<ShareTitleDesktopPageProps> = ({
                   aria-label="Share"
                   title="Share"
                 >
-                  <Share2 className="w-4 h-4 text-white stroke-[2]" />
+                  <ShareArrowIcon className="w-4.5 h-4.5 text-white" />
                 </button>
               </div>
             </div>
@@ -712,6 +1022,8 @@ export const ShareTitleDesktopPage: React.FC<ShareTitleDesktopPageProps> = ({
           </div>
         </div>
       </section>
+        );
+      })()}
 
       {/* Smooth Black-to-Grey (#181818) Merge Band: Transitions gradually from pure #000000 at screen bottom into #181818 */}
       <div
@@ -789,7 +1101,7 @@ export const ShareTitleDesktopPage: React.FC<ShareTitleDesktopPageProps> = ({
                     scrollRowByCards(episodesRowRef, 'left', '[data-episode-card="true"]', 4);
                   }}
                   aria-label="Scroll left"
-                  className="group/nav absolute left-0 top-0 z-40 w-11 sm:w-12 md:w-14 h-[142px] sm:h-[154px] rounded-r-xl rounded-l-none bg-black/40 hover:bg-black/75 text-white flex items-center justify-center cursor-pointer border-0 select-none opacity-0 group-hover/episodes:opacity-100 transition-opacity duration-200 shadow-xl"
+                  className="group/nav absolute left-0 top-0 z-40 w-11 sm:w-12 md:w-14 h-[150px] md:h-[164px] lg:h-[180px] rounded-r-xl rounded-l-none bg-black/40 hover:bg-black/75 text-white flex items-center justify-center cursor-pointer border-0 select-none opacity-0 group-hover/episodes:opacity-100 transition-opacity duration-200 shadow-xl"
                 >
                   <ChevronLeft className="w-8 h-8 stroke-[2.5] group-active/nav:scale-75 transition-transform duration-100" />
                 </button>
@@ -802,7 +1114,7 @@ export const ShareTitleDesktopPage: React.FC<ShareTitleDesktopPageProps> = ({
                     scrollRowByCards(episodesRowRef, 'right', '[data-episode-card="true"]', 4);
                   }}
                   aria-label="Scroll right"
-                  className="group/nav absolute right-0 top-0 z-40 w-11 sm:w-12 md:w-14 h-[142px] sm:h-[154px] rounded-l-xl rounded-r-none bg-black/40 hover:bg-black/75 text-white flex items-center justify-center cursor-pointer border-0 select-none opacity-0 group-hover/episodes:opacity-100 transition-opacity duration-200 shadow-xl"
+                  className="group/nav absolute right-0 top-0 z-40 w-11 sm:w-12 md:w-14 h-[150px] md:h-[164px] lg:h-[180px] rounded-l-xl rounded-r-none bg-black/40 hover:bg-black/75 text-white flex items-center justify-center cursor-pointer border-0 select-none opacity-0 group-hover/episodes:opacity-100 transition-opacity duration-200 shadow-xl"
                 >
                   <ChevronRight className="w-8 h-8 stroke-[2.5] group-active/nav:scale-75 transition-transform duration-100" />
                 </button>
@@ -813,7 +1125,7 @@ export const ShareTitleDesktopPage: React.FC<ShareTitleDesktopPageProps> = ({
                 onScroll={() =>
                   checkRowScroll(episodesRowRef, setCanScrollLeft, setCanScrollRight)
                 }
-                className="flex items-start gap-3.5 overflow-x-auto no-scrollbar scroll-smooth pb-2 select-none"
+                className="flex items-start gap-2 sm:gap-2.5 md:gap-3 lg:gap-4 overflow-x-auto no-scrollbar scroll-smooth pb-2 select-none"
               >
                 {episodes.map((ep) => {
                   const epKey = ep.id || `s${ep.seasonNumber || 1}e${ep.episodeNumber}`;
@@ -825,28 +1137,62 @@ export const ShareTitleDesktopPage: React.FC<ShareTitleDesktopPageProps> = ({
                       ? watchProgress.progressPercent
                       : 0);
 
+                  const hideEpTitles = Boolean(adminSettings?.hideFullSizeEpisodeTitles);
                   return (
                     <div
                       key={ep.id}
                       data-episode-card="true"
                       onClick={() => onPlayShow(show, ep)}
-                      className="w-[calc((100%-42px)/4.32)] shrink-0 min-w-[240px] max-w-[360px] cursor-pointer flex flex-col gap-2 rounded-[6px] border-0 select-none"
+                      className="group/ep w-[calc((100vw-20px)/2.12)] sm:w-[265px] md:w-[290px] lg:w-[calc((100vw-112px)/4.05)] max-w-[340px] shrink-0 cursor-pointer flex flex-col gap-2 rounded-[6px] md:rounded-[10px] border-0 select-none"
                     >
-                      <div className="relative aspect-video w-full rounded-[6px] overflow-hidden bg-zinc-900 border-0">
+                      <div className="relative aspect-video w-full rounded-[6px] md:rounded-[10px] overflow-hidden bg-zinc-900 border-0">
                         <MediaImage
                           src={ep.thumbnailUrl}
                           fallbackTitle={ep.title || `Episode ${ep.episodeNumber}`}
                           fallbackClassName="w-full h-full bg-[#181818] flex items-center justify-center p-3 text-center select-none"
                           className="w-full h-full object-cover"
                         />
-                        <div className="absolute bottom-2.5 left-2.5 z-20 pointer-events-none flex items-center justify-center">
-                          <svg
-                            className="w-4 h-4 fill-white text-white drop-shadow-[0_2px_4px_rgba(0,0,0,0.95)]"
-                            viewBox="0 0 24 24"
-                          >
-                            <path d="M7.05 3.6A1.5 1.5 0 0 0 4.75 4.9v14.2a1.5 1.5 0 0 0 2.3 1.3l12.1-7.1a1.5 1.5 0 0 0 0-2.6L7.05 3.6z" />
-                          </svg>
+
+                        {/* Centered Transparent Play Icon on Hover */}
+                        <div className="absolute inset-0 z-20 flex items-center justify-center opacity-0 group-hover/ep:opacity-100 transition-opacity duration-200 pointer-events-none">
+                          <div className="w-11 h-11 rounded-full bg-black/45 backdrop-blur-xs flex items-center justify-center text-white shadow-lg">
+                            <svg className="w-5 h-5 fill-current ml-0.5" viewBox="0 0 24 24">
+                              <polygon points="6,4 20,12 6,20" />
+                            </svg>
+                          </div>
                         </div>
+
+                        {hideEpTitles ? (
+                          <>
+                            <div
+                              className="absolute inset-x-0 bottom-0 h-16 pointer-events-none z-10"
+                              style={{
+                                background: 'linear-gradient(to top, rgba(0,0,0,0.65) 0%, rgba(0,0,0,0.18) 65%, transparent 100%)'
+                              }}
+                            />
+                            {/* Episode Number bottom-left (lighter weight) & Duration bottom-right matching More Like This */}
+                            <span className="absolute bottom-2 left-3 z-20 pointer-events-none text-3xl sm:text-[34px] font-semibold text-white leading-none tracking-tight drop-shadow-[0_2px_6px_rgba(0,0,0,0.85)]">
+                              {ep.episodeNumber}
+                            </span>
+                            <span className="absolute bottom-2.5 right-2.5 z-20 pointer-events-none text-sm sm:text-[14.5px] font-medium text-white drop-shadow-[0_2px_4px_rgba(0,0,0,0.95)]">
+                              {ep.duration || '48m'}
+                            </span>
+                          </>
+                        ) : (
+                          <>
+                            <div className="absolute bottom-2.5 left-2.5 z-20 pointer-events-none flex items-center justify-center">
+                              <svg
+                                className="w-4 h-4 fill-white text-white drop-shadow-[0_2px_4px_rgba(0,0,0,0.95)]"
+                                viewBox="0 0 24 24"
+                              >
+                                <polygon points="6,4 20,12 6,20" />
+                              </svg>
+                            </div>
+                            <span className="absolute bottom-2.5 right-2.5 z-20 pointer-events-none text-sm sm:text-[14.5px] font-medium text-white drop-shadow-[0_2px_4px_rgba(0,0,0,0.95)]">
+                              {ep.duration || '48m'}
+                            </span>
+                          </>
+                        )}
 
                         {progressPct > 0 && (
                           <div className="absolute bottom-0 left-0 right-0 h-1 bg-[#404040]/80 z-20">
@@ -858,14 +1204,16 @@ export const ShareTitleDesktopPage: React.FC<ShareTitleDesktopPageProps> = ({
                         )}
                       </div>
 
-                      <div className="flex items-center justify-between text-xs sm:text-sm font-bold text-white gap-2 px-0.5">
-                        <span className="line-clamp-1">
-                          {ep.episodeNumber}. {ep.title}
-                        </span>
-                        <span className="text-zinc-400 font-semibold text-xs shrink-0">
-                          {ep.duration || '48m'}
-                        </span>
-                      </div>
+                      {!hideEpTitles && (
+                        <div className="flex items-center justify-between text-xs sm:text-sm font-bold text-white gap-2 px-0.5">
+                          <span className="line-clamp-1">
+                            {ep.episodeNumber}. {ep.title}
+                          </span>
+                          <span className="text-zinc-400 font-semibold text-xs shrink-0">
+                            {ep.duration || '48m'}
+                          </span>
+                        </div>
+                      )}
                     </div>
                   );
                 })}
@@ -935,7 +1283,9 @@ export const ShareTitleDesktopPage: React.FC<ShareTitleDesktopPageProps> = ({
                       />
                       <div className="absolute inset-0 bg-black/20 flex items-center justify-center">
                         <div className="w-11 h-11 rounded-full border-2 border-white bg-black/55 flex items-center justify-center shadow-lg">
-                          <Play className="w-4.5 h-4.5 fill-white text-white ml-0.5" />
+                          <svg className="w-4.5 h-4.5 fill-white text-white ml-0.5" viewBox="0 0 24 24">
+                            <polygon points="6,4 20,12 6,20" />
+                          </svg>
                         </div>
                       </div>
                       {trailer.duration && (
@@ -1251,37 +1601,40 @@ export const ShareTitleDesktopPage: React.FC<ShareTitleDesktopPageProps> = ({
         </section>
       </div>
 
-      {/* Expanded About Synopsis Modal matching image_946e39aa.png */}
-      {isAboutModalOpen && (
-        <div
-          onClick={() => setIsAboutModalOpen(false)}
-          className="fixed inset-0 z-[220] bg-black/70 flex items-center justify-center p-4 animate-in fade-in duration-150"
-        >
+      {/* Expanded About Synopsis Modal: Portaled to document.body so it stays centered in the current viewport window */}
+      {isAboutModalOpen &&
+        typeof document !== 'undefined' &&
+        createPortal(
           <div
-            onClick={(e) => e.stopPropagation()}
-            className="w-full max-w-2xl bg-[#262628] rounded-2xl p-6 sm:p-8 shadow-2xl border border-white/10 relative space-y-4"
+            onClick={() => setIsAboutModalOpen(false)}
+            className="fixed inset-0 z-[220] bg-black/70 flex items-center justify-center p-4 animate-in fade-in duration-150 select-none"
           >
-            <button
-              onClick={() => setIsAboutModalOpen(false)}
-              className="p-1 -ml-1 text-zinc-400 hover:text-white transition-colors cursor-pointer"
-              aria-label="Close about dialog"
+            <div
+              onClick={(e) => e.stopPropagation()}
+              className="w-full max-w-2xl bg-[#262628] rounded-2xl p-6 sm:p-8 shadow-2xl border border-white/10 relative space-y-4"
             >
-              <X className="w-6 h-6" />
-            </button>
+              <button
+                onClick={() => setIsAboutModalOpen(false)}
+                className="p-1 -ml-1 text-zinc-400 hover:text-white transition-colors cursor-pointer"
+                aria-label="Close about dialog"
+              >
+                <X className="w-6 h-6" />
+              </button>
 
-            <div>
-              <h3 className="text-xl sm:text-2xl font-bold text-white">{show.title}</h3>
-              <p className="text-xs sm:text-sm font-medium text-zinc-400 mt-0.5">
-                {genresStr}
+              <div>
+                <h3 className="text-xl sm:text-2xl font-bold text-white">{show.title}</h3>
+                <p className="text-xs sm:text-sm font-medium text-zinc-400 mt-0.5">
+                  {genresStr}
+                </p>
+              </div>
+
+              <p className="text-sm sm:text-base text-zinc-200 leading-relaxed max-h-[60vh] overflow-y-auto pr-1">
+                {show.synopsis || show.description || show.shortDescription}
               </p>
             </div>
-
-            <p className="text-sm sm:text-base text-zinc-200 leading-relaxed">
-              {show.synopsis || show.description || show.shortDescription}
-            </p>
-          </div>
-        </div>
-      )}
+          </div>,
+          document.body
+        )}
 
       {/* Share Modal Dialog */}
       <ShareModal

@@ -748,6 +748,114 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                     </button>
                   </div>
                 </div>
+
+                {/* 6. Mobile Detail Action Labels */}
+                <div className="flex items-center justify-between gap-3">
+                  <div>
+                    <h5 className="text-xs font-bold text-zinc-200">Mobile Detail Action Labels</h5>
+                    <p className="text-[11px] text-zinc-400">Hide Like / My List / Share / Info text labels on mobile</p>
+                  </div>
+                  <div className="flex items-center gap-1 bg-zinc-800 p-1 rounded-lg border border-zinc-700 shrink-0">
+                    <button
+                      type="button"
+                      onClick={() =>
+                        onUpdateSettings({ ...adminSettings, hideMobileDetailActionLabels: false })
+                      }
+                      className={`px-2.5 py-1 rounded text-xs font-semibold cursor-pointer ${
+                        !adminSettings.hideMobileDetailActionLabels
+                          ? 'bg-red-600 text-white'
+                          : 'text-zinc-400 hover:text-white'
+                      }`}
+                    >
+                      Show
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() =>
+                        onUpdateSettings({ ...adminSettings, hideMobileDetailActionLabels: true })
+                      }
+                      className={`px-2.5 py-1 rounded text-xs font-semibold cursor-pointer ${
+                        adminSettings.hideMobileDetailActionLabels
+                          ? 'bg-red-600 text-white'
+                          : 'text-zinc-400 hover:text-white'
+                      }`}
+                    >
+                      Hide
+                    </button>
+                  </div>
+                </div>
+
+                {/* 7. Mobile Episode Embed Landscape Fullscreen */}
+                <div className="flex items-center justify-between gap-3">
+                  <div>
+                    <h5 className="text-xs font-bold text-zinc-200">Mobile Episode Landscape Fullscreen</h5>
+                    <p className="text-[11px] text-zinc-400">Auto-open YouTube & Dailymotion episodes in landscape fullscreen</p>
+                  </div>
+                  <div className="flex items-center gap-1 bg-zinc-800 p-1 rounded-lg border border-zinc-700 shrink-0">
+                    <button
+                      type="button"
+                      onClick={() =>
+                        onUpdateSettings({ ...adminSettings, mobileAutoFullscreenLandscapeEmbed: false })
+                      }
+                      className={`px-2.5 py-1 rounded text-xs font-semibold cursor-pointer ${
+                        !adminSettings.mobileAutoFullscreenLandscapeEmbed
+                          ? 'bg-red-600 text-white'
+                          : 'text-zinc-400 hover:text-white'
+                      }`}
+                    >
+                      Standard
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() =>
+                        onUpdateSettings({ ...adminSettings, mobileAutoFullscreenLandscapeEmbed: true })
+                      }
+                      className={`px-2.5 py-1 rounded text-xs font-semibold cursor-pointer ${
+                        adminSettings.mobileAutoFullscreenLandscapeEmbed
+                          ? 'bg-red-600 text-white'
+                          : 'text-zinc-400 hover:text-white'
+                      }`}
+                    >
+                      Auto
+                    </button>
+                  </div>
+                </div>
+
+                {/* 8. Full Size Episode Titles */}
+                <div className="flex items-center justify-between gap-3">
+                  <div>
+                    <h5 className="text-xs font-bold text-zinc-200">Full Size Episode Card Titles</h5>
+                    <p className="text-[11px] text-zinc-400">Show titles below cards or bold number + duration inside</p>
+                  </div>
+                  <div className="flex items-center gap-1 bg-zinc-800 p-1 rounded-lg border border-zinc-700 shrink-0">
+                    <button
+                      type="button"
+                      onClick={() =>
+                        onUpdateSettings({ ...adminSettings, hideFullSizeEpisodeTitles: false })
+                      }
+                      className={`px-2.5 py-1 rounded text-xs font-semibold cursor-pointer ${
+                        !adminSettings.hideFullSizeEpisodeTitles
+                          ? 'bg-red-600 text-white'
+                          : 'text-zinc-400 hover:text-white'
+                      }`}
+                    >
+                      Show Title
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() =>
+                        onUpdateSettings({ ...adminSettings, hideFullSizeEpisodeTitles: true })
+                      }
+                      className={`px-2.5 py-1 rounded text-xs font-semibold cursor-pointer ${
+                        adminSettings.hideFullSizeEpisodeTitles
+                          ? 'bg-red-600 text-white'
+                          : 'text-zinc-400 hover:text-white'
+                      }`}
+                    >
+                      Number Only
+                    </button>
+                  </div>
+                </div>
               </div>
             </div>
           )}

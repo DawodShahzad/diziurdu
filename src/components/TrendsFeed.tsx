@@ -1,6 +1,6 @@
 import React, { useState, useMemo, useRef, useEffect } from 'react';
 import { Show } from '../types';
-import { ArrowLeft, Volume2, VolumeX, Plus, Check, Play, ChevronLeft, ChevronRight } from 'lucide-react';
+import { Volume2, VolumeX, Plus, Check, Play, ChevronLeft, ChevronRight } from 'lucide-react';
 import { ShowTitleLogo } from './ShowTitleLogo';
 import { ShowCard } from './ShowCard';
 import { ResumeButtonProgress } from './ResumeButtonProgress';
@@ -108,10 +108,10 @@ export const TrendsFeed: React.FC<TrendsFeedProps> = ({
             {onBack && (
               <button
                 onClick={onBack}
-                className="p-1.5 -ml-1.5 text-white hover:text-zinc-300 active:scale-95 cursor-pointer"
+                className="p-1 -ml-1.5 text-white hover:text-white/80 active:scale-90 transition-transform cursor-pointer"
                 aria-label="Back"
               >
-                <ArrowLeft className="w-5 h-5" />
+                <ChevronLeft className="w-7 h-7 stroke-[2.2]" />
               </button>
             )}
             <h1 className="text-xl font-black text-white font-display tracking-tight">New & Hot</h1>

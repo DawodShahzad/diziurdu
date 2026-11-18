@@ -1,6 +1,7 @@
 import React, { useState, useRef, useEffect, useCallback, useMemo } from 'react';
-import { Show } from '../types';
-import { Play, Plus, Check, ThumbsUp, ChevronDown, Volume2, VolumeX, Info, MoreVertical } from 'lucide-react';
+import { createPortal } from 'react-dom';
+import { Show, DetailsOriginMeta } from '../types';
+import { Play, Plus, Check, ThumbsUp, ChevronDown, Volume2, VolumeX, Info, MoreVertical, MoreHorizontal, Star } from 'lucide-react';
 import { ShowTitleLogo } from './ShowTitleLogo';
 import { getActiveArtwork } from '../utils/artworkRotator';
 import { attachHlsVideo, isHlsSource } from '../utils/hlsHelper';
@@ -13,7 +14,7 @@ interface ShowCardProps {
   rankNumber?: number;
   isInWatchlist: boolean;
   onToggleWatchlist: (showId: string) => void;
-  onOpenDetails: (show: Show) => void;
+  onOpenDetails: (show: Show, originMeta?: DetailsOriginMeta) => void;
   onPlay: (show: Show) => void;
   onIncrementPoints: (showId: string) => void;
   isFirst?: boolean;
@@ -31,9 +32,20 @@ interface ShowCardProps {
   isWatchlistLandscape?: boolean;
   watchProgress?: WatchProgressItem;
   disablePopout?: boolean;
+  disableVideoPreview?: boolean;
+  popoutStyle?: 'classic' | 'overlay_red' | 'immersive_fade';
   isStretchable?: boolean;
   onLongPress?: (show: Show) => void;
   biggerCards?: boolean;
+  isLiked?: boolean;
+  onToggleLike?: (showId: string) => void;
+  deferImageLoad?: boolean;
+  skeletonDelayMs?: number;
+  customPosterUrl?: string;
+  durationChip?: string;
+  episodeTitle?: string;
+  episodeSublabel?: string;
+  showOverlayLogoOnCard?: boolean;
 }
 
 // Track scrolling state so pointer changes to arrow cursor and cards don't pop out when scrolling
@@ -183,16 +195,34 @@ export const ShowCard: React.FC<ShowCardProps> = ({
   isWatchlistLandscape = false,
   watchProgress,
   disablePopout = false,
+  disableVideoPreview = false,
+  popoutStyle = 'classic',
   isStretchable = false,
   onLongPress,
-  biggerCards = false
+  biggerCards = false,
+  isLiked: isLikedProp,
+  onToggleLike,
+  deferImageLoad = false,
+  skeletonDelayMs = 0,
+  customPosterUrl,
+  durationChip,
+  episodeTitle,
+  episodeSublabel,
+  showOverlayLogoOnCard = false
 }) => {
   const [isHovered, setIsHovered] = useState<boolean>(false);
   const [shouldLoadVideo, setShouldLoadVideo] = useState<boolean>(false);
   const [isVideoPlaying, setIsVideoPlaying] = useState<boolean>(false);
   const [localMuted, setLocalMuted] = useState<boolean>(false);
   const isMuted = onToggleGlobalMute ? isGlobalMuted : localMuted;
-  const [isLiked, setIsLiked] = useState<boolean>(false);
+  const [localLiked, setLocalLiked] = useState<boolean>(() => {
+    try {
+      return localStorage.getItem(`dizi_liked_${show.id}`) === 'true';
+    } catch {
+      return false;
+    }
+  });
+  const isLiked = isLikedProp !== undefined ? isLikedProp : localLiked;
   const [arePreviewOverlaysHidden, setArePreviewOverlaysHidden] = useState<boolean>(false);
   const [imageError, setImageError] = useState<boolean>(false);
   const [isPageScrolling, setIsPageScrolling] = useState<boolean>(isGlobalPageScrolling);
@@ -206,12 +236,29 @@ export const ShowCard: React.FC<ShowCardProps> = ({
   const [popoutTop, setPopoutTop] = useState<number>(-35);
   const [popoutAlign, setPopoutAlign] = useState<'left' | 'center' | 'right'>('center');
   const [popoutLeftOffset, setPopoutLeftOffset] = useState<number>(0);
+  const [popoutFixedPos, setPopoutFixedPos] = useState<{ top: number; left: number }>({ top: 0, left: 0 });
+  const popoutFixedPosRef = useRef<{ top: number; left: number }>({ top: 0, left: 0 });
+  const popoutAnchorTopRef = useRef<number>(0);
+  const popoutTopOffsetRef = useRef<number>(0);
+  const popoutEmergeRafRef = useRef<{ outer: number | null; inner: number | null }>({ outer: null, inner: null });
+  const [popoutMotionStyle, setPopoutMotionStyle] = useState<{
+    transform: string;
+    opacity: number;
+    borderRadius: string;
+    transition: string;
+  }>({
+    transform: 'translate3d(0px, 0px, 0) scale(1)',
+    opacity: 1,
+    borderRadius: '12px',
+    transition: 'none'
+  });
+  const [isEmergingPopout, setIsEmergingPopout] = useState<boolean>(false);
   const [isClosingPopout, setIsClosingPopout] = useState<boolean>(false);
   const [isCollapsingStretch, setIsCollapsingStretch] = useState<boolean>(false);
   const [isStretchPointerActive, setIsStretchPointerActive] = useState<boolean>(false);
 
   const activeArtwork = getActiveArtwork(show);
-  const posterLandscapeUrl = activeArtwork.posterLandscapeUrl || show.posterLandscapeUrl;
+  const posterLandscapeUrl = customPosterUrl || activeArtwork.posterLandscapeUrl || show.posterLandscapeUrl;
   const popoutVideoSrc = useMemo(() => {
     const isDirect = (url?: string) =>
       Boolean(
@@ -227,7 +274,7 @@ export const ShowCard: React.FC<ShowCardProps> = ({
     return 'https://vjs.zencdn.net/v/oceans.mp4';
   }, [show.popoutPreviewUrl, show.hoverPreviewUrl, show.trailerUrl]);
 
-  const isPreviewActivelyPlaying = isVideoPlaying && shouldLoadVideo && Boolean(popoutVideoSrc) && !isPopoutPosterPhase;
+  const isPreviewActivelyPlaying = !disableVideoPreview && isVideoPlaying && shouldLoadVideo && Boolean(popoutVideoSrc) && !isPopoutPosterPhase;
 
   const baseCardRef = useRef<HTMLDivElement>(null);
   const stretchCardInnerRef = useRef<HTMLDivElement>(null);
@@ -240,6 +287,7 @@ export const ShowCard: React.FC<ShowCardProps> = ({
   const hoverTimer = useRef<number | null>(null);
   const videoTimer = useRef<number | null>(null);
   const popoutPosterTimerRef = useRef<number | null>(null);
+  const popoutEmergeTimerRef = useRef<number | null>(null);
   const stretchVideoTimerRef = useRef<number | null>(null);
   const popoutCloseTimerRef = useRef<number | null>(null);
   const stretchCollapseTimerRef = useRef<number | null>(null);
@@ -326,7 +374,7 @@ export const ShowCard: React.FC<ShowCardProps> = ({
 
   // Video attachment effect supporting .m3u8 HLS and direct video playback
   useEffect(() => {
-    if ((!isHovered && !isClosingPopout) || !popoutVideoSrc) {
+    if (disableVideoPreview || (!isHovered && !isClosingPopout) || !popoutVideoSrc) {
       setIsVideoPlaying(false);
       return;
     }
@@ -439,7 +487,10 @@ export const ShowCard: React.FC<ShowCardProps> = ({
     const screenWidth = typeof window !== 'undefined' ? window.innerWidth : 1280;
     const scale = Math.max(0.8, Math.min(1.0, screenWidth / 1366));
     const targetWidth = Math.max(minWidth, Math.round(originalWidth * scale));
-    const targetHeight = Math.round((targetWidth / originalWidth) * 390);
+    const targetHeight =
+      popoutStyle === 'immersive_fade'
+        ? Math.round(targetWidth * (9 / 16))
+        : Math.round((targetWidth / originalWidth) * 390);
     return { targetWidth, targetHeight };
   };
 
@@ -540,31 +591,46 @@ export const ShowCard: React.FC<ShowCardProps> = ({
       window.clearTimeout(popoutCloseTimerRef.current);
       popoutCloseTimerRef.current = null;
     }
-    setIsClosingPopout(false);
+    if (popoutEmergeTimerRef.current) {
+      window.clearTimeout(popoutEmergeTimerRef.current);
+      popoutEmergeTimerRef.current = null;
+    }
+    if (popoutEmergeRafRef.current.outer) cancelAnimationFrame(popoutEmergeRafRef.current.outer);
+    if (popoutEmergeRafRef.current.inner) cancelAnimationFrame(popoutEmergeRafRef.current.inner);
 
-    // Calculate dimensions matching the original sizing (originalWidth: 454px, min 80% = 363px)
-    // For smaller special feed cards, scale popout width proportionally so it matches the smaller card thumbnail
+    setIsClosingPopout(false);
+    setIsEmergingPopout(true);
+    popoutEmergeTimerRef.current = window.setTimeout(() => {
+      setIsEmergingPopout(false);
+      popoutEmergeTimerRef.current = null;
+    }, 265);
+
     const baseDimensions = getPopoutDimensions();
     const targetWidth = cardSize === 'special' ? Math.round(baseDimensions.targetWidth * 0.78) : baseDimensions.targetWidth;
-    const targetHeight = Math.round((targetWidth / 454) * 390);
+    const targetHeight =
+      popoutStyle === 'immersive_fade'
+        ? Math.round(targetWidth * (9 / 16))
+        : Math.round((targetWidth / 454) * 390);
     setPopoutWidth(targetWidth);
 
-    // Calculate positioning relative to the base thumbnail so the preview video sits right over the thumbnail
+    // Measure card thumbnail rect in viewport coordinates for fixed portal positioning over Navbar
     const rect = baseCardRef.current.getBoundingClientRect();
     const screenWidth = typeof window !== 'undefined' ? window.innerWidth : 1280;
-    const thumbEl = (baseCardRef.current.querySelector('.aspect-video') as HTMLElement) || baseCardRef.current;
+    const thumbEl =
+      (baseCardRef.current.querySelector('[data-card-thumb="true"]') as HTMLElement) ||
+      (baseCardRef.current.querySelector('.aspect-video') as HTMLElement) ||
+      baseCardRef.current;
     const thumbRect = thumbEl.getBoundingClientRect();
-    let thumbOffsetLeft = Math.max(0, Math.round(thumbRect.left - rect.left));
+    popoutAnchorTopRef.current = thumbRect.top;
 
-    // Center popout view in the vertical center of the card thumbnail,
-    // clamped against the top navbar (70px) so popout view is never cut off from top or bottom
-    const rawTopOffset = Math.round((thumbRect.height - targetHeight) / 2);
-    const maxSafeUpward = -(Math.max(10, Math.round(thumbRect.top - 70)));
-    const topOffset = Math.max(Math.min(-15, rawTopOffset), Math.min(-15, maxSafeUpward));
+    // Center popout vertically over the base thumbnail; float cleanly above Navbar when near top
+    const rawFixedTop = Math.round(thumbRect.top + (thumbRect.height - targetHeight) / 2);
+    const fixedTop = Math.max(12, rawFixedTop);
+    popoutTopOffsetRef.current = fixedTop - thumbRect.top;
+    const topOffset = Math.round(fixedTop - rect.top);
     setPopoutTop(topOffset);
 
     // Calculate alignment relative to the scroll container's visible bounds
-    // In Special Feed, the scroll container starts after the pinned column (~300px), not at 0!
     const feedStrip = baseCardRef.current.closest('[data-feed-strip="true"]');
     const scrollContainer = feedStrip?.querySelector('.overflow-x-auto');
     const containerRect = scrollContainer ? scrollContainer.getBoundingClientRect() : null;
@@ -577,17 +643,47 @@ export const ShowCard: React.FC<ShowCardProps> = ({
     const leftLimit = leftBoundary + 16;
     const rightLimit = rightBoundary - 16;
 
+    let fixedLeft = 0;
     if (isFirst || cardCenter - halfWidth < leftLimit || thumbRect.left < leftLimit) {
       setPopoutAlign('left');
-      // If card thumbnail is slightly shifted to the left of the container boundary, adjust offset so popout never cuts off on the left
-      const edgeShift = Math.max(0, Math.round(leftBoundary - thumbRect.left));
-      thumbOffsetLeft += edgeShift;
+      fixedLeft = Math.max(12, Math.round(Math.max(leftBoundary, thumbRect.left)));
+      setPopoutLeftOffset(Math.max(0, Math.round(fixedLeft - rect.left)));
     } else if (isLast || cardCenter + halfWidth > rightLimit || thumbRect.right > rightLimit) {
       setPopoutAlign('right');
+      const clampedRight = Math.max(12, Math.round(screenWidth - Math.min(rightBoundary, thumbRect.right)));
+      fixedLeft = Math.max(12, Math.round(screenWidth - clampedRight - targetWidth));
+      setPopoutLeftOffset(0);
     } else {
       setPopoutAlign('center');
+      fixedLeft = Math.max(12, Math.round(cardCenter - halfWidth));
+      setPopoutLeftOffset(Math.max(0, Math.round(thumbRect.left - rect.left)));
     }
-    setPopoutLeftOffset(thumbOffsetLeft);
+
+    popoutFixedPosRef.current = { top: fixedTop, left: fixedLeft };
+    setPopoutFixedPos({ top: fixedTop, left: fixedLeft });
+
+    // Start FLIP emergence from the exact underlying card thumbnail rectangle (top-left origin = zero offset drift)
+    const initScale = Math.max(0.35, Math.min(0.96, thumbRect.width / Math.max(1, targetWidth)));
+    const initDx = Math.round(thumbRect.left - fixedLeft);
+    const initDy = Math.round(thumbRect.top - fixedTop);
+    setPopoutMotionStyle({
+      transform: `translate3d(${initDx}px, ${initDy}px, 0) scale(${initScale.toFixed(4)})`,
+      opacity: 0.65,
+      borderRadius: '10px',
+      transition: 'none'
+    });
+
+    popoutEmergeRafRef.current.outer = requestAnimationFrame(() => {
+      popoutEmergeRafRef.current.inner = requestAnimationFrame(() => {
+        setPopoutMotionStyle({
+          transform: 'translate3d(0px, 0px, 0) scale(1)',
+          opacity: 1,
+          borderRadius: '12px',
+          transition:
+            'transform 260ms cubic-bezier(0.22, 1, 0.36, 1), opacity 180ms ease-out, border-radius 240ms ease'
+        });
+      });
+    });
 
     setIsHovered(true);
     setIsPopoutPosterPhase(true);
@@ -595,12 +691,14 @@ export const ShowCard: React.FC<ShowCardProps> = ({
     setIsVideoPlaying(false);
     setArePreviewOverlaysHidden(false);
 
-    // When popout view opens, remain showing the poster for 1 second, then show the preview
+    // When popout view opens, remain showing the poster for 1 second, then show the preview (unless disabled)
     if (popoutPosterTimerRef.current) window.clearTimeout(popoutPosterTimerRef.current);
-    popoutPosterTimerRef.current = window.setTimeout(() => {
-      setIsPopoutPosterPhase(false);
-      setShouldLoadVideo(true);
-    }, 1000);
+    if (!disableVideoPreview) {
+      popoutPosterTimerRef.current = window.setTimeout(() => {
+        setIsPopoutPosterPhase(false);
+        setShouldLoadVideo(true);
+      }, 1000);
+    }
 
     onHoverPreviewStart?.();
     onPopoutViewOpen?.();
@@ -852,6 +950,13 @@ export const ShowCard: React.FC<ShowCardProps> = ({
       window.clearTimeout(popoutCloseTimerRef.current);
       popoutCloseTimerRef.current = null;
     }
+    if (popoutEmergeTimerRef.current) {
+      window.clearTimeout(popoutEmergeTimerRef.current);
+      popoutEmergeTimerRef.current = null;
+    }
+    if (popoutEmergeRafRef.current.outer) cancelAnimationFrame(popoutEmergeRafRef.current.outer);
+    if (popoutEmergeRafRef.current.inner) cancelAnimationFrame(popoutEmergeRafRef.current.inner);
+    setIsEmergingPopout(false);
 
     // Stop video preview immediately and reset to poster phase so re-hover strictly starts from poster
     setShouldLoadVideo(false);
@@ -869,23 +974,49 @@ export const ShowCard: React.FC<ShowCardProps> = ({
     if (immediate || !isHovered) {
       setIsHovered(false);
       setIsClosingPopout(false);
+      setIsEmergingPopout(false);
       setArePreviewOverlaysHidden(false);
       onHoverPreviewEnd?.();
       return;
     }
 
-    // Smooth Netflix popout collapse animation (350ms)
+    // Measure exact live base card coordinates relative to current un-transformed fixedLeft/fixedTop (origin 0,0)
+    let endScale = 0.68;
+    let endDx = 0;
+    let endDy = 36;
+    if (baseCardRef.current) {
+      const thumbEl =
+        (baseCardRef.current.querySelector('[data-card-thumb="true"]') as HTMLElement) ||
+        (baseCardRef.current.querySelector('.aspect-video') as HTMLElement) ||
+        baseCardRef.current;
+      const thumbRect = thumbEl.getBoundingClientRect();
+      if (thumbRect.width > 10) {
+        endScale = Math.max(0.35, Math.min(0.98, thumbRect.width / Math.max(1, popoutWidth)));
+        endDx = Math.round(thumbRect.left - popoutFixedPosRef.current.left);
+        endDy = Math.round(thumbRect.top - popoutFixedPosRef.current.top);
+      }
+    }
+
+    // Continuous smooth GPU collapse straight back onto exact base card rectangle (no upward jump, no height snap)
     setIsClosingPopout(true);
+    setPopoutMotionStyle({
+      transform: `translate3d(${endDx}px, ${endDy}px, 0) scale(${endScale.toFixed(4)})`,
+      opacity: 0,
+      borderRadius: '10px',
+      transition: 'transform 210ms cubic-bezier(0.22, 1, 0.36, 1), opacity 130ms ease-in 75ms, border-radius 180ms ease'
+    });
+
     popoutCloseTimerRef.current = window.setTimeout(() => {
       setIsHovered(false);
       setIsClosingPopout(false);
+      setIsEmergingPopout(false);
       setIsPopoutPosterPhase(true);
       setShouldLoadVideo(false);
       setIsVideoPlaying(false);
       setArePreviewOverlaysHidden(false);
       onHoverPreviewEnd?.();
       popoutCloseTimerRef.current = null;
-    }, 350);
+    }, 215);
   };
 
   // When cursor or pointer goes away from base card or popout view, collapse immediately
@@ -953,14 +1084,15 @@ export const ShowCard: React.FC<ShowCardProps> = ({
     };
   }, [isHovered, isClosingPopout, isStretchable, cancelStretchHover, triggerStretchCollapse]);
 
-  // Collapse popout view or stretchable card when card leaves stationary pointer on scroll,
-  // or when popout view goes 50% or more past the left or right edge
+  // Track any scroll direction (vertical + horizontal) while popout is open,
+  // collapsing ONLY when popout leaves stationary cursor pointer or goes >= 50% past edges.
   useEffect(() => {
     if (!isHovered && !isClosingPopout && !isCollapsingStretch) return;
 
     const checkEdgeOrPointerCollapse = () => {
       if (!isHovered || !baseCardRef.current) return;
       const screenWidth = typeof window !== 'undefined' ? window.innerWidth : 1280;
+      const screenHeight = typeof window !== 'undefined' ? window.innerHeight : 720;
 
       const feedStrip = baseCardRef.current.closest('[data-feed-strip="true"]');
       const scrollContainer = feedStrip?.querySelector('.overflow-x-auto');
@@ -969,61 +1101,100 @@ export const ShowCard: React.FC<ShowCardProps> = ({
       const leftBound = containerRect ? Math.max(0, containerRect.left) : 0;
       const rightBound = containerRect ? Math.min(screenWidth, containerRect.right) : screenWidth;
 
-      // 1. Stationary pointer check on scroll:
-      // When user is not moving their pointer and scrolling up/down or left/right,
-      // and popout view or stretchable card leaves the pointer, it collapses.
-      if (mousePosRef.current && mousePosRef.current.x >= 0 && mousePosRef.current.y >= 0) {
-        const { x, y } = mousePosRef.current;
-        if (isStretchable) {
+      if (isStretchable) {
+        if (mousePosRef.current && mousePosRef.current.x >= 0 && mousePosRef.current.y >= 0) {
+          const { x, y } = mousePosRef.current;
           const cardEl = stretchCardInnerRef.current || baseCardRef.current;
           const sRect = cardEl.getBoundingClientRect();
-          if (
-            y < sRect.top ||
-            y > sRect.bottom ||
-            x < leftBound ||
-            x > rightBound
-          ) {
+          if (y < sRect.top || y > sRect.bottom || x < leftBound || x > rightBound) {
             cancelStretchHover();
             triggerStretchCollapse(true);
-            return;
-          }
-        } else {
-          const baseRect = baseCardRef.current.getBoundingClientRect();
-          const popoutRect = popoutRef.current?.getBoundingClientRect();
-
-          const inBase = x >= baseRect.left && x <= baseRect.right && y >= baseRect.top && y <= baseRect.bottom;
-          const inPopout = popoutRect && x >= popoutRect.left && x <= popoutRect.right && y >= popoutRect.top && y <= popoutRect.bottom;
-
-          if (!inBase && !inPopout) {
-            closePopout();
-            return;
           }
         }
+        return;
       }
 
-      // 2. 50% Edge Collapse:
-      // Popout view only collapses when it goes 50% or more to left or right edge.
-      // Stretchable cards do NOT collapse on edge bounds as they expand inline and shift cards smoothly.
-      if (!isStretchable) {
-        const targetEl = popoutRef.current || baseCardRef.current;
-        const targetRect = targetEl.getBoundingClientRect();
-        const vLeft = Math.max(leftBound, targetRect.left);
-        const vRight = Math.min(rightBound, targetRect.right);
-        const vWidth = Math.max(0, vRight - vLeft);
+      const thumbEl =
+        (baseCardRef.current.querySelector('[data-card-thumb="true"]') as HTMLElement) ||
+        (baseCardRef.current.querySelector('.aspect-video') as HTMLElement) ||
+        baseCardRef.current;
+      const thumbRect = thumbEl.getBoundingClientRect();
+      const baseRect = baseCardRef.current.getBoundingClientRect();
+      const popRect = popoutRef.current?.getBoundingClientRect();
 
-        // Only collapse when 50% or more has gone beyond the container edge
-        if (vWidth < targetRect.width * 0.5) {
+      const nextTop = Math.round(thumbRect.top + popoutTopOffsetRef.current);
+      const popH = popRect?.height || (popoutStyle === 'immersive_fade' ? Math.round(popoutWidth * (9 / 16)) : Math.round((popoutWidth / 454) * 390));
+      let projLeft = 0;
+      if (popoutAlign === 'left') {
+        projLeft = Math.max(12, Math.round(Math.max(leftBound, thumbRect.left)));
+      } else if (popoutAlign === 'right') {
+        const clampedRight = Math.max(12, Math.round(screenWidth - Math.min(rightBound, thumbRect.right)));
+        projLeft = Math.max(12, Math.round(screenWidth - clampedRight - popoutWidth));
+      } else {
+        const cardCenter = Math.round(thumbRect.left + thumbRect.width / 2);
+        projLeft = Math.max(12, Math.round(cardCenter - popoutWidth / 2));
+      }
+      popoutFixedPosRef.current = { top: nextTop, left: projLeft };
+      setPopoutFixedPos({ top: nextTop, left: projLeft });
+
+      // 1. Stationary pointer check on scroll:
+      // Popout tracks card across vertical and horizontal scroll and ONLY collapses if it leaves cursor pointer.
+      if (mousePosRef.current && mousePosRef.current.x >= 0 && mousePosRef.current.y >= 0) {
+        const { x, y } = mousePosRef.current;
+        const inBase = x >= baseRect.left && x <= baseRect.right && y >= baseRect.top && y <= baseRect.bottom;
+        const inProjectedPopout =
+          x >= projLeft &&
+          x <= projLeft + popoutWidth &&
+          y >= nextTop &&
+          y <= nextTop + popH;
+        const inPopout = popRect && x >= popRect.left && x <= popRect.right && y >= popRect.top && y <= popRect.bottom;
+
+        if (!inBase && !inProjectedPopout && !inPopout) {
           closePopout();
           return;
         }
       }
+
+      // 2. 50% Edge Collapse (horizontal container bounds or vertical viewport bounds)
+      const vLeft = Math.max(leftBound, projLeft);
+      const vRight = Math.min(rightBound, projLeft + popoutWidth);
+      const vWidth = Math.max(0, vRight - vLeft);
+
+      const vTop = Math.max(0, nextTop);
+      const vBottom = Math.min(screenHeight, nextTop + popH);
+      const vHeight = Math.max(0, vBottom - vTop);
+
+      if (vWidth < popoutWidth * 0.5 || vHeight < popH * 0.5) {
+        closePopout();
+      }
     };
 
-    window.addEventListener('scroll', checkEdgeOrPointerCollapse, { passive: true, capture: true });
     const feedStrip = baseCardRef.current?.closest('[data-feed-strip="true"]');
-    const scrollContainer = feedStrip?.querySelector('.overflow-x-auto');
+    const scrollContainer = feedStrip?.querySelector('.overflow-x-auto') as HTMLElement | null;
+
+    // Forward horizontal wheel/trackpad scroll through the fixed portaled popout to the row beneath it
+    const handlePopoutWheel = (e: WheelEvent) => {
+      if (!scrollContainer || isStretchable || !isHovered || isClosingPopout) return;
+      const horizDelta =
+        Math.abs(e.deltaX) >= Math.abs(e.deltaY)
+          ? e.deltaX
+          : e.shiftKey && Math.abs(e.deltaY) > 0
+          ? e.deltaY
+          : 0;
+      if (Math.abs(horizDelta) > 0.5) {
+        e.preventDefault();
+        scrollContainer.scrollLeft += horizDelta;
+        triggerGlobalScroll();
+      }
+    };
+
+    const popoutEl = popoutRef.current;
+    window.addEventListener('scroll', checkEdgeOrPointerCollapse, { passive: true, capture: true });
     if (scrollContainer) {
       scrollContainer.addEventListener('scroll', checkEdgeOrPointerCollapse, { passive: true });
+    }
+    if (popoutEl && !isStretchable) {
+      popoutEl.addEventListener('wheel', handlePopoutWheel, { passive: false });
     }
 
     return () => {
@@ -1031,8 +1202,11 @@ export const ShowCard: React.FC<ShowCardProps> = ({
       if (scrollContainer) {
         scrollContainer.removeEventListener('scroll', checkEdgeOrPointerCollapse);
       }
+      if (popoutEl) {
+        popoutEl.removeEventListener('wheel', handlePopoutWheel);
+      }
     };
-  }, [isHovered, isClosingPopout, isCollapsingStretch, isStretchable, triggerStretchCollapse]);
+  }, [isHovered, isClosingPopout, isCollapsingStretch, isStretchable, popoutAlign, popoutWidth, popoutStyle, triggerStretchCollapse]);
 
   const handleMouseEnter = (e: React.MouseEvent) => {
     if (isGlobalPageScrolling) return;
@@ -1050,6 +1224,12 @@ export const ShowCard: React.FC<ShowCardProps> = ({
       popoutCloseTimerRef.current = null;
       setIsClosingPopout(false);
       setIsHovered(true);
+      setPopoutMotionStyle({
+        transform: 'translate3d(0px, 0px, 0) scale(1)',
+        opacity: 1,
+        borderRadius: '12px',
+        transition: 'transform 220ms cubic-bezier(0.22, 1, 0.36, 1), opacity 160ms ease-out'
+      });
     }
 
     if (stretchCollapseTimerRef.current) {
@@ -1166,6 +1346,23 @@ export const ShowCard: React.FC<ShowCardProps> = ({
     };
   }, [isStretchable, triggerStretchCollapse]);
 
+  const verticalPosterSrc =
+    (isStretchable || aspectRatio === '9:16')
+      ? show.poster9x16Url || show.poster9x16Urls?.[0] || show.poster1x2Url || show.posterVerticalUrl || show.posterLandscapeUrl || show.backdropUrl
+      : show.posterVerticalUrl || show.posterLandscapeUrl || show.backdropUrl;
+
+  const buildOriginMeta = useCallback((): DetailsOriginMeta => {
+    const thumbEl =
+      (baseCardRef.current?.querySelector('[data-card-thumb="true"]') as HTMLElement | null) ||
+      baseCardRef.current;
+    const isPortraitCard = aspectRatio === '2:3' || aspectRatio === '9:16' || isStretchable;
+    return {
+      element: thumbEl,
+      sourceFeedType: isStretchable ? 'other' : 'normal',
+      posterUrl: isPortraitCard ? verticalPosterSrc : posterLandscapeUrl
+    };
+  }, [aspectRatio, isStretchable, verticalPosterSrc, posterLandscapeUrl]);
+
   const handleCardClick = (e?: React.MouseEvent) => {
     if (isLongPressActiveRef.current) {
       isLongPressActiveRef.current = false;
@@ -1184,9 +1381,10 @@ export const ShowCard: React.FC<ShowCardProps> = ({
     }
     cancelStretchHover();
     onIncrementPoints(show.id);
+    const meta = buildOriginMeta();
     // When the user clicks on the feed card before the popout is shown, open the more info page immediately!
     closePopout(true);
-    onOpenDetails(show);
+    onOpenDetails(show, meta);
   };
 
   const handlePlayClick = (e: React.MouseEvent) => {
@@ -1203,14 +1401,20 @@ export const ShowCard: React.FC<ShowCardProps> = ({
 
   const handleLikeClick = (e: React.MouseEvent) => {
     e.stopPropagation();
-    setIsLiked(!isLiked);
+    const next = !isLiked;
+    setLocalLiked(next);
+    try {
+      localStorage.setItem(`dizi_liked_${show.id}`, String(next));
+    } catch {}
+    onToggleLike?.(show.id);
   };
 
   const handleInfoClick = (e: React.MouseEvent) => {
     e.stopPropagation();
     onIncrementPoints(show.id);
+    const meta = buildOriginMeta();
     closePopout(true);
-    onOpenDetails(show);
+    onOpenDetails(show, meta);
   };
 
   const toggleSound = (e: React.MouseEvent) => {
@@ -1229,11 +1433,6 @@ export const ShowCard: React.FC<ShowCardProps> = ({
     }
   };
 
-  const verticalPosterSrc =
-    (isStretchable || aspectRatio === '9:16')
-      ? show.poster9x16Url || show.poster9x16Urls?.[0] || show.poster1x2Url || show.posterVerticalUrl || show.posterLandscapeUrl || show.backdropUrl
-      : show.posterVerticalUrl || show.posterLandscapeUrl || show.backdropUrl;
-
   return (
     /* Base Card in the horizontal list: direct click opens details, long-press opens bottom sheet options on mobile */
     <div
@@ -1247,14 +1446,15 @@ export const ShowCard: React.FC<ShowCardProps> = ({
           e.preventDefault();
           sessionStorage.setItem('dizi_focus_play_on_next_tab', 'true');
           onIncrementPoints(show.id);
-          onOpenDetails(show);
+          onOpenDetails(show, buildOriginMeta());
         } else if (e.key === ' ') {
           e.preventDefault();
           if (!disablePopout) openPopout();
         }
       }}
+      data-show-id={show.id}
       className={`card-item relative ${cardSize === 'full' ? 'w-full' : 'shrink-0'} select-none py-1 group/item ${
-        isHovered || isClosingPopout ? 'z-[110]' : 'z-[1]'
+        isStretchable && isHovered ? 'z-[30]' : 'z-[1]'
       } ${
         isPageScrolling
           ? 'cursor-default'
@@ -1265,7 +1465,7 @@ export const ShowCard: React.FC<ShowCardProps> = ({
           : 'cursor-pointer'
       } focus:outline-none focus-visible:outline-none`}
       style={{
-        zIndex: isHovered || isClosingPopout ? 110 : 1
+        zIndex: isStretchable && isHovered ? 30 : 1
       }}
         onMouseEnter={handleMouseEnter}
         onMouseLeave={handleMouseLeave}
@@ -1324,7 +1524,7 @@ export const ShowCard: React.FC<ShowCardProps> = ({
                 isHovered
                   ? 'w-[622px] sm:w-[702px] md:w-[773px] lg:w-[calc(((100vw-112px)/4.05)*2.6667)] max-w-[907px] z-30 shadow-none'
                   : 'w-[235px] sm:w-[265px] md:w-[290px] lg:w-[calc((100vw-112px)/4.05)] max-w-[340px] z-10 shadow-none'
-              } h-[350px] sm:h-[395px] md:h-[435px] lg:h-[calc(((100vw-112px)/4.05)*1.5)] max-h-[510px] origin-left rounded-[6px] overflow-hidden bg-[#181818] border-0 shrink-0`}
+              } h-[350px] sm:h-[395px] md:h-[435px] lg:h-[calc(((100vw-112px)/4.05)*1.5)] max-h-[510px] origin-left rounded-[6px] md:rounded-[10px] overflow-hidden bg-[#181818] border-0 shrink-0`}
               data-card-thumb="true"
             >
               {/* Layer 1: Vertical Poster (strictly unexpanded width, direct hide with NO stretch or zoom-out) */}
@@ -1332,6 +1532,8 @@ export const ShowCard: React.FC<ShowCardProps> = ({
                 <MediaImage
                   src={verticalPosterSrc}
                   fallbackTitle={show.title}
+                  deferLoad={deferImageLoad}
+                  skeletonDelayMs={skeletonDelayMs}
                   onError={() => setImageError(true)}
                   className="w-full h-full object-cover select-none"
                 />
@@ -1350,12 +1552,13 @@ export const ShowCard: React.FC<ShowCardProps> = ({
                   src={show.stretchableFeedBackdropUrl || show.backdropUrl || posterLandscapeUrl}
                   fallbackTitle={show.title}
                   hideFallback={isVideoPlaying}
+                  deferLoad={!isHovered && deferImageLoad}
                   className={`w-full h-full object-cover ${
                     isVideoPlaying ? 'opacity-0' : 'opacity-100'
                   }`}
                 />
 
-                {/* Video preview for stretchable feed (shown after 1.5s backdrop display) */}
+                {/* Video preview for stretchable feed (fills 100% of container edge-to-edge) */}
                 {isStretchable && shouldLoadVideo && popoutVideoSrc && (
                   <video
                     ref={stretchVideoRef}
@@ -1400,18 +1603,18 @@ export const ShowCard: React.FC<ShowCardProps> = ({
                       setShouldLoadVideo(false);
                     }}
                     onError={() => setIsVideoPlaying(false)}
-                    className={`absolute -inset-[1px] w-[calc(100%+2px)] h-[calc(100%+2px)] object-cover z-10 transition-opacity duration-300 ${
+                    className={`absolute inset-0 w-full h-full max-w-none max-h-none object-cover object-center z-10 transition-opacity duration-300 ${
                       isVideoPlaying ? 'opacity-100' : 'opacity-0 pointer-events-none'
-                    } ${isRightEdgeCard ? 'object-right' : 'object-left'}`}
+                    }`}
                   />
                 )}
 
-                {/* Slight glare from bottom-left side */}
+                {/* Subtle, smaller & lighter glare from bottom-left side */}
                 <div
                   className="absolute inset-0 pointer-events-none z-10"
                   style={{
                     background:
-                      'radial-gradient(ellipse 95% 85% at 0% 100%, rgba(0,0,0,0.95) 0%, rgba(0,0,0,0.65) 45%, rgba(0,0,0,0.15) 75%, transparent 100%)'
+                      'radial-gradient(ellipse 52% 45% at 0% 100%, rgba(0,0,0,0.52) 0%, rgba(0,0,0,0.22) 40%, rgba(0,0,0,0.04) 70%, transparent 90%)'
                   }}
                 />
 
@@ -1471,11 +1674,11 @@ export const ShowCard: React.FC<ShowCardProps> = ({
                   </div>
                 </div>
 
-                {/* Bottom right mute button in stretchable feed */}
+                {/* Bottom right mute button in stretchable feed (low opacity background) */}
                 {isStretchable && isHovered && isVideoPlaying && shouldLoadVideo && (
                   <button
                     onClick={toggleSound}
-                    className="absolute bottom-3.5 right-3.5 z-30 w-8 h-8 rounded-full bg-black/50 hover:bg-black/75 text-white border border-white/20 flex items-center justify-center cursor-pointer shadow-md backdrop-blur-none transition-colors"
+                    className="absolute bottom-3.5 right-3.5 z-30 w-8 h-8 rounded-full bg-black/20 hover:bg-black/40 text-white border border-white/15 flex items-center justify-center cursor-pointer transition-colors"
                     aria-label="Toggle mute"
                   >
                     {isMuted ? <VolumeX className="w-4 h-4" /> : <Volume2 className="w-4 h-4" />}
@@ -1503,6 +1706,8 @@ export const ShowCard: React.FC<ShowCardProps> = ({
               <MediaImage
                 src={verticalPosterSrc}
                 fallbackTitle={show.title}
+                deferLoad={deferImageLoad}
+                skeletonDelayMs={skeletonDelayMs}
                 onError={() => setImageError(true)}
                 className="w-full h-full object-cover"
               />
@@ -1525,6 +1730,8 @@ export const ShowCard: React.FC<ShowCardProps> = ({
               <MediaImage
                 src={verticalPosterSrc}
                 fallbackTitle={show.title}
+                deferLoad={deferImageLoad}
+                skeletonDelayMs={skeletonDelayMs}
                 onError={() => setImageError(true)}
                 className="w-full h-full object-cover"
               />
@@ -1539,28 +1746,36 @@ export const ShowCard: React.FC<ShowCardProps> = ({
               )}
             </div>
           ) : isWatchlistLandscape ? (
-            /* My List in Mobile layout: SAME SIZE and 16:9 aspect ratio as continue watching, but just card thumbnail (no progress bar, no time left) */
-            <div className="relative w-[68vw] max-w-[295px] sm:w-[260px] md:w-[290px] flex flex-col shrink-0">
-              <div data-card-thumb="true" className="relative w-full aspect-video rounded-xl sm:rounded-[6px] overflow-hidden bg-[#181818] border-0 shadow-none transition-all duration-300">
+            /* My List in Mobile layout (fallback landscape if explicitly requested) */
+            <div className="relative w-[calc((100vw-24px)/2.18)] sm:w-[260px] md:w-[290px] flex flex-col shrink-0">
+              <div data-card-thumb="true" className="relative w-full aspect-video rounded-[7px] sm:rounded-[6px] md:rounded-[10px] overflow-hidden bg-[#111] sm:bg-[#181818] border-0 shadow-none transition-all duration-300">
                 <MediaImage
                   src={posterLandscapeUrl}
                   fallbackTitle={show.title}
+                  deferLoad={deferImageLoad}
+                  skeletonDelayMs={skeletonDelayMs}
                   onError={() => setImageError(true)}
                   className="w-full h-full object-cover"
                 />
               </div>
             </div>
           ) : isContinueWatching ? (
-            /* 3. Continue Watching:
-               - On Mobile: Matching image_74bcd37d.png with progress bar inside card at bottom, rounded-xl corners,
-                 and below the card: S1 E1  24 min left + 3 vertical dots menu button
+            /* 3. Keep Watching:
+               - On Mobile: 2 full cards + edge of 3rd, progress bar inside card at bottom, subtle rounded-[7px] corners,
+                 and below card: S1 E1  24 min left + 3 vertical dots menu button
                - On Desktop & Tablet: Progress bar below card
             */
-            <div className="relative w-[68vw] max-w-[295px] sm:w-[260px] md:w-[290px] flex flex-col shrink-0">
-              <div data-card-thumb="true" className="relative w-full aspect-video rounded-xl sm:rounded-[6px] overflow-hidden bg-[#181818] border-0 shadow-none transition-all duration-300">
+            <div className={`relative ${
+              biggerCards
+                ? 'w-[calc((100vw-20px)/2.12)] sm:w-[295px] md:w-[340px] lg:w-[calc((100vw-112px)/3.35)] max-w-[420px]'
+                : 'w-[calc((100vw-20px)/2.12)] sm:w-[265px] md:w-[290px] lg:w-[calc((100vw-112px)/4.05)] max-w-[340px]'
+            } flex flex-col shrink-0`}>
+              <div data-card-thumb="true" className="relative w-full aspect-video rounded-[7px] sm:rounded-[6px] md:rounded-[10px] overflow-hidden bg-[#111] sm:bg-[#181818] border-0 shadow-none transition-all duration-300">
                 <MediaImage
                   src={posterLandscapeUrl}
                   fallbackTitle={show.title}
+                  deferLoad={deferImageLoad}
+                  skeletonDelayMs={skeletonDelayMs}
                   onError={() => setImageError(true)}
                   className="w-full h-full object-cover"
                 />
@@ -1577,7 +1792,7 @@ export const ShowCard: React.FC<ShowCardProps> = ({
                 )}
               </div>
 
-              {/* Mobile layout beneath card: S1 E1  24 min left  ⋮ (matching image_74bcd37d.png) */}
+              {/* Mobile layout beneath card: S1 E1  24m left  ⋮ */}
               <div className="sm:hidden flex items-center justify-between pt-1.5 px-0.5 select-none">
                 <div className="flex items-center gap-2 min-w-0">
                   {(show.type === 'series' || (show.seasons && show.seasons.length > 0)) && (
@@ -1587,8 +1802,8 @@ export const ShowCard: React.FC<ShowCardProps> = ({
                   )}
                   <span className="text-zinc-400 font-normal text-[13px] truncate">
                     {watchProgress?.duration && watchProgress?.currentTime !== undefined && watchProgress.duration > watchProgress.currentTime
-                      ? `${Math.max(1, Math.round((watchProgress.duration - watchProgress.currentTime) / 60))} min left`
-                      : '24 min left'}
+                      ? formatProgressTime(watchProgress.currentTime, watchProgress.duration)
+                      : '24m left'}
                   </span>
                 </div>
                 <button
@@ -1608,7 +1823,7 @@ export const ShowCard: React.FC<ShowCardProps> = ({
             </div>
           ) : (
             /* 4. Default Desktop Card: 16:9 aspect ratio */
-            <div data-card-thumb="true" className={`relative ${
+            <div className={`flex flex-col ${
               cardSize === 'full' || cardSize === 'special'
                 ? 'w-full'
                 : cardSize === 'small'
@@ -1618,30 +1833,64 @@ export const ShowCard: React.FC<ShowCardProps> = ({
                 : biggerCards
                 ? 'w-[calc((100vw-20px)/2.12)] sm:w-[295px] md:w-[340px] lg:w-[calc((100vw-112px)/3.35)] max-w-[420px]'
                 : 'w-[calc((100vw-20px)/2.12)] sm:w-[265px] md:w-[290px] lg:w-[calc((100vw-112px)/4.05)] max-w-[340px]'
-            } aspect-video rounded-[6px] overflow-hidden bg-[#181818] border-0 shadow-none group-focus-visible/item:ring-2 group-focus-visible/item:ring-red-600 group-focus-visible/item:ring-offset-2 group-focus-visible/item:ring-offset-[#141414] transition-all duration-300`}>
-              {imageError || !posterLandscapeUrl ? (
-                <div className="w-full h-full bg-[#181818] border-0 rounded-[6px] flex items-center justify-center p-4 text-center select-none">
-                  <span className="text-white font-medium text-sm sm:text-base leading-snug drop-shadow-sm font-sans">
-                    {show.title}
-                  </span>
-                </div>
-              ) : (
-                <img
+            }`}>
+              <div data-card-thumb="true" className="relative w-full aspect-video rounded-[6px] md:rounded-[10px] overflow-hidden bg-[#181818] border-0 shadow-none group-focus-visible/item:ring-2 group-focus-visible/item:ring-red-600 group-focus-visible/item:ring-offset-2 group-focus-visible/item:ring-offset-[#141414] transition-all duration-300">
+                <MediaImage
                   src={posterLandscapeUrl}
-                  alt={show.title}
-                  referrerPolicy="no-referrer"
+                  fallbackTitle={episodeTitle || show.title}
+                  deferLoad={deferImageLoad}
+                  skeletonDelayMs={skeletonDelayMs}
                   onError={() => setImageError(true)}
                   className="w-full h-full object-cover"
                 />
-              )}
 
-              {/* Red TOP 10 Badge on poster (Left side, Netflix red, stacked TOP 10) */}
-              {showTop10Badge && (
-                <div className="absolute top-0 left-0 z-10 pointer-events-none">
-                  <div className="bg-[#e50914] text-white w-7 pt-1 pb-1 rounded-br-[4px] shadow-md flex flex-col items-center justify-center leading-none select-none">
-                    <span className="text-[8.5px] font-black uppercase tracking-tight font-sans">TOP</span>
-                    <span className="text-[14px] font-black leading-none font-sans mt-0.5">10</span>
+                {/* Optional Episode 1 Card Overlay (Logo + Duration chip) */}
+                {showOverlayLogoOnCard && (
+                  <>
+                    <div className="absolute inset-x-0 bottom-0 h-16 bg-gradient-to-t from-black/80 via-black/30 to-transparent pointer-events-none z-10" />
+                    <div className="absolute bottom-2.5 left-3 right-16 z-20 pointer-events-none flex items-end">
+                      {show.titleLogoUrl ? (
+                        <img
+                          src={show.titleLogoUrl}
+                          alt={show.title}
+                          referrerPolicy="no-referrer"
+                          className="max-h-7 sm:max-h-8 max-w-[140px] w-auto object-contain object-left drop-shadow-[0_2px_6px_rgba(0,0,0,0.9)]"
+                        />
+                      ) : (
+                        <span className="text-white font-black text-xs sm:text-sm uppercase tracking-tight drop-shadow-[0_2px_6px_rgba(0,0,0,0.95)] line-clamp-1">
+                          {show.title}
+                        </span>
+                      )}
+                    </div>
+                    {durationChip && (
+                      <div className="absolute bottom-2.5 right-2.5 z-20 px-1.5 py-0.5 rounded-[5px] bg-black/75 text-white text-[11px] font-bold tracking-tight leading-tight pointer-events-none">
+                        {durationChip}
+                      </div>
+                    )}
+                  </>
+                )}
+
+                {/* Red TOP 10 Badge on poster (Left side, Netflix red, stacked TOP 10) */}
+                {showTop10Badge && (
+                  <div className="absolute top-0 left-0 z-10 pointer-events-none">
+                    <div className="bg-[#e50914] text-white w-7 pt-1 pb-1 rounded-br-[4px] shadow-md flex flex-col items-center justify-center leading-none select-none">
+                      <span className="text-[8.5px] font-black uppercase tracking-tight font-sans">TOP</span>
+                      <span className="text-[14px] font-black leading-none font-sans mt-0.5">10</span>
+                    </div>
                   </div>
+                )}
+              </div>
+
+              {episodeTitle && (
+                <div className="mt-2 px-0.5">
+                  <h4 className="text-white font-bold text-sm leading-snug truncate group-hover/item:text-white/90">
+                    {episodeTitle}
+                  </h4>
+                  {episodeSublabel && (
+                    <p className="text-zinc-400 text-xs font-medium mt-0.5 truncate">
+                      {episodeSublabel}
+                    </p>
+                  )}
                 </div>
               )}
             </div>
@@ -1649,294 +1898,553 @@ export const ShowCard: React.FC<ShowCardProps> = ({
         </div>
 
         {/* 
-          EXPANDED PREVIEW CARD:
-          Rendered directly inside the card-item in the DOM hierarchy.
-          Pure CSS positioning with GPU compositor hardware acceleration (zero scroll delay).
-          Sized with original responsive dimensions (min 80% = 363px, max 454px) and aligned directly over the base thumbnail.
-          Strictly NO border color or ring outline.
+          EXPANDED PREVIEW CARD (Portaled to document.body at position: fixed z-[120]):
+          Only the active popout floats cleanly over Top Navbar; strips themselves never rise above Navbar.
+          Supports 'classic', 'overlay_red', and 'immersive_fade' styles.
         */}
-        {!disablePopout && (isHovered || isClosingPopout) && (
+        {!disablePopout && (isHovered || isClosingPopout) && typeof document !== 'undefined' && createPortal(
           <div
             ref={popoutRef}
             onMouseMove={resetInactivityTimer}
             onClick={handleCardClick}
-            className={`preview-popup absolute z-[120] rounded-xl overflow-hidden bg-[#181818] shadow-[0_8px_20px_rgba(0,0,0,0.32),0_2px_6px_rgba(0,0,0,0.2)] border-0 ring-0 outline-none cursor-pointer select-none ${
-              isClosingPopout ? 'animate-card-pop-out' : 'animate-card-pop'
+            className={`preview-popup fixed z-[120] overflow-hidden outline-none cursor-pointer select-none origin-top-left isolate ${
+              isClosingPopout ? 'pointer-events-none' : 'pointer-events-auto'
             } ${
-              popoutAlign === 'left'
-                ? 'origin-left'
-                : popoutAlign === 'right'
-                ? 'origin-right'
-                : 'origin-center'
+              popoutStyle === 'overlay_red'
+                ? 'bg-[#0b0b0d] border-0 shadow-[0_14px_38px_rgba(0,0,0,0.82)]'
+                : popoutStyle === 'immersive_fade'
+                ? 'bg-black border-0 shadow-[0_14px_38px_rgba(0,0,0,0.82)]'
+                : 'bg-[#181818] border-0 shadow-[0_8px_20px_rgba(0,0,0,0.32),0_2px_6px_rgba(0,0,0,0.2)]'
             }`}
             style={{
               zIndex: 120,
-              top: `${popoutTop}px`,
+              top: `${popoutFixedPos.top}px`,
+              left: `${popoutFixedPos.left}px`,
               width: `${popoutWidth}px`,
-              left:
-                popoutAlign === 'left'
-                  ? `${popoutLeftOffset}px`
-                  : popoutAlign === 'right'
-                  ? 'auto'
-                  : `calc(${popoutLeftOffset}px + 50%)`,
-              right: popoutAlign === 'right' ? '0px' : 'auto',
-              transform:
-                popoutAlign === 'center'
-                  ? 'translate3d(-50%, 0, 0)'
-                  : 'translate3d(0, 0, 0)',
+              transformOrigin: '0 0',
+              transform: popoutMotionStyle.transform,
+              opacity: popoutMotionStyle.opacity,
+              borderRadius: popoutMotionStyle.borderRadius,
+              transition: popoutMotionStyle.transition,
               willChange: 'transform, opacity'
             }}
           >
-            {/* Top Preview: Poster stays 1 second, then preview video buffers/plays */}
-            <div className="relative aspect-video w-full bg-black overflow-hidden border-0">
-            {imageError || !posterLandscapeUrl ? (
-              !(!isPopoutPosterPhase && isVideoPlaying) && (
-                <div className="w-full h-full bg-[#0a0a0c] border-0 rounded-lg flex items-center justify-center p-4 text-center select-none">
-                  <span className="text-white font-medium text-sm sm:text-base leading-snug drop-shadow-sm font-sans">
-                    {show.title}
-                  </span>
-                </div>
-              )
-            ) : (
-              <img
+            {/* Top Preview: Edge-to-edge fill with slight overscan so poster never peeks around rounded corners */}
+            <div
+              className={`relative aspect-video w-full bg-black overflow-hidden border-0 isolate [transform:translateZ(0)] ${
+                isEmergingPopout || isClosingPopout || popoutStyle === 'immersive_fade'
+                  ? 'rounded-xl'
+                  : 'rounded-t-xl rounded-b-none'
+              }`}
+            >
+              <MediaImage
                 src={posterLandscapeUrl}
-                alt={show.title}
-                referrerPolicy="no-referrer"
+                fallbackTitle={episodeTitle || show.title}
+                hideFallback={!isPopoutPosterPhase && isVideoPlaying}
                 onError={() => setImageError(true)}
-                className={`w-full h-full object-cover border-0 transition-opacity duration-300 ${
-                  !isPopoutPosterPhase && isVideoPlaying ? 'opacity-0' : 'opacity-100'
+                className={`w-full h-full object-cover scale-[1.01] border-0 transition-opacity duration-300 ${
+                  !isPopoutPosterPhase && isVideoPlaying ? 'opacity-0 invisible' : 'opacity-100 visible'
                 }`}
               />
-            )}
 
-            {/* Video preview: Mounted with zero latency, fills preview container with zero edge gap */}
-            {shouldLoadVideo && popoutVideoSrc && (
-              <video
-                ref={popoutVideoRef}
-                src={popoutVideoSrc}
-                autoPlay
-                muted={isMuted}
-                playsInline
-                controlsList="nodownload nofullscreen noremoteplayback"
-                disablePictureInPicture
-                onContextMenu={(e) => e.preventDefault()}
-                onCanPlay={() => {
-                  const v = popoutVideoRef.current;
-                  if (v) {
-                    v.muted = isMuted;
-                    const p = v.play();
-                    if (p !== undefined) {
-                      p.catch(() => {
-                        v.muted = true;
-                        v.play().catch(() => {});
-                      });
+              {/* Video preview (skipped when disableVideoPreview is enabled) */}
+              {!disableVideoPreview && shouldLoadVideo && popoutVideoSrc && (
+                <video
+                  ref={popoutVideoRef}
+                  src={popoutVideoSrc}
+                  autoPlay
+                  muted={isMuted}
+                  playsInline
+                  controlsList="nodownload nofullscreen noremoteplayback"
+                  disablePictureInPicture
+                  onContextMenu={(e) => e.preventDefault()}
+                  onCanPlay={() => {
+                    const v = popoutVideoRef.current;
+                    if (v) {
+                      v.muted = isMuted;
+                      const p = v.play();
+                      if (p !== undefined) {
+                        p.catch(() => {
+                          v.muted = true;
+                          v.play().catch(() => {});
+                        });
+                      }
                     }
-                  }
-                  setIsVideoPlaying(true);
-                }}
-                onLoadedData={() => {
-                  const v = popoutVideoRef.current;
-                  if (v) {
-                    v.muted = isMuted;
-                    const p = v.play();
-                    if (p !== undefined) {
-                      p.catch(() => {
-                        v.muted = true;
-                        v.play().catch(() => {});
-                      });
+                    setIsVideoPlaying(true);
+                  }}
+                  onLoadedData={() => {
+                    const v = popoutVideoRef.current;
+                    if (v) {
+                      v.muted = isMuted;
+                      const p = v.play();
+                      if (p !== undefined) {
+                        p.catch(() => {
+                          v.muted = true;
+                          v.play().catch(() => {});
+                        });
+                      }
                     }
+                    setIsVideoPlaying(true);
+                  }}
+                  onPlaying={() => setIsVideoPlaying(true)}
+                  onEnded={() => {
+                    setIsVideoPlaying(false);
+                    setShouldLoadVideo(false);
+                    setIsPopoutPosterPhase(true);
+                  }}
+                  onError={() => setIsVideoPlaying(false)}
+                  className={`absolute inset-0 w-full h-full max-w-none max-h-none object-cover object-center scale-[1.03] border-0 z-10 transition-opacity duration-300 ${
+                    !isPopoutPosterPhase && isVideoPlaying ? 'opacity-100' : 'opacity-0 pointer-events-none'
+                  }`}
+                />
+              )}
+
+              {/* Classic Style Top-10 Badge & Classic Video Overlays */}
+              {popoutStyle === 'classic' && (
+                <>
+                  {!isPreviewActivelyPlaying && showTop10Badge && (
+                    <div className="absolute top-0 left-0 z-10 pointer-events-none">
+                      <div className="bg-[#e50914] text-white w-7.5 pt-1.5 pb-1 rounded-br-[4px] shadow-md flex flex-col items-center justify-center leading-none select-none">
+                        <span className="text-[9px] font-black uppercase tracking-tight font-sans">TOP</span>
+                        <span className="text-[15px] font-black leading-none font-sans mt-0.5">10</span>
+                      </div>
+                    </div>
+                  )}
+
+                  {isPreviewActivelyPlaying && (
+                    <div
+                      className={`absolute inset-0 pointer-events-none z-10 transition-opacity duration-300 ${
+                        arePreviewOverlaysHidden ? 'opacity-0' : 'opacity-100'
+                      }`}
+                      style={{
+                        background: 'radial-gradient(ellipse 65% 55% at 0% 100%, rgba(0,0,0,0.5) 0%, rgba(0,0,0,0.18) 35%, rgba(0,0,0,0.02) 65%, transparent 80%)'
+                      }}
+                    />
+                  )}
+
+                  {isPreviewActivelyPlaying && show.sourceWatermarkUrl && (
+                    <div
+                      className={`absolute top-2.5 right-3 z-20 pointer-events-none transition-opacity duration-300 ${
+                        arePreviewOverlaysHidden ? 'opacity-0' : 'opacity-100'
+                      }`}
+                    >
+                      <img
+                        src={show.sourceWatermarkUrl}
+                        alt="Source Watermark"
+                        referrerPolicy="no-referrer"
+                        className="max-h-6 sm:max-h-7.5 w-auto object-contain opacity-85 drop-shadow select-none"
+                      />
+                    </div>
+                  )}
+
+                  {isPreviewActivelyPlaying && (
+                    <div
+                      className={`absolute bottom-2.5 left-3 z-20 pointer-events-none transition-opacity duration-300 overflow-hidden flex items-end max-w-[65%] max-h-14 ${
+                        arePreviewOverlaysHidden ? 'opacity-0' : 'opacity-100'
+                      }`}
+                    >
+                      {show.titleLogoUrl ? (
+                        <img
+                          src={show.titleLogoUrl}
+                          alt={show.title}
+                          referrerPolicy="no-referrer"
+                          className="max-h-12 sm:max-h-14 max-w-[190px] w-auto h-auto min-h-[38px] object-contain object-left-bottom select-none"
+                        />
+                      ) : (
+                        <ShowTitleLogo show={show} isSmall={true} />
+                      )}
+                    </div>
+                  )}
+
+                  {isPreviewActivelyPlaying && (
+                    <button
+                      onClick={toggleSound}
+                      className={`absolute bottom-2.5 right-2.5 w-7.5 h-7.5 rounded-full bg-black/20 hover:bg-black/40 text-white flex items-center justify-center transition-all duration-300 cursor-pointer z-20 border-0 ${
+                        arePreviewOverlaysHidden ? 'opacity-0 pointer-events-none' : 'opacity-100 pointer-events-auto'
+                      }`}
+                      aria-label="Toggle sound"
+                    >
+                      {isMuted ? <VolumeX className="w-3.5 h-3.5" /> : <Volume2 className="w-3.5 h-3.5" />}
+                    </button>
+                  )}
+                </>
+              )}
+
+              {/* Style 1: Modern Style ('overlay_red') — borderless, no top-left badge, mute ONLY when preview plays */}
+              {popoutStyle === 'overlay_red' && !isClosingPopout && (
+                <>
+                  {/* Top-Right Source Watermark + Mute Toggle ONLY while preview video is actively playing */}
+                  <div className="absolute top-3 right-3 z-20 flex items-center gap-2">
+                    {show.sourceWatermarkUrl && (
+                      <img
+                        src={show.sourceWatermarkUrl}
+                        alt="Source"
+                        referrerPolicy="no-referrer"
+                        className="max-h-7 w-auto object-contain drop-shadow pointer-events-none"
+                      />
+                    )}
+                    {isPreviewActivelyPlaying && (
+                      <button
+                        onClick={toggleSound}
+                        className="w-7.5 h-7.5 rounded-full bg-black/20 hover:bg-black/40 text-white flex items-center justify-center cursor-pointer border-0 transition-colors"
+                        aria-label="Toggle sound"
+                      >
+                        {isMuted ? <VolumeX className="w-3.5 h-3.5" /> : <Volume2 className="w-3.5 h-3.5" />}
+                      </button>
+                    )}
+                  </div>
+
+                  {/* Smooth bottom dark merge into #0b0b0d card body */}
+                  <div
+                    className="absolute inset-x-0 bottom-0 h-24 pointer-events-none z-10"
+                    style={{
+                      background: 'linear-gradient(to top, #0b0b0d 0%, rgba(11,11,13,0.75) 45%, transparent 100%)'
+                    }}
+                  />
+                </>
+              )}
+
+              {/* Style 2: Immersive Fade ('immersive_fade') — Pure 16:9 container ONLY, 3 dot-separated info items (or S/E + time left for Keep Watching), sharp Play, hover button scale */}
+              {popoutStyle === 'immersive_fade' && !isClosingPopout && (() => {
+                const isImmersiveStarted = disableVideoPreview || !popoutVideoSrc ? true : isPreviewActivelyPlaying;
+                const isImmersiveIdle = arePreviewOverlaysHidden && isPreviewActivelyPlaying;
+                const hasCommonGlare = isImmersiveStarted && !isImmersiveIdle;
+                const hasLogoOnlyGlare = isImmersiveStarted && isImmersiveIdle;
+                const showButtonShadow = !hasCommonGlare;
+
+                const isKeepWatchingCard = isContinueWatching && Boolean(watchProgress);
+                let keepWatchingTimeLeft = '';
+                if (isKeepWatchingCard && watchProgress) {
+                  if (watchProgress.duration && watchProgress.duration > (watchProgress.currentTime || 0)) {
+                    const remSec = Math.max(0, Math.floor(watchProgress.duration - (watchProgress.currentTime || 0)));
+                    const remTotalMins = Math.max(1, Math.round(remSec / 60));
+                    const remH = Math.floor(remTotalMins / 60);
+                    const remM = remTotalMins % 60;
+                    keepWatchingTimeLeft = remH > 0 ? (remM > 0 ? `${remH}h ${remM}m left` : `${remH}h left`) : `${remM}m left`;
+                  } else {
+                    keepWatchingTimeLeft = '24m left';
                   }
-                  setIsVideoPlaying(true);
-                }}
-                onPlaying={() => setIsVideoPlaying(true)}
-                onEnded={() => {
-                  setIsVideoPlaying(false);
-                  setShouldLoadVideo(false);
-                  setIsPopoutPosterPhase(true);
-                }}
-                onError={() => setIsVideoPlaying(false)}
-                className={`absolute -inset-[1px] w-[calc(100%+2px)] h-[calc(100%+2px)] object-cover border-0 z-10 transition-opacity duration-300 ${
-                  !isPopoutPosterPhase && isVideoPlaying ? 'opacity-100' : 'opacity-0 pointer-events-none'
-                }`}
-              />
-            )}
+                }
+                const isSeriesShow = show.type === 'series' || Boolean(show.seasons && show.seasons.length > 0);
 
-            {/* Red TOP 10 Badge: on LEFT side, shown till the poster is shown on popout view (gone when video preview plays) */}
-            {!isPreviewActivelyPlaying && showTop10Badge && (
-              <div className="absolute top-0 left-0 z-10 pointer-events-none">
-                <div className="bg-[#e50914] text-white w-7.5 pt-1.5 pb-1 rounded-br-[4px] shadow-md flex flex-col items-center justify-center leading-none select-none">
-                  <span className="text-[9px] font-black uppercase tracking-tight font-sans">TOP</span>
-                  <span className="text-[15px] font-black leading-none font-sans mt-0.5">10</span>
-                </div>
-              </div>
-            )}
+                return (
+                  <>
+                    {/* Taller Smooth Common Bottom Glare: seamlessly feathers upward without any heavy divider line; slides down on 5s idle */}
+                    <div
+                      className="absolute inset-x-0 bottom-0 h-[40%] pointer-events-none z-10 transition-all duration-500 ease-out"
+                      style={{
+                        background:
+                          'linear-gradient(to top, rgba(0,0,0,0.56) 0%, rgba(0,0,0,0.36) 26%, rgba(0,0,0,0.16) 52%, rgba(0,0,0,0.04) 78%, transparent 100%)',
+                        opacity: hasCommonGlare ? 1 : 0,
+                        transform: isImmersiveIdle ? 'translate3d(0, 100%, 0)' : 'translate3d(0, 0, 0)'
+                      }}
+                    />
 
-            {/* Subtle, light corner glare with zero harsh edges on screen for title contrast */}
-            {isPreviewActivelyPlaying && (
+                    {/* Individual PNG Logo Glare during 5s inactivity: matches split (classic) popout model glare */}
+                    <div
+                      className="absolute inset-0 pointer-events-none z-10 transition-opacity duration-500 ease-out"
+                      style={{
+                        background:
+                          'radial-gradient(ellipse 65% 55% at 0% 100%, rgba(0,0,0,0.5) 0%, rgba(0,0,0,0.18) 35%, rgba(0,0,0,0.02) 65%, transparent 80%)',
+                        opacity: hasLogoOnlyGlare ? 1 : 0
+                      }}
+                    />
+
+                    {/* Top-Right Low-Opacity Mute Button (hides after 5s inactivity during playback) */}
+                    {isPreviewActivelyPlaying && (
+                      <button
+                        onClick={toggleSound}
+                        className={`absolute top-3 right-3 z-20 w-8 h-8 rounded-full bg-black/20 hover:bg-black/40 text-white flex items-center justify-center cursor-pointer border-0 transition-all duration-300 ${
+                          isImmersiveIdle ? 'opacity-0 pointer-events-none' : 'opacity-100 pointer-events-auto'
+                        }`}
+                        aria-label="Toggle sound"
+                      >
+                        {isMuted ? <VolumeX className="w-3.5 h-3.5" /> : <Volume2 className="w-3.5 h-3.5" />}
+                      </button>
+                    )}
+
+                    {/* Bottom overlay: Left Logo + Keep Watching S/E & time left OR 3 compact dot-separated items; logo stays visible when idle while info/buttons slide down */}
+                    <div className="absolute inset-x-0 bottom-2.5 px-3.5 z-20 flex items-end justify-between gap-2">
+                      <div className="flex flex-col items-start min-w-0 pointer-events-none">
+                        <div
+                          className="transition-all duration-400 ease-out"
+                          style={{
+                            opacity: isImmersiveStarted ? 1 : 0,
+                            transform: isImmersiveIdle ? 'translate3d(0, 16px, 0)' : 'translate3d(0, 0, 0)'
+                          }}
+                        >
+                          {show.titleLogoUrl ? (
+                            <img
+                              src={show.titleLogoUrl}
+                              alt={show.title}
+                              referrerPolicy="no-referrer"
+                              className="max-h-12 max-w-[190px] w-auto object-contain object-left-bottom select-none"
+                            />
+                          ) : (
+                            <ShowTitleLogo show={show} isSmall={true} />
+                          )}
+                        </div>
+
+                        {isKeepWatchingCard ? (
+                          <div
+                            className="flex items-center gap-2 text-[11.5px] text-white/95 font-medium mt-1 transition-all duration-300 ease-out"
+                            style={{
+                              opacity: hasCommonGlare ? 1 : 0,
+                              transform: isImmersiveIdle ? 'translate3d(0, 18px, 0)' : 'translate3d(0, 0, 0)'
+                            }}
+                          >
+                            {isSeriesShow && (
+                              <span className="font-bold text-white">
+                                S{watchProgress?.seasonNumber || 1} E{watchProgress?.episodeNumber || 1}
+                              </span>
+                            )}
+                            <span className="text-white/90">{keepWatchingTimeLeft}</span>
+                          </div>
+                        ) : (
+                          /* Strictly 3 items (1. Genre • 2. Year • 3. Season/Episode) separated by smaller divider dots */
+                          <div
+                            className="flex items-center gap-1.5 text-[11.5px] text-white/95 font-medium mt-1 transition-all duration-300 ease-out"
+                            style={{
+                              opacity: hasCommonGlare ? 1 : 0,
+                              transform: isImmersiveIdle ? 'translate3d(0, 18px, 0)' : 'translate3d(0, 0, 0)'
+                            }}
+                          >
+                            <span>{show.genres?.[0] || 'Drama'}</span>
+                            <span className="inline-block w-1 h-1 rounded-full bg-white/55 shrink-0" />
+                            <span>{(show.releaseYear || '').split('-')[0] || '2025'}</span>
+                            {(durationChip || show.durationOrSeasons) && (
+                              <>
+                                <span className="inline-block w-1 h-1 rounded-full bg-white/55 shrink-0" />
+                                <span>{durationChip || show.durationOrSeasons}</span>
+                              </>
+                            )}
+                          </div>
+                        )}
+                      </div>
+
+                      {/* Transparent icon-only Play (sharp edges), Add to List, Like buttons in bottom-right:
+                          slight shadow when poster shows (hover start or preview ended), NO shadow when common glare is shown */}
+                      <div
+                        className={`flex items-center gap-1.5 shrink-0 transition-all duration-500 ease-out ${
+                          isImmersiveIdle ? 'pointer-events-none' : 'pointer-events-auto'
+                        } ${showButtonShadow ? 'drop-shadow-[0_2px_6px_rgba(0,0,0,0.8)]' : ''}`}
+                        style={{
+                          opacity: isImmersiveIdle ? 0 : 1,
+                          transform: isImmersiveIdle ? 'translate3d(0, 18px, 0)' : 'translate3d(0, 0, 0)'
+                        }}
+                      >
+                        <button
+                          onClick={handlePlayClick}
+                          className="p-1.5 bg-transparent border-0 text-white hover:scale-125 active:scale-95 transition-transform duration-150 ease-out cursor-pointer"
+                          aria-label={`Play ${show.title}`}
+                        >
+                          <svg viewBox="0 0 24 24" className="w-5 h-5 fill-current shrink-0" aria-hidden="true">
+                            <polygon points="5,3 20,12 5,21" />
+                          </svg>
+                        </button>
+                        <button
+                          onClick={handleWatchlistClick}
+                          className="p-1.5 bg-transparent border-0 text-white hover:scale-125 active:scale-95 transition-transform duration-150 ease-out cursor-pointer"
+                          aria-label="Watchlist"
+                        >
+                          {isInWatchlist ? <Check className="w-5 h-5 stroke-[2.5]" /> : <Plus className="w-5 h-5" />}
+                        </button>
+                        <button
+                          onClick={handleLikeClick}
+                          className="p-1.5 bg-transparent border-0 text-white hover:scale-125 active:scale-95 transition-transform duration-150 ease-out cursor-pointer"
+                          aria-label="Like"
+                        >
+                          <ThumbsUp className={`w-4.5 h-4.5 ${isLiked ? 'fill-white' : ''}`} />
+                        </button>
+                      </div>
+                    </div>
+                  </>
+                );
+              })()}
+            </div>
+
+            {/* Progress bar between poster and below section on hover (skipped in immersive_fade pure 16:9 card) */}
+            {popoutStyle !== 'immersive_fade' && isContinueWatching && watchProgress && watchProgress.progressPercent > 0 && (
               <div
-                className={`absolute inset-0 pointer-events-none z-10 transition-opacity duration-300 ${
-                  arePreviewOverlaysHidden ? 'opacity-0' : 'opacity-100'
-                }`}
-                style={{
-                  background: 'radial-gradient(ellipse 65% 55% at 0% 100%, rgba(0,0,0,0.5) 0%, rgba(0,0,0,0.18) 35%, rgba(0,0,0,0.02) 65%, transparent 80%)'
-                }}
-              />
-            )}
-
-            {/* Top-Right Source Watermark (visible ONLY with video preview, appears & hides alongside title logo PNG / 5s pointer stay) */}
-            {isPreviewActivelyPlaying && show.sourceWatermarkUrl && (
-              <div
-                className={`absolute top-2.5 right-3 z-20 pointer-events-none transition-opacity duration-300 ${
-                  arePreviewOverlaysHidden ? 'opacity-0' : 'opacity-100'
-                }`}
+                className="w-full h-1 bg-zinc-600/70 overflow-hidden z-30 transition-opacity duration-100"
+                style={{ opacity: isClosingPopout ? 0 : 1 }}
               >
-                <img
-                  src={show.sourceWatermarkUrl}
-                  alt="Source Watermark"
-                  referrerPolicy="no-referrer"
-                  className="max-h-6 sm:max-h-7.5 w-auto object-contain opacity-85 drop-shadow select-none"
+                <div
+                  className="h-full bg-white transition-all duration-300"
+                  style={{ width: `${Math.min(100, Math.max(0, watchProgress.progressPercent))}%` }}
                 />
               </div>
             )}
 
-            {/* Show Title Logo PNG: visible ONLY during video previews (never over posters), perfectly normalized for both boxy and wide logos without drop-shadow */}
-            {isPreviewActivelyPlaying && (
+            {/* Lower Card Body for Modern Style ('overlay_red'): PNG Logo & circular buttons sit right on the seam */}
+            {popoutStyle === 'overlay_red' && (
               <div
-                className={`absolute bottom-2.5 left-3 z-20 pointer-events-none transition-opacity duration-300 overflow-hidden flex items-end max-w-[65%] max-h-14 ${
-                  arePreviewOverlaysHidden ? 'opacity-0' : 'opacity-100'
-                }`}
+                className="px-4 pb-4 pt-0 bg-[#0b0b0d] space-y-2 border-0 transition-opacity duration-100"
+                style={{ opacity: isClosingPopout ? 0 : 1 }}
               >
-                {show.titleLogoUrl ? (
-                  <img
-                    src={show.titleLogoUrl}
-                    alt={show.title}
-                    referrerPolicy="no-referrer"
-                    className="max-h-12 sm:max-h-14 max-w-[190px] w-auto h-auto min-h-[38px] object-contain object-left-bottom select-none"
-                  />
-                ) : (
-                  <ShowTitleLogo show={show} isSmall={true} />
+                {/* Seam Row: Left PNG Logo + Right Circular Play, Like, Add to List */}
+                <div className="-mt-7 relative z-30 flex items-center justify-between gap-2 pb-1">
+                  <div className="min-w-0 flex items-center">
+                    {show.titleLogoUrl ? (
+                      <img
+                        src={show.titleLogoUrl}
+                        alt={show.title}
+                        referrerPolicy="no-referrer"
+                        className="max-h-12 max-w-[185px] w-auto object-contain object-left drop-shadow-[0_2px_10px_rgba(0,0,0,0.85)]"
+                      />
+                    ) : (
+                      <ShowTitleLogo show={show} isSmall={true} />
+                    )}
+                  </div>
+
+                  <div className="flex items-center gap-1.5 shrink-0">
+                    <button
+                      onClick={handlePlayClick}
+                      tabIndex={0}
+                      className="w-8.5 h-8.5 rounded-full bg-white hover:bg-zinc-200 text-black flex items-center justify-center transition-colors shadow-md cursor-pointer border-0"
+                      aria-label={`Play ${show.title}`}
+                    >
+                      <svg className="w-4 h-4 ml-0.5 fill-current" viewBox="0 0 24 24">
+                        <path d="M7.05 3.6A1.5 1.5 0 0 0 4.75 4.9v14.2a1.5 1.5 0 0 0 2.3 1.3l12.1-7.1a1.5 1.5 0 0 0 0-2.6L7.05 3.6z" />
+                      </svg>
+                    </button>
+
+                    <button
+                      onClick={handleLikeClick}
+                      className="w-8.5 h-8.5 rounded-full border border-white/40 bg-black/55 hover:bg-white/20 text-white flex items-center justify-center cursor-pointer transition-colors"
+                      aria-label="Like"
+                    >
+                      <ThumbsUp className={`w-3.5 h-3.5 ${isLiked ? 'fill-white' : ''}`} />
+                    </button>
+
+                    <button
+                      onClick={handleWatchlistClick}
+                      className="w-8.5 h-8.5 rounded-full border border-white/40 bg-black/55 hover:bg-white/20 text-white flex items-center justify-center cursor-pointer transition-colors"
+                      aria-label="Watchlist"
+                    >
+                      {isInWatchlist ? <Check className="w-4 h-4 stroke-[2.5]" /> : <Plus className="w-4 h-4" />}
+                    </button>
+                  </div>
+                </div>
+
+                {/* Metadata Line: Film | 13+ | 2h 27m | HD */}
+                <div className="flex items-center gap-2 text-[12px] text-zinc-200 font-medium">
+                  <span>{show.type === 'series' ? 'Series' : 'Film'}</span>
+                  <span className="text-zinc-600">|</span>
+                  <span className="px-1.5 py-0.5 rounded border border-zinc-600 text-[10.5px] font-bold leading-none text-zinc-100">
+                    {show.maturityRating || '13+'}
+                  </span>
+                  <span className="text-zinc-600">|</span>
+                  <span>{durationChip || show.durationOrSeasons}</span>
+                  <span className="px-1.5 py-0.5 rounded border border-zinc-600 text-[10px] font-bold leading-none text-zinc-200">
+                    HD
+                  </span>
+                </div>
+
+                {/* Short 2-line Description */}
+                {(show.shortDescription || show.synopsis) && (
+                  <p className="text-[12px] text-zinc-400 leading-snug line-clamp-2">
+                    {show.shortDescription || show.synopsis}
+                  </p>
                 )}
               </div>
             )}
 
-            {/* Sound Toggle Button - strictly hidden on poster, only visible when video is actively playing, autohides after 5s of pointer inactivity, NO tooltip */}
-            {isPreviewActivelyPlaying && (
-              <button
-                onClick={toggleSound}
-                className={`absolute bottom-2.5 right-2.5 w-7.5 h-7.5 rounded-full bg-black/50 hover:bg-black/80 text-white flex items-center justify-center transition-opacity duration-300 cursor-pointer z-20 backdrop-blur-sm border-0 ${
-                  arePreviewOverlaysHidden ? 'opacity-0 pointer-events-none' : 'opacity-100 pointer-events-auto'
-                }`}
-                aria-label="Toggle sound"
-              >
-                {isMuted ? <VolumeX className="w-3.5 h-3.5" /> : <Volume2 className="w-3.5 h-3.5" />}
-              </button>
-            )}
-          </div>
-
-          {/* Progress bar between poster and below section on hover (matching image_f956b96c.png) */}
-          {isContinueWatching && watchProgress && watchProgress.progressPercent > 0 && (
-            <div className="w-full h-1 bg-zinc-600/70 overflow-hidden z-30">
+            {popoutStyle === 'classic' && (
               <div
-                className="h-full bg-white transition-all duration-300"
-                style={{ width: `${Math.min(100, Math.max(0, watchProgress.progressPercent))}%` }}
-              />
-            </div>
-          )}
+                className="p-3.5 bg-[#181818] space-y-2.5 border-0 transition-opacity duration-100"
+                style={{ opacity: isClosingPopout ? 0 : 1 }}
+              >
+                {/* Action Row */}
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    {watchProgress && watchProgress.progressPercent > 0 ? (
+                      <button
+                        onClick={handlePlayClick}
+                        tabIndex={0}
+                        className="h-8.5 px-3.5 rounded-full bg-white hover:bg-zinc-200 text-black flex items-center gap-1.5 transition-colors shadow cursor-pointer border-0 focus-visible:ring-2 focus-visible:ring-red-500 focus-visible:outline-none"
+                        aria-label={`Resume ${show.title}`}
+                      >
+                        <svg className="w-3.5 h-3.5 fill-current shrink-0" viewBox="0 0 24 24">
+                          <path d="M7.05 3.6A1.5 1.5 0 0 0 4.75 4.9v14.2a1.5 1.5 0 0 0 2.3 1.3l12.1-7.1a1.5 1.5 0 0 0 0-2.6L7.05 3.6z" />
+                        </svg>
+                        <span className="text-xs font-bold">
+                          {show.type === 'series' || (show.seasons && show.seasons.length > 0)
+                            ? `Resume S${watchProgress.seasonNumber || 1} E${watchProgress.episodeNumber || 1}`
+                            : 'Resume'}
+                        </span>
+                      </button>
+                    ) : (
+                      <button
+                        onClick={handlePlayClick}
+                        tabIndex={0}
+                        className="w-8.5 h-8.5 rounded-full bg-white hover:bg-zinc-200 text-black flex items-center justify-center transition-colors shadow cursor-pointer border-0 focus-visible:ring-2 focus-visible:ring-red-500 focus-visible:outline-none"
+                        aria-label={`Play ${show.title}`}
+                      >
+                        <svg className="w-4 h-4 ml-0.5 fill-current shrink-0" viewBox="0 0 24 24">
+                          <path d="M7.05 3.6A1.5 1.5 0 0 0 4.75 4.9v14.2a1.5 1.5 0 0 0 2.3 1.3l12.1-7.1a1.5 1.5 0 0 0 0-2.6L7.05 3.6z" />
+                        </svg>
+                      </button>
+                    )}
 
-          {/* Body: Action Buttons, Metadata, Genres */}
-          <div className="p-3.5 bg-[#181818] space-y-2.5 border-0">
-            {/* Action Row */}
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-2">
-                {/* Play / Resume Button with Season and Episode number */}
-                {watchProgress && watchProgress.progressPercent > 0 ? (
+                    <button
+                      onClick={handleWatchlistClick}
+                      tabIndex={0}
+                      className="w-8.5 h-8.5 rounded-full flex items-center justify-center transition-colors cursor-pointer border border-white/40 bg-zinc-800/80 hover:bg-zinc-700 hover:border-white text-white focus-visible:ring-2 focus-visible:ring-red-500 focus-visible:outline-none"
+                      data-tooltip={isInWatchlist ? 'Remove from list' : 'Add to list'}
+                      aria-label="Watchlist"
+                    >
+                      {isInWatchlist ? <Check className="w-4 h-4 text-white stroke-[2.5]" /> : <Plus className="w-4 h-4 text-white" />}
+                    </button>
+
+                    <button
+                      onClick={handleLikeClick}
+                      tabIndex={0}
+                      className="w-8.5 h-8.5 rounded-full flex items-center justify-center transition-colors cursor-pointer border border-white/40 bg-zinc-800/80 hover:bg-zinc-700 hover:border-white text-white focus-visible:ring-2 focus-visible:ring-red-500 focus-visible:outline-none"
+                      data-tooltip="Like"
+                      aria-label="Like"
+                    >
+                      <ThumbsUp className={`w-4 h-4 text-white ${isLiked ? 'fill-white' : ''}`} />
+                    </button>
+                  </div>
+
                   <button
-                    onClick={handlePlayClick}
+                    onClick={handleInfoClick}
                     tabIndex={0}
-                    className="h-8.5 px-3.5 rounded-full bg-white hover:bg-zinc-200 text-black flex items-center gap-1.5 transition-colors shadow cursor-pointer border-0 focus-visible:ring-2 focus-visible:ring-red-500 focus-visible:outline-none"
-                    aria-label={`Resume ${show.title}`}
+                    className="w-8.5 h-8.5 rounded-full bg-zinc-800/80 hover:bg-zinc-700 text-zinc-300 hover:text-white flex items-center justify-center transition-colors cursor-pointer border-0 focus-visible:ring-2 focus-visible:ring-red-500 focus-visible:outline-none"
+                    data-tooltip="More info"
+                    aria-label="More Info"
                   >
-                    <svg className="w-3.5 h-3.5 fill-current shrink-0" viewBox="0 0 24 24">
-                      <path d="M7.05 3.6A1.5 1.5 0 0 0 4.75 4.9v14.2a1.5 1.5 0 0 0 2.3 1.3l12.1-7.1a1.5 1.5 0 0 0 0-2.6L7.05 3.6z" />
-                    </svg>
-                    <span className="text-xs font-bold">
-                      {show.type === 'series' || (show.seasons && show.seasons.length > 0)
-                        ? `Resume S${watchProgress.seasonNumber || 1} E${watchProgress.episodeNumber || 1}`
-                        : 'Resume'}
+                    <ChevronDown className="w-4.5 h-4.5" />
+                  </button>
+                </div>
+
+                {/* Standard Metadata Line */}
+                <div className="flex items-center gap-2.5 text-[14px] sm:text-[14.5px] font-semibold">
+                  <span className="text-[#46d369] font-bold">{show.imdbRating ? `${show.imdbRating}` : `${show.matchScore}% Match`}</span>
+                  <span className="text-zinc-200 px-1.5 py-0.5 rounded border border-zinc-700 text-[12px] leading-none">
+                    {show.maturityRating || '16+'}
+                  </span>
+                  <span className="text-zinc-200 font-bold">{durationChip || show.durationOrSeasons}</span>
+                  <span className="px-1.5 py-0.5 rounded bg-zinc-800 text-zinc-300 text-[11px] font-bold leading-none">HD</span>
+                </div>
+
+                {/* Short Genres */}
+                <div className="flex flex-wrap gap-1.5 text-[13px] sm:text-[13.5px] text-zinc-300 font-medium">
+                  {show.genres.slice(0, 3).map((g, i) => (
+                    <span key={g} className="flex items-center gap-1.5">
+                      <span>{g}</span>
+                      {i < Math.min(show.genres.length - 1, 2) && (
+                        <span className="text-zinc-600 font-bold">•</span>
+                      )}
                     </span>
-                  </button>
-                ) : (
-                  <button
-                    onClick={handlePlayClick}
-                    tabIndex={0}
-                    className="w-8.5 h-8.5 rounded-full bg-white hover:bg-zinc-200 text-black flex items-center justify-center transition-colors shadow cursor-pointer border-0 focus-visible:ring-2 focus-visible:ring-red-500 focus-visible:outline-none"
-                    aria-label={`Play ${show.title}`}
-                  >
-                    <svg className="w-4 h-4 ml-0.5 fill-current shrink-0" viewBox="0 0 24 24">
-                      <path d="M7.05 3.6A1.5 1.5 0 0 0 4.75 4.9v14.2a1.5 1.5 0 0 0 2.3 1.3l12.1-7.1a1.5 1.5 0 0 0 0-2.6L7.05 3.6z" />
-                    </svg>
-                  </button>
-                )}
-
-                {/* Watchlist Button - converts to tick icon with white color (never turns green) */}
-                <button
-                  onClick={handleWatchlistClick}
-                  tabIndex={0}
-                  className="w-8.5 h-8.5 rounded-full flex items-center justify-center transition-colors cursor-pointer border border-white/40 bg-zinc-800/80 hover:bg-zinc-700 hover:border-white text-white focus-visible:ring-2 focus-visible:ring-red-500 focus-visible:outline-none"
-                  data-tooltip={isInWatchlist ? 'Remove from list' : 'Add to list'}
-                  aria-label="Watchlist"
-                >
-                  {isInWatchlist ? <Check className="w-4 h-4 text-white stroke-[2.5]" /> : <Plus className="w-4 h-4 text-white" />}
-                </button>
-
-                {/* Like Button - icon fills with white color (never turns red) */}
-                <button
-                  onClick={handleLikeClick}
-                  tabIndex={0}
-                  className="w-8.5 h-8.5 rounded-full flex items-center justify-center transition-colors cursor-pointer border border-white/40 bg-zinc-800/80 hover:bg-zinc-700 hover:border-white text-white focus-visible:ring-2 focus-visible:ring-red-500 focus-visible:outline-none"
-                  data-tooltip="Like"
-                  aria-label="Like"
-                >
-                  <ThumbsUp className={`w-4 h-4 text-white ${isLiked ? 'fill-white' : ''}`} />
-                </button>
+                  ))}
+                </div>
               </div>
-
-              {/* More Info Dropdown Chevron - NO animation */}
-              <button
-                onClick={handleInfoClick}
-                tabIndex={0}
-                className="w-8.5 h-8.5 rounded-full bg-zinc-800/80 hover:bg-zinc-700 text-zinc-300 hover:text-white flex items-center justify-center transition-colors cursor-pointer border-0 focus-visible:ring-2 focus-visible:ring-red-500 focus-visible:outline-none"
-                data-tooltip="More info"
-                aria-label="More Info"
-              >
-                <ChevronDown className="w-4.5 h-4.5" />
-              </button>
-            </div>
-
-            {/* Standard Metadata Line (matching image_a62190e5.png) */}
-            <div className="flex items-center gap-2.5 text-[14px] sm:text-[14.5px] font-semibold">
-              <span className="text-[#46d369] font-bold">{show.imdbRating ? `${show.imdbRating}` : `${show.matchScore}% Match`}</span>
-              <span className="text-zinc-200 px-1.5 py-0.5 rounded border border-zinc-700 text-[12px] leading-none">
-                {show.maturityRating || '16+'}
-              </span>
-              <span className="text-zinc-200 font-bold">{show.durationOrSeasons}</span>
-              <span className="px-1.5 py-0.5 rounded bg-zinc-800 text-zinc-300 text-[11px] font-bold leading-none">HD</span>
-            </div>
-
-            {/* Short Genres */}
-            <div className="flex flex-wrap gap-1.5 text-[13px] sm:text-[13.5px] text-zinc-300 font-medium">
-              {show.genres.slice(0, 3).map((g, i) => (
-                <span key={g} className="flex items-center gap-1.5">
-                  <span>{g}</span>
-                  {i < Math.min(show.genres.length - 1, 2) && (
-                    <span className="text-zinc-600 font-bold">•</span>
-                  )}
-                </span>
-              ))}
-            </div>
-          </div>
-        </div>
-      )}
+            )}
+          </div>,
+          document.body
+        )}
     </div>
   );
 };

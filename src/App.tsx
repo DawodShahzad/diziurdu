@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import fullBackupData from './full_backup.json';
-import { Show, FeedConfig, AdminSettings, CastMember, VideoSourceType, NotificationItem, Episode, TrailerItem, CategoryItem, ProfilePictureGroup } from './types';
+import { Show, FeedConfig, AdminSettings, CastMember, VideoSourceType, NotificationItem, Episode, TrailerItem, CategoryItem, ProfilePictureGroup, DetailsOriginMeta } from './types';
+import { NotFound404Page } from './components/NotFound404Page';
 
 // Extract full database contents directly from full_backup.json
 const DB_SHOWS: Show[] = (fullBackupData && Array.isArray((fullBackupData as any).shows))
@@ -30,7 +31,13 @@ const DB_SETTINGS: AdminSettings = (fullBackupData && (fullBackupData as any).ad
       enableStretchableCards: true,
       showTop10Badges: true,
       modernTop10RankList: true,
-      top10RankStyle: 'modern'
+      top10RankStyle: 'modern',
+      desktopNavbarStyle: 'classic',
+      signupTileEnabled: false,
+      signupTileLayouts: ['desktop', 'tablet', 'mobile'],
+      alertPosterEnabled: false,
+      alertPosterButtonAction: 'close',
+      alertPosterLayouts: ['desktop', 'tablet', 'mobile']
     };
 
 const DB_CATEGORIES: CategoryItem[] = (fullBackupData && Array.isArray((fullBackupData as any).categoriesList))
@@ -66,6 +73,8 @@ import { ShowCard } from './components/ShowCard';
 import { SpecialFeedPage } from './components/SpecialFeedPage';
 import { SpecialSingleFeed } from './components/SpecialSingleFeed';
 import { BrowseByGenreRow, GenreItem } from './components/BrowseByGenreRow';
+import { StartFromFirstEpisodeRow } from './components/StartFromFirstEpisodeRow';
+import { EmptyListCard } from './components/EmptyListCard';
 import { GlobalTooltip } from './components/GlobalTooltip';
 import { OfflineAlertBar, useOfflineStatus } from './components/OfflineAlertBar';
 import { MobileBottomNav } from './components/MobileBottomNav';
@@ -73,10 +82,15 @@ import { MobileSearchModal } from './components/MobileSearchModal';
 import { MobileProfileModal } from './components/MobileProfileModal';
 import { MobilePosterActionSheet } from './components/MobilePosterActionSheet';
 import { ShareTitleDesktopPage } from './components/ShareTitleDesktopPage';
+import { ShareModal } from './components/ShareModal';
+import { ShareArrowIcon } from './components/ShareArrowIcon';
 import { ProfileLockScreen } from './components/ProfileLockScreen';
 import { LoginPage } from './components/LoginPage';
+import { SignupTileBanner } from './components/SignupTileBanner';
+import { AlertPosterModal } from './components/AlertPosterModal';
 import { Film, Tv, Sparkles, Filter, ChevronRight, ChevronLeft, Bookmark, X, Menu, Bell, Check, Plus } from 'lucide-react';
 import { WatchProgressItem, EpisodeProgressItem } from './utils/watchProgress';
+import { resolveShowShareMeta } from './utils/shareMeta';
 import { MediaImage } from './components/MediaImage';
 
 function getPinnedOrRotatingRecommendation(pool: Show[], storageKey: string, forceRotate = false): Show | null {
@@ -230,10 +244,24 @@ export default function App() {
     return saved ? JSON.parse(saved) : [];
   });
 
+  const [likedShowIds, setLikedShowIds] = useState<string[]>(() => {
+    try {
+      const saved = localStorage.getItem('cineflix_liked_shows');
+      return saved ? JSON.parse(saved) : [];
+    } catch {
+      return [];
+    }
+  });
+
   const [heroShow, setHeroShow] = useState<Show | null>(shows[0] || null);
   const [selectedCategoryFilter, setSelectedCategoryFilter] = useState<CategoryItem | null>(null);
   const [categoryRandomHeroShow, setCategoryRandomHeroShow] = useState<Show | null>(null);
   const [selectedShowForDetail, setSelectedShowForDetail] = useState<Show | null>(null);
+  const selectedShowRef = useRef<Show | null>(null);
+  const isClosingViaPopstateRef = useRef<boolean>(false);
+  useEffect(() => {
+    selectedShowRef.current = selectedShowForDetail;
+  }, [selectedShowForDetail]);
   const [detailVideoMode, setDetailVideoMode] = useState<'trailer' | 'episode'>('trailer');
   const [detailSubView, setDetailSubView] = useState<'main' | 'cast' | 'blog'>('main');
   const [detailEpisodeId, setDetailEpisodeId] = useState<string | null>(null);
@@ -374,6 +402,8 @@ export default function App() {
         series: getPinnedOrRotatingRecommendation(poolSeries, 'dizi_pinned_rec_series', true) || poolSeries[0] || poolAll[0] || null,
         movies: getPinnedOrRotatingRecommendation(poolMovies, 'dizi_pinned_rec_movies', true) || poolMovies[0] || poolAll[0] || null,
       });
+      initialWatchlistRef.current = watchlist;
+      initialWatchHistoryRef.current = watchHistory;
       setCurrentTimeSlot(Date.now());
     }, 10 * 60 * 1000);
 
@@ -476,19 +506,19 @@ export default function App() {
   }, [userAvatar]);
 
   const [userName, setUserName] = useState<string>(() => {
-    return localStorage.getItem('cineflix_user_name') || 'Good';
+    return localStorage.getItem('cineflix_user_name') || '';
   });
   const [userHandle, setUserHandle] = useState<string>(() => {
-    return localStorage.getItem('cineflix_user_handle') || 'NeoGuide873';
+    return localStorage.getItem('cineflix_user_handle') || '';
   });
   const [userEmail, setUserEmail] = useState<string>(() => {
-    return localStorage.getItem('cineflix_user_email') || 'abc@example.com';
+    return localStorage.getItem('cineflix_user_email') || '';
   });
   const [userWhatsapp, setUserWhatsapp] = useState<string>(() => {
-    return localStorage.getItem('cineflix_user_whatsapp') || '+1 (555) 382-9014';
+    return localStorage.getItem('cineflix_user_whatsapp') || '';
   });
   const [userPassword, setUserPassword] = useState<string>(() => {
-    return localStorage.getItem('cineflix_user_password') || '••••••••••••';
+    return localStorage.getItem('cineflix_user_password') || '';
   });
 
   // Profile Lock State (4-digit PIN required on website visit when enabled)
@@ -504,9 +534,36 @@ export default function App() {
     }
   });
 
-  // Shared Title Desktop Page state (/share/:slug)
+  // Shared Title Desktop Page state (/share/:slug) & click origin metadata for exact card collapse animations
   const [sharedTitleShow, setSharedTitleShow] = useState<Show | null>(null);
+  const sharedTitleShowRef = useRef<Show | null>(null);
+  const shareBackStackRef = useRef<Show[]>([]);
+  useEffect(() => {
+    sharedTitleShowRef.current = sharedTitleShow;
+  }, [sharedTitleShow]);
+  const [detailOriginMeta, setDetailOriginMeta] = useState<DetailsOriginMeta | null>(null);
+  const [is404Page, setIs404Page] = useState<boolean>(false);
   const [isLoginPageOpen, setIsLoginPageOpen] = useState<boolean>(false);
+  const [loginInitialMode, setLoginInitialMode] = useState<'login' | 'create'>('login');
+  const [isAlertPosterDismissed, setIsAlertPosterDismissed] = useState<boolean>(() => {
+    if (typeof window === 'undefined') return false;
+    try {
+      return sessionStorage.getItem('dizi_alert_poster_dismissed') === 'true';
+    } catch {
+      return false;
+    }
+  });
+
+  useEffect(() => {
+    const handleResetAlert = () => {
+      try {
+        sessionStorage.removeItem('dizi_alert_poster_dismissed');
+      } catch {}
+      setIsAlertPosterDismissed(false);
+    };
+    window.addEventListener('dizi_alert_poster_reset', handleResetAlert);
+    return () => window.removeEventListener('dizi_alert_poster_reset', handleResetAlert);
+  }, []);
 
   // When user clicks sign out (or Sign In from guest mode), open Login / Create Account page
   const handleSignOut = () => {
@@ -518,6 +575,7 @@ export default function App() {
     setIsMobileProfileOpen(false);
     setIsHamburgerDrawerOpen(false);
     setIsAdminPanelOpen(false);
+    setLoginInitialMode('login');
     setIsLoginPageOpen(true);
   };
 
@@ -556,7 +614,7 @@ export default function App() {
     } | null;
   } | null>(null);
 
-  // User Watch Progress History in Local Storage with exact position tracking
+  // User Watch Progress History in Local Storage with exact position tracking (clean empty state for fresh users)
   const [watchHistory, setWatchHistory] = useState<Record<string, WatchProgressItem>>(() => {
     try {
       const saved = localStorage.getItem('dizi_watch_history') || localStorage.getItem('cineflix_watch_history');
@@ -567,72 +625,6 @@ export default function App() {
         }
       }
     } catch {}
-
-    // Seed initial watch progress matching user reference screenshots so progress bars are visible immediately
-    const catalog: Show[] = (fullBackupData && Array.isArray((fullBackupData as any).shows))
-      ? ((fullBackupData as any).shows as Show[])
-      : DB_SHOWS;
-    const firstSeries = catalog.find((s) => s.type === 'series' && s.seasons && s.seasons.length > 0 && s.seasons[0].episodes.length >= 2) || catalog[0];
-
-    if (firstSeries) {
-      const ep1 = firstSeries.seasons?.[0]?.episodes?.[0];
-      const ep2 = firstSeries.seasons?.[0]?.episodes?.[1];
-
-      const ep1Dur = 48 * 60; // 48 mins
-      const ep2Dur = 63 * 60; // 63 mins
-      const ep2Cur = 35 * 60; // 35 mins ("35 of 63m")
-
-      const ep1Progress: EpisodeProgressItem = {
-        currentTime: ep1Dur,
-        duration: ep1Dur,
-        progressPercent: 100,
-        seasonNumber: 1,
-        episodeNumber: 1,
-        episodeId: ep1?.id || 'ep-1',
-        episodeTitle: ep1?.title || 'Episode 1',
-        updatedAt: Date.now() - 3600000
-      };
-
-      const ep2Progress: EpisodeProgressItem = {
-        currentTime: ep2Cur,
-        duration: ep2Dur,
-        progressPercent: Math.round((ep2Cur / ep2Dur) * 100),
-        seasonNumber: 1,
-        episodeNumber: 2,
-        episodeId: ep2?.id || 'ep-2',
-        episodeTitle: ep2?.title || 'Episode 2',
-        updatedAt: Date.now()
-      };
-
-      const seedShowProgress: WatchProgressItem = {
-        showId: firstSeries.id,
-        showTitle: firstSeries.title,
-        seasonNumber: 1,
-        episodeNumber: 2,
-        episodeId: ep2?.id || 'ep-2',
-        episodeTitle: ep2?.title || 'Episode 2',
-        videoUrl: ep2?.videoUrl || firstSeries.trailerUrl,
-        videoSourceType: ep2?.videoSourceType || 'direct',
-        currentTime: ep2Cur,
-        duration: ep2Dur,
-        progressPercent: Math.round((ep2Cur / ep2Dur) * 100),
-        updatedAt: Date.now(),
-        thumbnailUrl: firstSeries.posterLandscapeUrl || firstSeries.backdropUrl,
-        completed: false,
-        episodesProgress: {
-          [ep1?.id || 's1e1']: ep1Progress,
-          [ep2?.id || 's1e2']: ep2Progress
-        }
-      };
-
-      const initialMap = { [firstSeries.id]: seedShowProgress };
-      try {
-        localStorage.setItem('dizi_watch_history', JSON.stringify(initialMap));
-        localStorage.setItem('cineflix_watch_history', JSON.stringify(initialMap));
-      } catch {}
-      return initialMap;
-    }
-
     return {};
   });
 
@@ -960,6 +952,15 @@ export default function App() {
 
   const isMobile = windowWidth <= 768;
   const isTablet = windowWidth > 768 && windowWidth < 1024;
+  const currentDeviceLayout: 'desktop' | 'tablet' | 'mobile' = isTablet ? 'tablet' : isMobile ? 'mobile' : 'desktop';
+  const isAlertPosterActive =
+    Boolean(adminSettings.alertPosterEnabled) &&
+    !isAlertPosterDismissed &&
+    !isProfileLocked &&
+    !isLoginPageOpen &&
+    !isAdminPanelOpen &&
+    !playingMedia &&
+    (adminSettings.alertPosterLayouts || ['desktop', 'tablet', 'mobile']).includes(currentDeviceLayout);
 
   useEffect(() => {
     const handleResize = () => {
@@ -968,6 +969,49 @@ export default function App() {
     window.addEventListener('resize', handleResize);
     return () => window.removeEventListener('resize', handleResize);
   }, []);
+
+  // Strictly block pinch-zoom, multi-touch zoom, and double-tap zoom across all screens in mobile layout
+  useEffect(() => {
+    if (!isMobile) return;
+    let lastTouchEnd = 0;
+
+    const handleTouchStartZoomBlock = (e: TouchEvent) => {
+      if (e.touches.length > 1) {
+        e.preventDefault();
+      }
+    };
+    const handleTouchMoveZoomBlock = (e: TouchEvent) => {
+      if (e.touches.length > 1) {
+        e.preventDefault();
+      }
+    };
+    const handleTouchEndZoomBlock = (e: TouchEvent) => {
+      const now = Date.now();
+      if (now - lastTouchEnd <= 300) {
+        e.preventDefault();
+      }
+      lastTouchEnd = now;
+    };
+    const handleGestureZoomBlock = (e: Event) => {
+      e.preventDefault();
+    };
+
+    document.addEventListener('touchstart', handleTouchStartZoomBlock, { passive: false });
+    document.addEventListener('touchmove', handleTouchMoveZoomBlock, { passive: false });
+    document.addEventListener('touchend', handleTouchEndZoomBlock, { passive: false });
+    document.addEventListener('gesturestart', handleGestureZoomBlock, { passive: false } as any);
+    document.addEventListener('gesturechange', handleGestureZoomBlock, { passive: false } as any);
+    document.addEventListener('gestureend', handleGestureZoomBlock, { passive: false } as any);
+
+    return () => {
+      document.removeEventListener('touchstart', handleTouchStartZoomBlock);
+      document.removeEventListener('touchmove', handleTouchMoveZoomBlock);
+      document.removeEventListener('touchend', handleTouchEndZoomBlock);
+      document.removeEventListener('gesturestart', handleGestureZoomBlock);
+      document.removeEventListener('gesturechange', handleGestureZoomBlock);
+      document.removeEventListener('gestureend', handleGestureZoomBlock);
+    };
+  }, [isMobile]);
 
   const [isMobileSearchOpen, setIsMobileSearchOpen] = useState<boolean>(false);
   const [isMobileProfileOpen, setIsMobileProfileOpen] = useState<boolean>(false);
@@ -981,25 +1025,43 @@ export default function App() {
   const [isHamburgerDrawerOpen, setIsHamburgerDrawerOpen] = useState<boolean>(false);
   const [drawerDedicatedView, setDrawerDedicatedView] = useState<'top_10_movies' | 'top_10_series' | 'vertical_my_list' | null>(null);
   const [isNotificationOpen, setIsNotificationOpen] = useState<boolean>(false);
+  const [mobileTop10ShareShow, setMobileTop10ShareShow] = useState<Show | null>(null);
+  const [isCategoriesDetailOpen, setIsCategoriesDetailOpen] = useState<boolean>(false);
+  const [desktopSearchTermFilter, setDesktopSearchTermFilter] = useState<string>('');
+  const [desktopCommittedExactQuery, setDesktopCommittedExactQuery] = useState<string>('');
+  const searchExploreStripRef = useRef<HTMLDivElement>(null);
   const lastHomeClickTimeRef = useRef<number>(0);
+
+  const pushRoute = (path: string, replace = false) => {
+    if (typeof window === 'undefined') return;
+    try {
+      const current = `${window.location.pathname}${window.location.search}`;
+      if (current === path) return;
+      if (replace) {
+        window.history.replaceState(null, '', path);
+      } else {
+        window.history.pushState(null, '', path);
+      }
+    } catch {}
+  };
 
   const handleGoHome = () => {
     // Return to home without changing recommendation (only mobile triple tap reloads/rotates)
+    setIs404Page(false);
     setDrawerDedicatedView(null);
     setSelectedShowForDetail(null);
-    if (sharedTitleShow) {
-      setSharedTitleShow(null);
-      try {
-        if (window.location.pathname.startsWith('/share/')) {
-          window.history.pushState(null, '', '/');
-        }
-      } catch {}
-    }
+    setSharedTitleShow(null);
+    setDetailOriginMeta(null);
     setIsMobileSearchOpen(false);
     setIsMobileProfileOpen(false);
+    setIsAccountModalOpen(false);
+    setIsAppSettingsModalOpen(false);
     setSelectedSpecialFeed(null);
     setSelectedCategoryFilter(null);
     setSelectedCategoryFromGenre(null);
+    setIsCategoriesDetailOpen(false);
+    setDesktopSearchTermFilter('');
+    setDesktopCommittedExactQuery('');
     setSearchQuery('');
     if (activeFilter !== 'all') {
       setActiveFilter('all');
@@ -1007,6 +1069,7 @@ export default function App() {
         sessionStorage.setItem('cineflix_active_filter', 'all');
       } catch {}
     }
+    pushRoute('/');
     window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
@@ -1021,6 +1084,8 @@ export default function App() {
       all: nextShow
     }));
     setCustomHeroShow(nextShow);
+    initialWatchlistRef.current = watchlist;
+    initialWatchHistoryRef.current = watchHistory;
     setCurrentTimeSlot(Date.now());
 
     try {
@@ -1028,13 +1093,19 @@ export default function App() {
       localStorage.setItem('dizi_reload_count', String(current + 3));
     } catch {}
 
+    setDrawerDedicatedView(null);
     setSelectedShowForDetail(null);
+    setSharedTitleShow(null);
     setIsMobileSearchOpen(false);
     setIsMobileProfileOpen(false);
     setSelectedSpecialFeed(null);
     setSelectedCategoryFilter(null);
+    setIsCategoriesDetailOpen(false);
+    setDesktopSearchTermFilter('');
+    setDesktopCommittedExactQuery('');
     setSearchQuery('');
     setActiveFilter('all');
+    pushRoute('/');
     window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
@@ -1050,10 +1121,12 @@ export default function App() {
       setSelectedShowForDetail(null);
       setIsMobileProfileOpen(false);
       setIsMobileSearchOpen(true);
+      pushRoute(searchQuery.trim() ? `/search?q=${encodeURIComponent(searchQuery.trim())}` : '/search');
     } else if (tab === 'profile') {
       setSelectedShowForDetail(null);
       setIsMobileSearchOpen(false);
       setIsMobileProfileOpen(true);
+      pushRoute('/profile');
     }
   };
 
@@ -1141,27 +1214,25 @@ export default function App() {
   }, [isHamburgerDrawerOpen]);
 
   const handleSelectPage = (target: 'all' | 'series' | 'movies' | 'categories' | 'watchlist' | 'trends') => {
+    setIs404Page(false);
     setDrawerDedicatedView(null);
     if (target === 'trends') return;
     if (target === 'all') {
       handleGoHome();
       return;
     }
-    if (sharedTitleShow) {
-      setSharedTitleShow(null);
-      try {
-        if (window.location.pathname.startsWith('/share/')) {
-          window.history.pushState(null, '', '/');
-        }
-      } catch {}
-    }
+    setSharedTitleShow(null);
+    setDetailOriginMeta(null);
     if (target === 'categories') {
       setSelectedCategoryFromGenre(null);
+      setIsCategoriesDetailOpen(false);
       setCategoriesResetKey((prev) => prev + 1);
     }
     setSelectedCategoryFilter(null);
     setSelectedSpecialFeed(null);
-    setSearchQuery(''); // Immediately clear search so user navigates away from search page!
+    setDesktopSearchTermFilter('');
+    setDesktopCommittedExactQuery('');
+    setSearchQuery('');
     if (activeFilter !== target) {
       if (activeFilter === 'all' || activeFilter === 'series' || activeFilter === 'movies') {
         if (checkTwoFeedLinesScrolled()) {
@@ -1179,6 +1250,13 @@ export default function App() {
     } else {
       window.scrollTo({ top: pageScrollPositionsRef.current[target] || 0, behavior: 'instant' });
     }
+    const routeMap: Record<string, string> = {
+      series: '/series',
+      movies: '/movies',
+      categories: '/categories',
+      watchlist: '/mylist'
+    };
+    pushRoute(routeMap[target] || '/');
   };
 
   const handleEditCuratedFeed = (feedId: string) => {
@@ -1187,9 +1265,6 @@ export default function App() {
   };
 
   const handleExploreSpecialFeed = (feed: FeedConfig, feedShows: Show[]) => {
-    // Redesigned Special Feed Page (Matching Image 1 & Image 2 references):
-    // Hero backdrop covers top screen under transparent navbar, bottom-left logo,
-    // no back button, no subtitle, no title quantity, and 4-column card feed without rows.
     const targetCatKey = feed.specialExploreCategory || (feed.categoryKey && feed.categoryKey !== 'custom' ? feed.categoryKey : 'historical-ottoman');
     const cat =
       (categoriesList || CATEGORIES_DATA).find(
@@ -1231,15 +1306,14 @@ export default function App() {
       feed,
       shows: finalShows
     });
+    pushRoute(`/collection/${encodeURIComponent(feed.id)}`);
     window.scrollTo({ top: 0, behavior: 'instant' });
   };
 
   const handleSelectCategoryCard = (category: CategoryItem) => {
     setSelectedCategoryFilter(category);
     setSelectedSpecialFeed(null);
-    // Keep activeFilter as 'categories' so navbar badge remains 'Categories' (or 'More')
     setActiveFilter('categories');
-    // Randomize recommendation on top from the category shows every time user opens a category card
     const catNameLower = category.name.toLowerCase();
     const catIdLower = category.id.toLowerCase();
     const matches = shows.filter((s) => {
@@ -1260,6 +1334,8 @@ export default function App() {
       const randomIdx = Math.floor(Math.random() * pool.length);
       setCategoryRandomHeroShow(pool[randomIdx]);
     }
+    const slug = category.id || category.name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '');
+    pushRoute(`/categories/${encodeURIComponent(slug)}`);
     window.scrollTo({ top: 0, behavior: 'instant' });
   };
 
@@ -1269,16 +1345,25 @@ export default function App() {
     }
     if (query.trim() && sharedTitleShow) {
       setSharedTitleShow(null);
-      try {
-        if (window.location.pathname.startsWith('/share/')) {
-          window.history.pushState(null, '', '/');
-        }
-      } catch {}
     }
+    setDesktopSearchTermFilter('');
+    setDesktopCommittedExactQuery('');
     setSearchQuery(query);
     if (query.trim()) {
+      pushRoute(`/search?q=${encodeURIComponent(query.trim())}`, true);
       window.scrollTo({ top: 0, behavior: 'instant' });
     } else if (!query && searchQuery) {
+      const fallbackRoute =
+        activeFilter === 'series'
+          ? '/series'
+          : activeFilter === 'movies'
+          ? '/movies'
+          : activeFilter === 'categories'
+          ? '/categories'
+          : activeFilter === 'watchlist'
+          ? '/mylist'
+          : '/';
+      pushRoute(fallbackRoute, true);
       requestAnimationFrame(() => {
         window.scrollTo({ top: preSearchScrollRef.current, behavior: 'instant' });
       });
@@ -1286,7 +1371,20 @@ export default function App() {
   };
 
   const handleClearSearch = () => {
+    setDesktopSearchTermFilter('');
+    setDesktopCommittedExactQuery('');
     setSearchQuery('');
+    const fallbackRoute =
+      activeFilter === 'series'
+        ? '/series'
+        : activeFilter === 'movies'
+        ? '/movies'
+        : activeFilter === 'categories'
+        ? '/categories'
+        : activeFilter === 'watchlist'
+        ? '/mylist'
+        : '/';
+    pushRoute(fallbackRoute);
     requestAnimationFrame(() => {
       window.scrollTo({ top: preSearchScrollRef.current, behavior: 'instant' });
     });
@@ -1315,11 +1413,23 @@ export default function App() {
     localStorage.setItem('cineflix_watchlist', JSON.stringify(watchlist));
   }, [watchlist]);
 
+  useEffect(() => {
+    try {
+      localStorage.setItem('cineflix_liked_shows', JSON.stringify(likedShowIds));
+    } catch {}
+  }, [likedShowIds]);
+
   // Toggle watchlist: only updates watchlist state during session, feed content does not change until next reload!
   const handleToggleWatchlist = (showId: string) => {
     const isAdding = !watchlist.includes(showId);
     setWatchlist((prev) =>
       isAdding ? [...prev, showId] : prev.filter((id) => id !== showId)
+    );
+  };
+
+  const handleToggleLike = (showId: string) => {
+    setLikedShowIds((prev) =>
+      prev.includes(showId) ? prev.filter((id) => id !== showId) : [...prev, showId]
     );
   };
 
@@ -1417,30 +1527,32 @@ export default function App() {
     mode: 'trailer' | 'episode' = 'trailer',
     subView: 'main' | 'cast' | 'blog' = 'main',
     episodeId?: string | null,
-    trailerId?: string | null
+    trailerId?: string | null,
+    originMeta?: DetailsOriginMeta
   ) => {
+    isClosingViaPopstateRef.current = false;
+    setIs404Page(false);
+    setDetailOriginMeta(originMeta || { sourceFeedType: 'other' });
     const slug = show.slug || show.id || show.title.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '');
-    const backdrop = show.backdropUrl || show.posterLandscapeUrl || '';
-    const maturity = show.maturityRating || '16+';
-    const genreList = Array.isArray(show.genres) && show.genres.length > 0 ? show.genres.join(', ') : 'Drama';
-    const year = show.releaseYear || '2025';
-    const durationOrSeasons =
-      show.type === 'series'
-        ? (show.durationOrSeasons || (show.seasons && show.seasons.length > 0 ? `${show.seasons.length} Season${show.seasons.length > 1 ? 's' : ''}` : '1 Season'))
-        : (show.durationOrSeasons || 'Feature Film');
-    const details = show.synopsis || show.description || show.shortDescription || '';
-    const desc = `${maturity} • ${genreList} • ${year} • ${durationOrSeasons}${details ? ` • ${details}` : ''}`;
+    const liveShow = shows.find((s) => s.id === show.id) || show;
+    const { shareTitle, shareDescription, linkPreviewImage } = resolveShowShareMeta(liveShow, platformName, isMobile);
     const currentOrigin = typeof window !== 'undefined' ? window.location.origin : 'http://localhost:3000';
 
-    if (!isMobile && adminSettings.useFullSizeMoreInfoByDefault && subView === 'main' && !episodeId && !trailerId) {
+    if (!isMobile && adminSettings.useFullSizeMoreInfoByDefault) {
+      if (sharedTitleShowRef.current && sharedTitleShowRef.current.id !== liveShow.id) {
+        shareBackStackRef.current.push(sharedTitleShowRef.current);
+      } else if (!sharedTitleShowRef.current) {
+        shareBackStackRef.current = [];
+      }
       setSelectedShowForDetail(null);
-      setSharedTitleShow(show);
+      setSharedTitleShow(liveShow);
+      const scroller = document.querySelector<HTMLElement>('[data-share-overlay-scroll="true"]');
+      if (scroller) scroller.scrollTop = 0;
       try {
         const shareUrl = `/share/${slug}`;
-        window.history.pushState({ showId: show.id, slug, fullSizeMoreInfo: true }, '', shareUrl);
-        setMetaTags(`${show.title} - ${platformName}`, desc, show.moreInfoBackdropUrl || backdrop, `${currentOrigin}${shareUrl}`);
+        window.history.pushState({ showId: liveShow.id, slug, fullSizeMoreInfo: true }, '', shareUrl);
+        setMetaTags(shareTitle, shareDescription, linkPreviewImage, `${currentOrigin}${shareUrl}`);
       } catch {}
-      window.scrollTo({ top: 0, behavior: 'instant' });
       return;
     }
 
@@ -1448,29 +1560,34 @@ export default function App() {
     setDetailSubView(subView);
     setDetailEpisodeId(episodeId || null);
     setDetailTrailerId(trailerId || null);
-    setSelectedShowForDetail(show);
+    setSelectedShowForDetail(liveShow);
 
     try {
-      const cleanUrl = buildCleanWatchUrl(show, episodeId, { subView, trailerId });
-      window.history.pushState({ showId: show.id, slug }, '', cleanUrl);
+      const cleanUrl = buildCleanWatchUrl(liveShow, episodeId, { subView, trailerId });
+      window.history.pushState({ showId: liveShow.id, slug }, '', cleanUrl);
       const canonicalShareUrl = `${currentOrigin}${cleanUrl}`;
-      setMetaTags(`${show.title} - ${platformName}`, desc, backdrop, canonicalShareUrl);
+      setMetaTags(shareTitle, shareDescription, linkPreviewImage, canonicalShareUrl);
     } catch {}
   };
 
-  const handleCloseDetails = () => {
+  const handleCloseDetails = (skipHistoryPush?: boolean) => {
+    const shouldSkipPush = Boolean(skipHistoryPush || isClosingViaPopstateRef.current);
+    isClosingViaPopstateRef.current = false;
     setSelectedShowForDetail(null);
+    setDetailOriginMeta(null);
     setDetailSubView('main');
     setDetailEpisodeId(null);
     setDetailTrailerId(null);
     document.body.style.overflow = '';
     document.documentElement.style.overflow = '';
     try {
-      window.history.pushState(null, '', '/');
+      if (!shouldSkipPush) {
+        window.history.pushState(null, '', '/');
+      }
       setMetaTags(
         `${platformName} – Discover Cast, Official Trailers, and Urdu Dubbed Turkish Dramas`,
         `Discover Cast, Official Trailers, and Urdu Dubbed Turkish Dramas on ${platformName}.`,
-        'https://images.unsplash.com/photo-1578632767115-351597cf2477?auto=format&fit=crop&w=1200&q=80',
+        `${window.location.origin}/favicon/android-chrome-512x512.png`,
         window.location.origin
       );
     } catch {}
@@ -1522,21 +1639,13 @@ export default function App() {
           window.location.origin + cleanUrl
         );
       } else {
-        const backdrop = selectedShowForDetail.backdropUrl || selectedShowForDetail.posterLandscapeUrl || '';
-        const maturity = selectedShowForDetail.maturityRating || '16+';
-        const genreList = Array.isArray(selectedShowForDetail.genres) && selectedShowForDetail.genres.length > 0 ? selectedShowForDetail.genres.join(', ') : 'Drama';
-        const year = selectedShowForDetail.releaseYear || '2025';
-        const durationOrSeasons =
-          selectedShowForDetail.type === 'series'
-            ? (selectedShowForDetail.durationOrSeasons || (selectedShowForDetail.seasons && selectedShowForDetail.seasons.length > 0 ? `${selectedShowForDetail.seasons.length} Season${selectedShowForDetail.seasons.length > 1 ? 's' : ''}` : '1 Season'))
-            : (selectedShowForDetail.durationOrSeasons || 'Feature Film');
-        const details = selectedShowForDetail.synopsis || selectedShowForDetail.description || selectedShowForDetail.shortDescription || '';
-        const desc = `${maturity} • ${genreList} • ${year} • ${durationOrSeasons}${details ? ` • ${details}` : ''}`;
+        const liveDetail = shows.find((s) => s.id === selectedShowForDetail.id) || selectedShowForDetail;
+        const { shareTitle, shareDescription, linkPreviewImage } = resolveShowShareMeta(liveDetail, platformName, isMobile);
         const currentOrigin = typeof window !== 'undefined' ? window.location.origin : 'http://localhost:3000';
         setMetaTags(
-          `${selectedShowForDetail.title} - ${platformName}`,
-          desc,
-          backdrop,
+          shareTitle,
+          shareDescription,
+          linkPreviewImage,
           currentOrigin + cleanUrl
         );
       }
@@ -1568,22 +1677,28 @@ export default function App() {
         window.history.pushState(null, '', currentUrl.toString());
       }
       if (selectedShowForDetail) {
-        setMetaTags(
-          `${selectedShowForDetail.title} – Watch on ${platformName}`,
-          selectedShowForDetail.shortDescription || selectedShowForDetail.synopsis,
-          selectedShowForDetail.posterLandscapeUrl,
-          currentUrl.toString()
-        );
+        const liveDetail = shows.find((s) => s.id === selectedShowForDetail.id) || selectedShowForDetail;
+        const { shareTitle, shareDescription, linkPreviewImage } = resolveShowShareMeta(liveDetail, platformName, isMobile);
+        setMetaTags(shareTitle, shareDescription, linkPreviewImage, currentUrl.toString());
       } else {
         setMetaTags(
           `${platformName} – Discover Cast, Official Trailers, and Urdu Dubbed Turkish Dramas`,
           `Discover Cast, Official Trailers, and Urdu Dubbed Turkish Dramas on ${platformName}.`,
-          'https://images.unsplash.com/photo-1578632767115-351597cf2477?auto=format&fit=crop&w=1200&q=80',
+          `${window.location.origin}/favicon/android-chrome-512x512.png`,
           window.location.origin
         );
       }
     } catch {}
   };
+
+  // Guarantee normal DetailModal never remains open on desktop when Full Size More Info is default
+  useEffect(() => {
+    if (!isMobile && adminSettings.useFullSizeMoreInfoByDefault && selectedShowForDetail) {
+      const targetShow = selectedShowForDetail;
+      setSelectedShowForDetail(null);
+      setSharedTitleShow(targetShow);
+    }
+  }, [isMobile, adminSettings.useFullSizeMoreInfoByDefault, selectedShowForDetail]);
 
   // Shareable URL slug listener: automatically opens show, episode, trailer, blog, cast, or actor on visit and back/forward
   useEffect(() => {
@@ -1622,25 +1737,42 @@ export default function App() {
             if (isMobileScreen) {
               setSelectedShowForDetail(matched);
               setSharedTitleShow(null);
+              shareBackStackRef.current = [];
             } else {
+              if (
+                shareBackStackRef.current.length > 0 &&
+                shareBackStackRef.current[shareBackStackRef.current.length - 1].id === matched.id
+              ) {
+                shareBackStackRef.current.pop();
+              }
               setSharedTitleShow(matched);
+              const scroller = document.querySelector<HTMLElement>('[data-share-overlay-scroll="true"]');
+              if (scroller) scroller.scrollTop = 0;
             }
-            const backdrop = matched.moreInfoBackdropUrl || matched.desktopRecommendationBackdropUrl || matched.backdropUrl || matched.posterLandscapeUrl || '';
-            const maturity = matched.maturityRating || '16+';
-            const genreList = Array.isArray(matched.genres) && matched.genres.length > 0 ? matched.genres.join(', ') : 'Drama';
-            const year = matched.releaseYear || '2025';
-            const durationOrSeasons =
-              matched.type === 'series'
-                ? (matched.durationOrSeasons || (matched.seasons && matched.seasons.length > 0 ? `${matched.seasons.length} Season${matched.seasons.length > 1 ? 's' : ''}` : '1 Season'))
-                : (matched.durationOrSeasons || 'Feature Film');
-            const details = matched.synopsis || matched.description || matched.shortDescription || '';
-            const desc = `${maturity} • ${genreList} • ${year} • ${durationOrSeasons}${details ? ` • ${details}` : ''}`;
+            const { shareTitle, shareDescription, linkPreviewImage } = resolveShowShareMeta(matched, platformName, isMobileScreen);
             const currentOrigin = typeof window !== 'undefined' ? window.location.origin : 'http://localhost:3000';
-            setMetaTags(`${matched.title} - ${platformName}`, desc, backdrop, `${currentOrigin}/share/${matched.slug || matched.id}`);
+            setMetaTags(shareTitle, shareDescription, linkPreviewImage, `${currentOrigin}/share/${matched.slug || matched.id}`);
+            setIs404Page(false);
+            return;
+          } else {
+            shareBackStackRef.current = [];
+            setSharedTitleShow(null);
+            setIs404Page(true);
             return;
           }
         } else {
-          setSharedTitleShow(null);
+          shareBackStackRef.current = [];
+          let handledShareAnim = false;
+          if (sharedTitleShowRef.current) {
+            const ev = new CustomEvent('dizi-share-system-back', { cancelable: true });
+            window.dispatchEvent(ev);
+            if (ev.defaultPrevented) {
+              handledShareAnim = true;
+            }
+          }
+          if (!handledShareAnim) {
+            setSharedTitleShow(null);
+          }
         }
 
         const multiSeasonMatch = pathname.match(/^\/watch\/([^/]+)\/s([0-9]+)\/e([0-9]+)\/?$/i);
@@ -1657,6 +1789,10 @@ export default function App() {
           pathEpisodeNumber = parseInt(singleSeasonMatch[2], 10);
         } else if (showOnlyMatch) {
           pathWatchSlug = decodeURIComponent(showOnlyMatch[1]);
+        } else if (pathname.startsWith('/watch/')) {
+          setSelectedShowForDetail(null);
+          setIs404Page(true);
+          return;
         }
 
         const effectiveWatchTarget = pathWatchSlug || watchParam;
@@ -1695,39 +1831,212 @@ export default function App() {
               }
             }
 
-            setSelectedShowForDetail(matched);
-            setDetailEpisodeId(resolvedEpId || null);
-            setDetailTrailerId(trailerParam || null);
-            if (tabParam === 'blog' || tabParam === 'cast') {
-              setDetailSubView(tabParam);
+            const isMobileScreen = typeof window !== 'undefined' && window.innerWidth <= 768;
+            if (!isMobileScreen && adminSettings.useFullSizeMoreInfoByDefault) {
+              setSelectedShowForDetail(null);
+              setSharedTitleShow(matched);
+              setIs404Page(false);
             } else {
-              setDetailSubView('main');
-            }
-            if (resolvedEpId) {
-              setDetailVideoMode('episode');
-            } else {
-              setDetailVideoMode('trailer');
+              setSelectedShowForDetail(matched);
+              setIs404Page(false);
+              setDetailEpisodeId(resolvedEpId || null);
+              setDetailTrailerId(trailerParam || null);
+              if (tabParam === 'blog' || tabParam === 'cast') {
+                setDetailSubView(tabParam);
+              } else {
+                setDetailSubView('main');
+              }
+              if (resolvedEpId) {
+                setDetailVideoMode('episode');
+              } else {
+                setDetailVideoMode('trailer');
+              }
             }
 
-            const backdrop = matched.backdropUrl || matched.posterLandscapeUrl || '';
-            const maturity = matched.maturityRating || '16+';
-            const genreList = Array.isArray(matched.genres) && matched.genres.length > 0 ? matched.genres.join(', ') : 'Drama';
-            const year = matched.releaseYear || '2025';
-            const durationOrSeasons =
-              matched.type === 'series'
-                ? (matched.durationOrSeasons || (matched.seasons && matched.seasons.length > 0 ? `${matched.seasons.length} Season${matched.seasons.length > 1 ? 's' : ''}` : '1 Season'))
-                : (matched.durationOrSeasons || 'Feature Film');
-            const details = matched.synopsis || matched.description || matched.shortDescription || '';
-            const desc = `${maturity} • ${genreList} • ${year} • ${durationOrSeasons}${details ? ` • ${details}` : ''}`;
+            const { shareTitle, shareDescription, linkPreviewImage } = resolveShowShareMeta(matched, platformName, typeof window !== 'undefined' && window.innerWidth <= 768);
             const currentOrigin = typeof window !== 'undefined' ? window.location.origin : 'http://localhost:3000';
             const cleanUrl = buildCleanWatchUrl(matched, resolvedEpId, { subView: tabParam || undefined, trailerId: trailerParam });
-            setMetaTags(`${matched.title} - ${platformName}`, desc, backdrop, currentOrigin + cleanUrl);
+            setMetaTags(shareTitle, shareDescription, linkPreviewImage, currentOrigin + cleanUrl);
+          } else {
+            setSelectedShowForDetail(null);
+            setIs404Page(true);
+            return;
           }
         } else {
-          setSelectedShowForDetail((prev) => (prev ? null : prev));
+          let handledWithAnimation = false;
+          if (selectedShowRef.current) {
+            const ev = new CustomEvent('dizi-detail-system-back', { cancelable: true });
+            window.dispatchEvent(ev);
+            if (ev.defaultPrevented) {
+              handledWithAnimation = true;
+              isClosingViaPopstateRef.current = true;
+            }
+          }
+          if (!handledWithAnimation) {
+            setSelectedShowForDetail((prev) => (prev ? null : prev));
+            document.body.style.overflow = '';
+            document.documentElement.style.overflow = '';
+          }
           setPlayingMedia((prev) => (prev ? null : prev));
-          document.body.style.overflow = '';
-          document.documentElement.style.overflow = '';
+        }
+
+        // Hydrate full page URL routes (Home, Series, Movies, Categories, Category Slug, My List, Top 10, Collection, Search, Profile, Account, Settings)
+        if (!pathname.startsWith('/watch/') && !pathname.startsWith('/share/') && !pathname.startsWith('/admin')) {
+          const cleanPath = pathname.replace(/\/+$/, '') || '/';
+          if (cleanPath === '/series') {
+            setIs404Page(false);
+            setDrawerDedicatedView(null);
+            setSelectedSpecialFeed(null);
+            setSelectedCategoryFilter(null);
+            setSelectedCategoryFromGenre(null);
+            setIsMobileSearchOpen(false);
+            setIsMobileProfileOpen(false);
+            setIsAccountModalOpen(false);
+            setIsAppSettingsModalOpen(false);
+            setSearchQuery('');
+            setActiveFilter('series');
+          } else if (cleanPath === '/movies') {
+            setIs404Page(false);
+            setDrawerDedicatedView(null);
+            setSelectedSpecialFeed(null);
+            setSelectedCategoryFilter(null);
+            setSelectedCategoryFromGenre(null);
+            setIsMobileSearchOpen(false);
+            setIsMobileProfileOpen(false);
+            setIsAccountModalOpen(false);
+            setIsAppSettingsModalOpen(false);
+            setSearchQuery('');
+            setActiveFilter('movies');
+          } else if (cleanPath === '/categories') {
+            setIs404Page(false);
+            setDrawerDedicatedView(null);
+            setSelectedSpecialFeed(null);
+            setSelectedCategoryFilter(null);
+            setSelectedCategoryFromGenre(null);
+            setIsCategoriesDetailOpen(false);
+            setIsMobileSearchOpen(false);
+            setIsMobileProfileOpen(false);
+            setIsAccountModalOpen(false);
+            setIsAppSettingsModalOpen(false);
+            setSearchQuery('');
+            setActiveFilter('categories');
+          } else if (cleanPath.startsWith('/categories/')) {
+            const catSlug = decodeURIComponent(cleanPath.slice('/categories/'.length)).toLowerCase();
+            const foundCat = (categoriesList || CATEGORIES_DATA).find(
+              (c) =>
+                c.id.toLowerCase() === catSlug ||
+                c.name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '') === catSlug ||
+                c.name.toLowerCase() === catSlug
+            );
+            setDrawerDedicatedView(null);
+            setSelectedSpecialFeed(null);
+            setIsMobileSearchOpen(false);
+            setIsMobileProfileOpen(false);
+            setIsAccountModalOpen(false);
+            setIsAppSettingsModalOpen(false);
+            setSearchQuery('');
+            setActiveFilter('categories');
+            if (foundCat) {
+              setIs404Page(false);
+              setSelectedCategoryFromGenre(foundCat);
+              setIsCategoriesDetailOpen(true);
+            } else {
+              setIs404Page(true);
+            }
+          } else if (cleanPath === '/mylist') {
+            setIs404Page(false);
+            setDrawerDedicatedView(null);
+            setSelectedSpecialFeed(null);
+            setSelectedCategoryFilter(null);
+            setIsMobileSearchOpen(false);
+            setIsMobileProfileOpen(false);
+            setIsAccountModalOpen(false);
+            setIsAppSettingsModalOpen(false);
+            setSearchQuery('');
+            setActiveFilter('watchlist');
+          } else if (cleanPath === '/mylist/saved') {
+            setIs404Page(false);
+            setSelectedSpecialFeed(null);
+            setIsMobileSearchOpen(false);
+            setIsMobileProfileOpen(false);
+            setIsAccountModalOpen(false);
+            setIsAppSettingsModalOpen(false);
+            setDrawerDedicatedView('vertical_my_list');
+          } else if (cleanPath === '/top10/movies') {
+            setIs404Page(false);
+            setSelectedSpecialFeed(null);
+            setIsMobileSearchOpen(false);
+            setIsMobileProfileOpen(false);
+            setIsAccountModalOpen(false);
+            setIsAppSettingsModalOpen(false);
+            setDrawerDedicatedView('top_10_movies');
+          } else if (cleanPath === '/top10/series') {
+            setIs404Page(false);
+            setSelectedSpecialFeed(null);
+            setIsMobileSearchOpen(false);
+            setIsMobileProfileOpen(false);
+            setIsAccountModalOpen(false);
+            setIsAppSettingsModalOpen(false);
+            setDrawerDedicatedView('top_10_series');
+          } else if (cleanPath.startsWith('/collection/')) {
+            const feedId = decodeURIComponent(cleanPath.slice('/collection/'.length));
+            const foundFeed = feeds.find((f) => f.id === feedId);
+            setDrawerDedicatedView(null);
+            setIsMobileSearchOpen(false);
+            setIsMobileProfileOpen(false);
+            setIsAccountModalOpen(false);
+            setIsAppSettingsModalOpen(false);
+            if (foundFeed) {
+              setIs404Page(false);
+              const feedShows = (foundFeed.showIds || [])
+                .map((id) => shows.find((s) => s.id === id))
+                .filter((s): s is Show => Boolean(s));
+              setSelectedSpecialFeed({ feed: foundFeed, shows: feedShows.length > 0 ? feedShows : shows });
+            } else {
+              setIs404Page(true);
+            }
+          } else if (cleanPath === '/search') {
+            setIs404Page(false);
+            const qParam = urlParams.get('q') || '';
+            setDrawerDedicatedView(null);
+            setSelectedSpecialFeed(null);
+            setIsMobileProfileOpen(false);
+            setIsAccountModalOpen(false);
+            setIsAppSettingsModalOpen(false);
+            setSearchQuery(qParam);
+            if (typeof window !== 'undefined' && window.innerWidth <= 768) {
+              setIsMobileSearchOpen(true);
+            }
+          } else if (cleanPath === '/profile') {
+            setIs404Page(false);
+            setIsMobileSearchOpen(false);
+            setIsAccountModalOpen(false);
+            setIsAppSettingsModalOpen(false);
+            setIsMobileProfileOpen(true);
+          } else if (cleanPath === '/account') {
+            setIs404Page(false);
+            setIsAppSettingsModalOpen(false);
+            setIsAccountModalOpen(true);
+          } else if (cleanPath === '/settings') {
+            setIs404Page(false);
+            setIsAccountModalOpen(false);
+            setIsAppSettingsModalOpen(true);
+          } else if (cleanPath === '/' && !watchParam && !effectiveShareTarget) {
+            setIs404Page(false);
+            setDrawerDedicatedView(null);
+            setSelectedSpecialFeed(null);
+            setSelectedCategoryFilter(null);
+            setSelectedCategoryFromGenre(null);
+            setIsCategoriesDetailOpen(false);
+            setIsMobileSearchOpen(false);
+            setIsMobileProfileOpen(false);
+            setIsAccountModalOpen(false);
+            setIsAppSettingsModalOpen(false);
+            setSearchQuery('');
+            setActiveFilter('all');
+          } else if (cleanPath !== '/') {
+            setIs404Page(true);
+          }
         }
       } catch {}
     };
@@ -1735,12 +2044,13 @@ export default function App() {
     handleUrlChange();
     window.addEventListener('popstate', handleUrlChange);
     return () => window.removeEventListener('popstate', handleUrlChange);
-  }, [shows]);
+  }, [shows, feeds, categoriesList]);
 
-  // Cleanly restore body scroll whenever no modals or players are open
+  // Cleanly restore body scroll whenever no modals, players, login, or PIN lock screens are open
   useEffect(() => {
     const isAnyModalOpen = Boolean(
       selectedShowForDetail ||
+      (sharedTitleShow && !isMobile) ||
       playingMedia ||
       selectedActorForPool ||
       isAdminPanelOpen ||
@@ -1750,7 +2060,10 @@ export default function App() {
       isWatchlistModalOpen ||
       isDownloadModalOpen ||
       isMobileSearchOpen ||
-      isMobileProfileOpen
+      isMobileProfileOpen ||
+      isLoginPageOpen ||
+      isProfileLocked ||
+      isAlertPosterActive
     );
     if (isAnyModalOpen) {
       document.body.style.overflow = 'hidden';
@@ -1763,6 +2076,8 @@ export default function App() {
     }
   }, [
     selectedShowForDetail,
+    sharedTitleShow,
+    isMobile,
     playingMedia,
     selectedActorForPool,
     isAdminPanelOpen,
@@ -1772,7 +2087,10 @@ export default function App() {
     isWatchlistModalOpen,
     isDownloadModalOpen,
     isMobileSearchOpen,
-    isMobileProfileOpen
+    isMobileProfileOpen,
+    isLoginPageOpen,
+    isProfileLocked,
+    isAlertPosterActive
   ]);
 
   // Media Resource Protection:
@@ -2043,14 +2361,54 @@ export default function App() {
     }
   };
 
-  // Search filtering: Exact matches & Related matches
-  const { exactSearchShows, searchFeed1Shows, searchFeed2Shows } = useMemo(() => {
+  // Autocomplete suggestion pool (ordered by popularity/points: show titles first, then Turkish titles, genres, cast)
+  const searchSuggestions = useMemo(() => {
+    const sorted = [...shows].sort((a, b) => (b.points || 0) - (a.points || 0));
+    const terms: string[] = [];
+    const seen = new Set<string>();
+    const add = (val?: string) => {
+      if (!val) return;
+      const clean = val.trim();
+      if (!clean || seen.has(clean.toLowerCase())) return;
+      seen.add(clean.toLowerCase());
+      terms.push(clean);
+    };
+    sorted.forEach((s) => {
+      add(s.title);
+      add(s.turkishTitle);
+      s.supportingTitles?.forEach(add);
+    });
+    sorted.forEach((s) => {
+      s.genres?.forEach(add);
+      s.categories?.forEach(add);
+      s.cast?.slice(0, 2).forEach((c) => add(c.name));
+    });
+    return terms;
+  }, [shows]);
+
+  // Search filtering: Exact matches, Related matches, "More to explore" terms/genres, and Exact Spotlight detection
+  const {
+    exactSearchShows,
+    searchFeed1Shows,
+    searchFeed2Shows,
+    exactDesktopSpotlightShow,
+    desktopExploreTerms,
+    desktopGridShows,
+    desktopGridHeading
+  } = useMemo(() => {
     const query = searchQuery.trim().toLowerCase();
     if (!query) {
-      return { exactSearchShows: [], searchFeed1Shows: [], searchFeed2Shows: [] };
+      return {
+        exactSearchShows: [],
+        searchFeed1Shows: [],
+        searchFeed2Shows: [],
+        exactDesktopSpotlightShow: null as Show | null,
+        desktopExploreTerms: [] as Array<{ label: string; kind: 'title' | 'genre' }>,
+        desktopGridShows: [] as Show[],
+        desktopGridHeading: ''
+      };
     }
 
-    // 1. Exact matches: title, real/turkishTitle, alternative/supportingTitles, logoText, tags/categories, genres, vibes, cast, or synopsis/description
     const exact = shows.filter((s) => {
       const titleMatch = s.title.toLowerCase().includes(query);
       const realTitleMatch = Boolean(s.turkishTitle && s.turkishTitle.toLowerCase().includes(query));
@@ -2067,20 +2425,25 @@ export default function App() {
       return titleMatch || realTitleMatch || supportingMatch || logoTextMatch || tagCategoryMatch || vibeMatch || castMatch || genreMatch || descMatch;
     });
 
+    exact.sort((a, b) => {
+      const aExact = a.title.toLowerCase() === query || a.turkishTitle?.toLowerCase() === query;
+      const bExact = b.title.toLowerCase() === query || b.turkishTitle?.toLowerCase() === query;
+      if (aExact && !bExact) return -1;
+      if (!aExact && bExact) return 1;
+      const aStarts = a.title.toLowerCase().startsWith(query);
+      const bStarts = b.title.toLowerCase().startsWith(query);
+      if (aStarts && !bStarts) return -1;
+      if (!aStarts && bStarts) return 1;
+      return (b.points || 0) - (a.points || 0);
+    });
+
     const exactShowIds = new Set(exact.map((s) => s.id));
     const targetGenres = new Set<string>();
     exact.forEach((s) => s.genres.forEach((g) => targetGenres.add(g.toLowerCase())));
-    const targetTags = new Set<string>();
-    exact.forEach((s) => {
-      (s.categories || []).forEach((c) => targetTags.add(c.toLowerCase()));
-      (s.thisSeriesIs || []).forEach((v) => targetTags.add(v.toLowerCase()));
-    });
     const targetActors = new Set<string>();
     exact.forEach((s) => s.cast.forEach((c) => targetActors.add(c.name.toLowerCase())));
 
-    // 2. Related shows: catalog shows not in exact matches, ranked by genre/actor/type match
     const nonExactShows = shows.filter((s) => !exactShowIds.has(s.id));
-    
     const scoredRelated = nonExactShows.map((s) => {
       let score = 0;
       s.genres.forEach((g) => {
@@ -2093,34 +2456,92 @@ export default function App() {
       score += (s.points || 0) * 0.05 + s.imdbRating * 0.1;
       return { show: s, score };
     });
-
     scoredRelated.sort((a, b) => b.score - a.score);
     const related = scoredRelated.map((item) => item.show);
 
-    // 1st Feed Line: "Search Results" contains exact results if there, plus related to that search
     const feed1 = exact.length > 0
       ? [...exact, ...related.slice(0, Math.max(3, 8 - exact.length))]
       : (related.length > 0 ? related.slice(0, 8) : shows.slice(0, 8));
+    const feed2 = related.length > 0 ? related : nonExactShows;
 
-    // 2nd Feed Line: "Related to Search" contains titles related to that search
-    const feed2 = related.length > 0
-      ? related
-      : shows.filter((s) => !exactShowIds.has(s.id));
+    // Exact title spotlight detection (renders ONLY when an exact title matches)
+    const exactTitleShow = shows.find(
+      (s) =>
+        s.title.toLowerCase() === query ||
+        (s.turkishTitle && s.turkishTitle.toLowerCase() === query) ||
+        (s.supportingTitles && s.supportingTitles.some((st) => st.toLowerCase() === query))
+    ) || null;
+
+    // Build "More to explore:" mixed pills (genres + related show titles)
+    const exploreList: Array<{ label: string; kind: 'title' | 'genre' }> = [];
+    const seenExplore = new Set<string>();
+    const addExplore = (label: string, kind: 'title' | 'genre') => {
+      const clean = label.trim();
+      if (!clean || seenExplore.has(clean.toLowerCase())) return;
+      seenExplore.add(clean.toLowerCase());
+      exploreList.push({ label: clean, kind });
+    };
+
+    const genrePool = Array.from(
+      new Set([
+        ...exact.flatMap((s) => s.genres),
+        ...shows.flatMap((s) => s.genres).filter((g) => g.toLowerCase().includes(query)),
+        ...categoriesList.map((c) => c.name).filter((n) => n.toLowerCase().includes(query) || exact.length === 0)
+      ])
+    );
+    const maxLen = Math.max(genrePool.length, exact.length + related.length);
+    for (let i = 0; i < maxLen && exploreList.length < 14; i++) {
+      if (i < genrePool.length) addExplore(genrePool[i], 'genre');
+      const titleCandidate = exact[i] || related[i];
+      if (titleCandidate && exploreList.length < 14) {
+        addExplore(titleCandidate.title, 'title');
+      }
+    }
+
+    // Active Desktop grid items
+    let activeGrid: Show[] = [];
+    let activeHeading = `Results for "${searchQuery.trim()}"`;
+
+    if (desktopSearchTermFilter) {
+      const termLower = desktopSearchTermFilter.toLowerCase();
+      activeHeading = `Titles in: ${desktopSearchTermFilter}`;
+      activeGrid = shows
+        .filter(
+          (s) =>
+            s.title.toLowerCase() === termLower ||
+            s.title.toLowerCase().includes(termLower) ||
+            s.genres.some((g) => g.toLowerCase() === termLower) ||
+            Boolean(s.categories?.some((c) => c.toLowerCase() === termLower)) ||
+            Boolean(s.thisSeriesIs?.some((v) => v.toLowerCase() === termLower))
+        )
+        .sort((a, b) => (b.points || 0) - (a.points || 0))
+        .slice(0, 32);
+    } else if (exactTitleShow) {
+      activeHeading = `More like ${exactTitleShow.title}`;
+      activeGrid = related.filter((s) => s.id !== exactTitleShow.id).slice(0, 16); // 4 rows x 4 cards
+    } else {
+      const merged = [...exact, ...related.filter((r) => !exactShowIds.has(r.id))];
+      activeGrid = merged.slice(0, 32); // max 8 rows x 4 cards
+    }
 
     return {
       exactSearchShows: exact,
       searchFeed1Shows: feed1,
-      searchFeed2Shows: feed2
+      searchFeed2Shows: feed2,
+      exactDesktopSpotlightShow: exactTitleShow,
+      desktopExploreTerms: exploreList,
+      desktopGridShows: activeGrid,
+      desktopGridHeading: activeHeading
     };
-  }, [searchQuery, shows]);
+  }, [searchQuery, desktopCommittedExactQuery, desktopSearchTermFilter, shows, categoriesList]);
 
   // Comprehensive Feed Engine: Section A (History/State), Section B (Algorithmic Top 10 / Rewatched),
   // Section C (Curated Categories) with 10-minute rotation, 3-reload arrangement cycle, and anti-fatigue de-duplication
   const dailyFeeds = useMemo(() => {
     const rows = generateDailyFeeds(
       shows,
-      watchHistory,
-      watchlist,
+      initialWatchHistoryRef.current,
+      initialWatchlistRef.current,
       new Date(currentTimeSlot),
       feeds,
       arrangementCycle
@@ -2150,7 +2571,7 @@ export default function App() {
     }
 
     return pageRows;
-  }, [shows, watchHistory, watchlist, currentTimeSlot, feeds, activeFilter, arrangementCycle]);
+  }, [shows, currentTimeSlot, feeds, activeFilter, arrangementCycle]);
 
   // Category filter: matching shows and custom feed lines for multi-line regular feed (strictly from that category)
   const categoryMatchingShows = useMemo(() => {
@@ -2360,6 +2781,21 @@ export default function App() {
     return list;
   }, [watchlist, shows]);
 
+  // 3. "Series & Films You've Liked": most recent liked first
+  const likedShows = useMemo(() => {
+    const reversed = [...likedShowIds].reverse();
+    const seen = new Set<string>();
+    const list: Show[] = [];
+    for (const id of reversed) {
+      if (!seen.has(id)) {
+        seen.add(id);
+        const s = shows.find((show) => show.id === id);
+        if (s) list.push(s);
+      }
+    }
+    return list;
+  }, [likedShowIds, shows]);
+
   // 3. Random mixed list of movies and series that changes on every reload, max 14 titles
   const [randomMixedShows] = useState<Show[]>(() => {
     return [...shows].sort(() => 0.5 - Math.random()).slice(0, 14);
@@ -2405,7 +2841,7 @@ export default function App() {
         paddingTop: isOffline && !isMobile ? '52px' : undefined
       }}
       className={`min-h-screen text-zinc-100 flex flex-col font-sans selection:bg-red-600 selection:text-white ${
-        sharedTitleShow && !isMobile ? 'bg-[#181818]' : 'bg-[#141414]'
+        sharedTitleShow && !isMobile ? 'bg-[#181818]' : 'bg-black md:bg-[#141414]'
       }`}
     >
       {/* Live Internet Connection Offline Alert Bar */}
@@ -2423,10 +2859,12 @@ export default function App() {
         onOpenAccount={() => {
           setIsRecommendationPaused(true);
           setIsAccountModalOpen(true);
+          pushRoute('/account');
         }}
         onOpenAppSettings={() => {
           setIsRecommendationPaused(true);
           setIsAppSettingsModalOpen(true);
+          pushRoute('/settings');
         }}
         onRequestContent={() => {
           setIsRecommendationPaused(true);
@@ -2439,85 +2877,149 @@ export default function App() {
         userName={userName}
         isLoggedIn={isLoggedIn}
         onToggleAuth={handleSignOut}
+        onOpenCreateAccount={() => {
+          setLoginInitialMode('create');
+          setIsRecommendationPaused(true);
+          setIsLoginPageOpen(true);
+        }}
+        shows={shows}
         onSelectCategory={handleSelectPage}
         activeFilter={activeFilter}
         searchQuery={searchQuery}
         onSearchChange={handleSearchChange}
+        searchSuggestions={searchSuggestions}
+        onExactSearchCommit={(committed) => {
+          setDesktopSearchTermFilter('');
+          setDesktopCommittedExactQuery(committed);
+          pushRoute(`/search?q=${encodeURIComponent(committed)}`, true);
+        }}
         useCustomLogo={adminSettings.useCustomLogo}
         customLogoUrl={adminSettings.customLogoUrl}
         notifications={notifications}
         onUpdateNotifications={setNotifications}
         onOpenShowById={(showId) => {
           const found = shows.find((s) => s.id === showId);
-          if (found) handleOpenDetails(found, 'trailer');
+          if (found) handleOpenDetails(found, 'trailer', 'main', undefined, undefined, { sourceFeedType: 'other' });
         }}
         isSpecialFeedPage={Boolean(selectedSpecialFeed)}
-        hideMobileLogoBar={isMobile && adminSettings.mobileRecommendationStyle === 'poster_no_preview'}
+        hideMobileLogoBar={
+          (isMobile && adminSettings.mobileRecommendationStyle === 'poster_no_preview') ||
+          Boolean(isMobile && ((activeFilter === 'categories' && isCategoriesDetailOpen) || selectedCategoryFilter))
+        }
         isSharePage={Boolean(sharedTitleShow && !isMobile)}
+        hideProfileAvatar={isProfileLocked}
         onOpenHamburgerDrawer={() => setIsHamburgerDrawerOpen(true)}
+        desktopNavbarStyle={adminSettings.desktopNavbarStyle || 'classic'}
+        onShareBack={() => {
+          if (shareBackStackRef.current.length > 0) {
+            window.history.back();
+          } else {
+            window.dispatchEvent(new CustomEvent('dizi-share-ui-back'));
+          }
+        }}
       />
+
+      {/* Full-Size Desktop More Info Overlay (keeps underlying browse cards mounted in DOM for exact FLIP collapse) */}
+      {sharedTitleShow && !isMobile && (() => {
+        const activeSharedShow = shows.find((s) => s.id === sharedTitleShow.id) || sharedTitleShow;
+        return (
+          <div
+            data-share-overlay-scroll="true"
+            className="fixed inset-0 z-[45] overflow-y-auto overflow-x-hidden bg-[#181818] custom-scrollbar"
+          >
+            <ShareTitleDesktopPage
+              show={activeSharedShow}
+              allShows={shows}
+              adminSettings={adminSettings}
+              isInWatchlist={watchlist.includes(activeSharedShow.id)}
+              watchlist={watchlist}
+              watchProgress={watchHistory[activeSharedShow.id]}
+              onToggleWatchlist={handleToggleWatchlist}
+              onPlayShow={handlePlayShow}
+              onPlayTrailer={(s, trailer) => {
+                if (trailer.videoSourceType === 'external') {
+                  window.open(trailer.videoUrl, '_blank', 'noopener,noreferrer');
+                  return;
+                }
+                const startSec = parseTimeToSeconds(trailer.startTime) || 0;
+                setPlayingMedia({
+                  show: s,
+                  videoUrl: trailer.videoUrl,
+                  videoSourceType: trailer.videoSourceType || 'direct',
+                  title: s.title,
+                  subtitle: trailer.title,
+                  episodeSubtitle: trailer.title,
+                  titleLogoUrl: s.titleLogoUrl,
+                  previewThumbnailUrl: trailer.thumbnailUrl || s.posterLandscapeUrl || s.backdropUrl,
+                  startTime: trailer.startTime,
+                  endTime: trailer.endTime,
+                  initialCurrentTime: startSec,
+                  isTrailer: true,
+                  playerBgImageUrl: trailer.playerBgImageUrl || s.backdropUrl,
+                  hasNextEpisode: false,
+                  nextEpisodeInfo: null
+                });
+              }}
+              onOpenDetails={(s, origin) => {
+                if (sharedTitleShowRef.current && sharedTitleShowRef.current.id !== s.id) {
+                  shareBackStackRef.current.push(sharedTitleShowRef.current);
+                }
+                setDetailOriginMeta(origin || { sourceFeedType: 'other' });
+                setSharedTitleShow(s);
+                const scroller = document.querySelector<HTMLElement>('[data-share-overlay-scroll="true"]');
+                if (scroller) scroller.scrollTop = 0;
+                window.history.pushState({ showId: s.id, fullSizeMoreInfo: true }, '', `/share/${s.slug || s.id}`);
+              }}
+              onSelectActor={(actor) => handleSelectActorForPool(actor)}
+              onBackToBrowse={(skipHistoryPush) => {
+                shareBackStackRef.current = [];
+                setSharedTitleShow(null);
+                setDetailOriginMeta(null);
+                if (!skipHistoryPush) {
+                  window.history.pushState({}, '', '/');
+                }
+              }}
+              platformName={platformName}
+              isGlobalMuted={isGlobalMuted}
+              onToggleGlobalMute={handleToggleGlobalMute}
+              likedShowIds={likedShowIds}
+              onToggleLike={handleToggleLike}
+              originMeta={detailOriginMeta}
+            />
+          </div>
+        );
+      })()}
 
       {/* Main Content Area: clearance passing padding on mobile (halved to pb-18) so content completely passes bottom navbar */}
       <main className="flex-1 pb-18 md:pb-0">
-        {sharedTitleShow && !isMobile ? (() => {
-          const activeSharedShow = shows.find((s) => s.id === sharedTitleShow.id) || sharedTitleShow;
-          return (
-          <ShareTitleDesktopPage
-            show={activeSharedShow}
-            allShows={shows}
-            adminSettings={adminSettings}
-            isInWatchlist={watchlist.includes(activeSharedShow.id)}
-            watchlist={watchlist}
-            watchProgress={watchHistory[activeSharedShow.id]}
-            onToggleWatchlist={handleToggleWatchlist}
-            onPlayShow={handlePlayShow}
-            onPlayTrailer={(s, trailer) => {
-              if (trailer.videoSourceType === 'external') {
-                window.open(trailer.videoUrl, '_blank', 'noopener,noreferrer');
-                return;
+        {is404Page ? (
+          <NotFound404Page
+            onGoHome={handleGoHome}
+            onOpenSearch={() => {
+              setIs404Page(false);
+              if (isMobile && !isTablet) {
+                handleMobileSelectTab('search');
+              } else {
+                handleGoHome();
+                window.setTimeout(() => {
+                  const searchBtn = document.querySelector<HTMLButtonElement>('button[aria-label="Search"]');
+                  searchBtn?.click();
+                }, 40);
               }
-              const startSec = parseTimeToSeconds(trailer.startTime) || 0;
-              setPlayingMedia({
-                show: s,
-                videoUrl: trailer.videoUrl,
-                videoSourceType: trailer.videoSourceType || 'direct',
-                title: s.title,
-                subtitle: trailer.title,
-                episodeSubtitle: trailer.title,
-                titleLogoUrl: s.titleLogoUrl,
-                previewThumbnailUrl: trailer.thumbnailUrl || s.posterLandscapeUrl || s.backdropUrl,
-                startTime: trailer.startTime,
-                endTime: trailer.endTime,
-                initialCurrentTime: startSec,
-                isTrailer: true,
-                playerBgImageUrl: trailer.playerBgImageUrl || s.backdropUrl,
-                hasNextEpisode: false,
-                nextEpisodeInfo: null
-              });
-            }}
-            onOpenDetails={(s) => {
-              setSharedTitleShow(s);
-              window.history.pushState({}, '', `/share/${s.slug || s.id}`);
-              window.scrollTo({ top: 0, behavior: 'smooth' });
-            }}
-            onSelectActor={(actor) => handleSelectActorForPool(actor)}
-            onBackToBrowse={() => {
-              setSharedTitleShow(null);
-              window.history.pushState({}, '', '/');
             }}
             platformName={platformName}
-            isGlobalMuted={isGlobalMuted}
-            onToggleGlobalMute={handleToggleGlobalMute}
           />
-          );
-        })() : drawerDedicatedView ? (
-          /* Dedicated Top 10 / Vertical My List View (Matching Image 3) */
-          <div className="pt-16 sm:pt-20 pb-20 min-h-screen bg-[#090b10] text-white animate-in fade-in duration-200">
-            {/* Top Bar with Page Name and Back Button (Image 3) */}
+        ) : drawerDedicatedView ? (
+          /* Dedicated Top 10 (Dexter reference mobile list design) & Vertical My List View */
+          <div className="pt-16 sm:pt-20 pb-24 min-h-screen bg-black text-white animate-in fade-in duration-200">
+            {/* Fixed Black Top Header */}
             <div className="fixed top-0 inset-x-0 z-50 h-14 bg-black px-4 flex items-center justify-between border-b border-white/10 select-none">
               <div className="flex items-center gap-3">
                 <button
-                  onClick={() => setDrawerDedicatedView(null)}
+                  onClick={() => {
+                    setDrawerDedicatedView(null);
+                    pushRoute('/');
+                  }}
                   className="p-1 -ml-1 text-white hover:text-white/80 active:scale-90 transition-transform cursor-pointer"
                   aria-label="Back to home"
                 >
@@ -2533,279 +3035,487 @@ export default function App() {
               </div>
             </div>
 
-            {/* Vertical List of 4:3 Cards using 16:9 Artwork (Image 3) */}
-            <div className="max-w-xl mx-auto px-4 py-4 space-y-4">
-              {(() => {
-                let listShows: Show[] = [];
-                if (drawerDedicatedView === 'top_10_series') {
-                  listShows = shows.filter((s) => s.type === 'series').sort((a, b) => (b.points || 0) - (a.points || 0)).slice(0, 10);
-                } else if (drawerDedicatedView === 'top_10_movies') {
-                  listShows = shows.filter((s) => s.type === 'movie').sort((a, b) => (b.points || 0) - (a.points || 0)).slice(0, 10);
-                } else {
-                  listShows = userWatchlistShows;
-                }
-
-                if (listShows.length === 0) {
-                  return (
-                    <div className="py-20 text-center text-zinc-400 text-sm">
-                      {drawerDedicatedView === 'vertical_my_list' ? 'Your watchlist is empty.' : 'No titles found.'}
-                    </div>
-                  );
-                }
-
-                return listShows.map((show, idx) => {
-                  const rankStr = String(idx + 1).padStart(2, '0');
-                  const artwork = show.backdropUrl || show.posterLandscapeUrl || show.backdropUrl2;
-                  const isInWatchlist = watchlist.includes(show.id);
-
-                  return (
-                    <div
-                      key={`vertical-${drawerDedicatedView}-${show.id}`}
-                      onClick={() => handleOpenDetails(show, 'trailer')}
-                      className="relative w-full aspect-[4/3] rounded-2xl overflow-hidden bg-[#14151b] border border-white/10 shadow-2xl cursor-pointer select-none group"
-                    >
-                      {/* 16:9 Artwork in 4:3 Card */}
-                      <MediaImage
-                        src={artwork}
-                        fallbackTitle={show.title}
-                        fallbackClassName="absolute inset-0 w-full h-full bg-[#14151b] flex items-center justify-center p-6 text-center select-none"
-                        className="absolute inset-0 w-full h-full object-cover transition-transform duration-300 group-hover:scale-102"
-                      />
-
-                      {/* Outlined Rank Number (Image 3): 01, 02, 03... */}
-                      {drawerDedicatedView !== 'vertical_my_list' && (
-                        <div className="absolute top-1.5 left-2.5 sm:top-2 sm:left-3 z-20 pointer-events-none select-none">
-                          <span
-                            className="text-4xl sm:text-5xl md:text-6xl font-black font-display tracking-tight drop-shadow-[0_4px_12px_rgba(0,0,0,0.9)]"
-                            style={{
-                              WebkitTextStroke: '2px rgba(255, 255, 255, 0.95)',
-                              color: 'transparent',
-                              lineHeight: 1
-                            }}
-                          >
-                            {rankStr}
-                          </span>
+            {drawerDedicatedView === 'vertical_my_list' ? (
+              <div className="max-w-xl mx-auto px-4 py-4 space-y-4">
+                {userWatchlistShows.length === 0 ? (
+                  <div className="py-20 text-center text-zinc-400 text-sm">
+                    Your watchlist is empty.
+                  </div>
+                ) : (
+                  userWatchlistShows.map((show) => {
+                    const artwork = show.backdropUrl || show.posterLandscapeUrl || show.backdropUrl2;
+                    const isInWatchlist = watchlist.includes(show.id);
+                    return (
+                      <div
+                        key={`vertical-my-list-${show.id}`}
+                        onClick={() => handleOpenDetails(show, 'trailer')}
+                        className="relative w-full aspect-[4/3] rounded-2xl overflow-hidden bg-[#14151b] border border-white/10 shadow-2xl cursor-pointer select-none group"
+                      >
+                        <MediaImage
+                          src={artwork}
+                          fallbackTitle={show.title}
+                          fallbackClassName="absolute inset-0 w-full h-full bg-[#14151b] flex items-center justify-center p-6 text-center select-none"
+                          className="absolute inset-0 w-full h-full object-cover transition-transform duration-300 group-hover:scale-102"
+                        />
+                        <div className="absolute inset-x-0 bottom-0 h-40 bg-gradient-to-t from-black/95 via-black/50 to-transparent pointer-events-none z-10" />
+                        <div className="absolute inset-x-4 bottom-12 z-20 flex flex-col items-center justify-end pointer-events-none">
+                          {show.titleLogoUrl ? (
+                            <img
+                              src={show.titleLogoUrl}
+                              alt={show.title}
+                              referrerPolicy="no-referrer"
+                              className="h-12 sm:h-14 md:h-16 w-auto max-w-[80%] object-contain drop-shadow-[0_2px_8px_rgba(0,0,0,0.85)]"
+                            />
+                          ) : (
+                            <span className="text-white font-extrabold text-base sm:text-lg text-center tracking-tight drop-shadow-md">
+                              {show.title}
+                            </span>
+                          )}
                         </div>
-                      )}
-
-                      {/* Bottom Dark Gradient Scrim */}
-                      <div className="absolute inset-x-0 bottom-0 h-40 bg-gradient-to-t from-black/95 via-black/50 to-transparent pointer-events-none z-10" />
-
-                      {/* PNG Logo in Center Bottom Side (Image 3) */}
-                      <div className="absolute inset-x-4 bottom-12 z-20 flex flex-col items-center justify-end pointer-events-none">
-                        {show.titleLogoUrl ? (
-                          <img
-                            src={show.titleLogoUrl}
-                            alt={show.title}
-                            referrerPolicy="no-referrer"
-                            className="h-12 sm:h-14 md:h-16 w-auto max-w-[80%] object-contain drop-shadow-[0_2px_8px_rgba(0,0,0,0.85)]"
-                          />
-                        ) : (
-                          <span className="text-white font-extrabold text-base sm:text-lg text-center tracking-tight drop-shadow-md">
-                            {show.title}
-                          </span>
-                        )}
+                        <div className="absolute inset-x-4 bottom-3 z-30 flex items-center justify-center gap-3 pointer-events-auto">
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handlePlayShow(show);
+                            }}
+                            className="flex items-center gap-1.5 text-white hover:text-white/80 active:scale-95 transition-transform cursor-pointer"
+                            aria-label={`Play ${show.title}`}
+                          >
+                            <div className="w-6 h-6 rounded-full bg-white text-black flex items-center justify-center shadow-md">
+                              <svg className="w-3.5 h-3.5 fill-current ml-0.5" viewBox="0 0 24 24">
+                                <path d="M7.05 3.6A1.5 1.5 0 0 0 4.75 4.9v14.2a1.5 1.5 0 0 0 2.3 1.3l12.1-7.1a1.5 1.5 0 0 0 0-2.6L7.05 3.6z" />
+                              </svg>
+                            </div>
+                            <span className="text-xs sm:text-sm font-bold text-white tracking-wide">Play</span>
+                          </button>
+                          <span className="text-white/40 text-xs">|</span>
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handleToggleWatchlist(show.id);
+                            }}
+                            className="flex items-center gap-1.5 text-white hover:text-white/80 active:scale-95 transition-transform cursor-pointer"
+                            aria-label={isInWatchlist ? `Remove ${show.title} from list` : `Add ${show.title} to list`}
+                          >
+                            <div className="w-6 h-6 rounded-full border border-white/80 text-white flex items-center justify-center">
+                              {isInWatchlist ? <Check className="w-3.5 h-3.5 text-white" /> : <Plus className="w-3.5 h-3.5 text-white" />}
+                            </div>
+                            <span className="text-xs sm:text-sm font-bold text-white tracking-wide">
+                              {isInWatchlist ? 'In List' : 'My List'}
+                            </span>
+                          </button>
+                        </div>
                       </div>
+                    );
+                  })
+                )}
+              </div>
+            ) : (
+              /* Mobile Top 10 List Page Redesign: Pure black, borderless 16:9 poster, inside_card gradient rank on top-left, maturity top-right, mute bottom-right, logo + Share/MyList/Play below */
+              <div className="max-w-xl mx-auto px-3 sm:px-4 pt-3 pb-24 space-y-6">
+                {(() => {
+                  const listShows =
+                    drawerDedicatedView === 'top_10_series'
+                      ? shows.filter((s) => s.type === 'series').sort((a, b) => (b.points || 0) - (a.points || 0)).slice(0, 10)
+                      : shows.filter((s) => s.type === 'movie').sort((a, b) => (b.points || 0) - (a.points || 0)).slice(0, 10);
 
-                      {/* Bottom Action Buttons: (▶) Play | (+) My List (Image 3) */}
-                      <div className="absolute inset-x-4 bottom-3 z-30 flex items-center justify-center gap-3 pointer-events-auto">
-                        {/* Play Button */}
-                        <button
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            handlePlayShow(show);
-                          }}
-                          className="flex items-center gap-1.5 text-white hover:text-white/80 active:scale-95 transition-transform cursor-pointer"
-                          aria-label={`Play ${show.title}`}
+                  if (listShows.length === 0) {
+                    return <div className="py-20 text-center text-zinc-400 text-sm">No titles found.</div>;
+                  }
+
+                  return listShows.map((show, idx) => {
+                    const artwork = show.backdropUrl || show.posterLandscapeUrl || show.backdropUrl2;
+                    const isInWatchlist = watchlist.includes(show.id);
+                    const releaseYear = show.releaseYear ? show.releaseYear.split('-')[0].trim() : '';
+                    const primaryGenre = show.genres?.[0] || '';
+                    const durationOrSeasons =
+                      show.durationOrSeasons ||
+                      (show.type === 'series'
+                        ? `${show.seasons?.length || 1} Season${(show.seasons?.length || 1) > 1 ? 's' : ''}`
+                        : 'Feature Film');
+                    const synopsisText = show.synopsis || show.description || show.shortDescription || '';
+
+                    return (
+                      <div
+                        key={`top10-${drawerDedicatedView}-${show.id}`}
+                        data-show-id={show.id}
+                        className="w-full rounded-2xl overflow-hidden bg-black border border-white/[0.14] shadow-2xl select-none"
+                      >
+                        {/* 16:9 Artwork Poster: NO mute button and NO maturity badge on top; smooth bottom black fade */}
+                        <div
+                          onClick={() => handleOpenDetails(show, 'trailer', 'main', undefined, undefined, { sourceFeedType: 'other' })}
+                          className="relative w-full aspect-video overflow-hidden bg-black cursor-pointer group"
                         >
-                          <div className="w-6 h-6 rounded-full bg-white text-black flex items-center justify-center shadow-md">
-                            <svg className="w-3.5 h-3.5 fill-current ml-0.5" viewBox="0 0 24 24">
-                              <path d="M7.05 3.6A1.5 1.5 0 0 0 4.75 4.9v14.2a1.5 1.5 0 0 0 2.3 1.3l12.1-7.1a1.5 1.5 0 0 0 0-2.6L7.05 3.6z" />
-                            </svg>
+                          <MediaImage
+                            src={artwork}
+                            fallbackTitle={show.title}
+                            fallbackClassName="absolute inset-0 w-full h-full bg-[#111] flex items-center justify-center p-6 text-center select-none"
+                            className="w-full h-full object-cover"
+                          />
+
+                          {/* Bottom Black Fade Glare Merging Smoothly into Pure Black Card Body */}
+                          <div className="absolute inset-x-0 bottom-0 h-24 bg-gradient-to-t from-black via-black/75 to-transparent pointer-events-none z-10" />
+
+                          {/* Top-Left Rank Number in inside_card gradient style */}
+                          <div className="absolute top-2.5 left-3.5 z-20 pointer-events-none select-none">
+                            <span
+                              className="text-4xl sm:text-5xl font-black font-display tracking-tight bg-gradient-to-b from-white via-zinc-200 to-zinc-500 bg-clip-text text-transparent leading-none"
+                              style={{
+                                WebkitTextFillColor: 'transparent',
+                                filter: 'drop-shadow(0 3px 8px rgba(0,0,0,0.92))'
+                              }}
+                            >
+                              {idx + 1}
+                            </span>
                           </div>
-                          <span className="text-xs sm:text-sm font-bold text-white tracking-wide">Play</span>
-                        </button>
+                        </div>
 
-                        {/* Separator Bar */}
-                        <span className="text-white/40 text-xs">|</span>
+                        {/* Raised Logo & Action Row overlapping the bottom fade + Metadata & 2-Line Synopsis underneath */}
+                        <div className="-mt-6 relative z-20 px-3.5 pb-3.5 bg-transparent">
+                          <div className="flex items-end justify-between gap-3">
+                            <div
+                              onClick={() => handleOpenDetails(show, 'trailer', 'main', undefined, undefined, { sourceFeedType: 'other' })}
+                              className="min-w-0 flex-1 cursor-pointer"
+                            >
+                              {show.titleLogoUrl ? (
+                                <img
+                                  src={show.titleLogoUrl}
+                                  alt={show.title}
+                                  referrerPolicy="no-referrer"
+                                  className="max-h-11 sm:max-h-13 max-w-[195px] w-auto h-auto object-contain object-left drop-shadow-[0_2px_10px_rgba(0,0,0,0.95)]"
+                                />
+                              ) : (
+                                <h3 className="text-lg sm:text-xl font-black text-white tracking-tight truncate drop-shadow-[0_2px_8px_rgba(0,0,0,0.9)]">
+                                  {show.title}
+                                </h3>
+                              )}
+                            </div>
 
-                        {/* My List Button */}
-                        <button
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            handleToggleWatchlist(show.id);
-                          }}
-                          className="flex items-center gap-1.5 text-white hover:text-white/80 active:scale-95 transition-transform cursor-pointer"
-                          aria-label={isInWatchlist ? `Remove ${show.title} from list` : `Add ${show.title} to list`}
-                        >
-                          <div className="w-6 h-6 rounded-full border border-white/80 text-white flex items-center justify-center">
-                            {isInWatchlist ? (
-                              <Check className="w-3.5 h-3.5 text-white" />
-                            ) : (
-                              <Plus className="w-3.5 h-3.5 text-white" />
+                            <div className="flex items-center gap-5 shrink-0 pb-0.5">
+                              <button
+                                type="button"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  setMobileTop10ShareShow(show);
+                                }}
+                                className="flex flex-col items-center justify-center gap-1 text-white hover:text-white/80 active:scale-90 cursor-pointer transition-transform"
+                                aria-label={`Share ${show.title}`}
+                              >
+                                <ShareArrowIcon className="w-5 h-5 text-white" />
+                                <span className="text-[10px] font-medium text-zinc-300 leading-none">Share</span>
+                              </button>
+
+                              <button
+                                type="button"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  handleToggleWatchlist(show.id);
+                                }}
+                                className="flex flex-col items-center justify-center gap-1 text-white hover:text-white/80 active:scale-90 cursor-pointer transition-transform"
+                                aria-label={isInWatchlist ? `Remove ${show.title} from list` : `Add ${show.title} to list`}
+                              >
+                                {isInWatchlist ? (
+                                  <Check className="w-5 h-5 text-emerald-400 stroke-[2.5]" />
+                                ) : (
+                                  <Plus className="w-5 h-5 text-white stroke-[2]" />
+                                )}
+                                <span className="text-[10px] font-medium text-zinc-300 leading-none">
+                                  {isInWatchlist ? 'In List' : 'My List'}
+                                </span>
+                              </button>
+
+                              <button
+                                type="button"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  handlePlayShow(show);
+                                }}
+                                className="flex flex-col items-center justify-center gap-1 text-white hover:text-white/80 active:scale-90 cursor-pointer transition-transform"
+                                aria-label={`Play ${show.title}`}
+                              >
+                                <svg className="w-5 h-5 text-white" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                                  <polygon points="6 4 20 12 6 20 6 4" />
+                                </svg>
+                                <span className="text-[10px] font-medium text-zinc-300 leading-none">Play</span>
+                              </button>
+                            </div>
+                          </div>
+
+                          {/* Metadata Line: Year • Maturity Pill • Genre • Duration/Seasons */}
+                          <div
+                            onClick={() => handleOpenDetails(show, 'trailer', 'main', undefined, undefined, { sourceFeedType: 'other' })}
+                            className="mt-2.5 flex flex-wrap items-center gap-1.5 text-[11px] font-semibold text-zinc-300 cursor-pointer"
+                          >
+                            {releaseYear && <span>{releaseYear}</span>}
+                            {show.maturityRating && (
+                              <>
+                                {releaseYear && <span className="text-zinc-500">•</span>}
+                                <span className="px-1.5 py-0.5 rounded border border-white/30 bg-white/[0.06] text-white text-[10px] font-bold leading-none">
+                                  {show.maturityRating}
+                                </span>
+                              </>
+                            )}
+                            {primaryGenre && (
+                              <>
+                                <span className="text-zinc-500">•</span>
+                                <span>{primaryGenre}</span>
+                              </>
+                            )}
+                            {durationOrSeasons && (
+                              <>
+                                <span className="text-zinc-500">•</span>
+                                <span>{durationOrSeasons}</span>
+                              </>
                             )}
                           </div>
-                          <span className="text-xs sm:text-sm font-bold text-white tracking-wide">
-                            {isInWatchlist ? 'In List' : 'My List'}
-                          </span>
-                        </button>
+
+                          {/* 2-Line Synopsis */}
+                          {synopsisText && (
+                            <p
+                              onClick={() => handleOpenDetails(show, 'trailer', 'main', undefined, undefined, { sourceFeedType: 'other' })}
+                              className="mt-1.5 text-xs text-zinc-400 leading-relaxed line-clamp-2 cursor-pointer"
+                            >
+                              {synopsisText}
+                            </p>
+                          )}
+                        </div>
                       </div>
-                    </div>
-                  );
-                });
-              })()}
-            </div>
-          </div>
-        ) : searchQuery.trim() ? (
-          <div className="pt-24 md:pt-28 pb-12 space-y-6 md:space-y-8 animate-in fade-in duration-200">
-            {/* Search Header Banner */}
-            <div className="w-full px-4 md:px-8 xl:px-12 flex items-center justify-between border-b border-white/10 pb-4">
-              <div>
-                <h2 className="text-xl sm:text-2xl font-bold text-white tracking-tight">
-                  Search: &quot;{searchQuery}&quot;
-                </h2>
-                <p className="text-xs text-zinc-400 mt-1">
-                  {exactSearchShows.length > 0
-                    ? `Found ${exactSearchShows.length} exact ${exactSearchShows.length === 1 ? 'title' : 'titles'} and related recommendations`
-                    : 'Showing matching recommendations and related titles'}
-                </p>
-              </div>
-              <button
-                onClick={handleClearSearch}
-                className="text-xs px-3.5 py-1.5 rounded-full bg-zinc-800 hover:bg-zinc-700 text-zinc-200 hover:text-white transition-colors cursor-pointer font-medium flex items-center gap-1.5 border border-white/10"
-              >
-                <span>Clear Search</span>
-                <X className="w-3.5 h-3.5" />
-              </button>
-            </div>
-
-            {/* 1st Feed Line: Search Results (contains exact results if there and related to that search) */}
-            <FeedStrip
-              feed={{
-                id: 'search-results-feed',
-                title: exactSearchShows.length > 0
-                  ? `Search Results for "${searchQuery}"`
-                  : `Top Results for "${searchQuery}"`,
-                categoryKey: 'custom',
-                enabled: true
-              }}
-              shows={shows}
-              customShows={searchFeed1Shows}
-              watchlist={watchlist}
-              onToggleWatchlist={handleToggleWatchlist}
-              onOpenDetails={(s) => handleOpenDetails(s, 'trailer')}
-              onPlayShow={handlePlayShow}
-              onIncrementPoints={handleIncrementPoints}
-              isGlobalMuted={isGlobalMuted}
-              onToggleGlobalMute={handleToggleGlobalMute}
-              onHoverCardStart={() => setIsFeedCardHovered(true)}
-              onHoverCardEnd={() => setIsFeedCardHovered(false)}
-              isMobile={isMobile}
-              onLongPressShow={(s) => setActionSheetShow(s)}
-              enableStretchableCards={adminSettings.enableStretchableCards !== false}
-              showTop10Badges={adminSettings.showTop10Badges !== false}
-              modernTop10RankList={adminSettings.modernTop10RankList}
-              top10RankStyle={adminSettings.top10RankStyle}
-            />
-
-            {/* 2nd Feed Line: Related to Search */}
-            <FeedStrip
-              feed={{
-                id: 'search-related-feed',
-                title: `Related to "${searchQuery}"`,
-                categoryKey: 'custom',
-                enabled: true
-              }}
-              shows={shows}
-              customShows={searchFeed2Shows}
-              watchlist={watchlist}
-              onToggleWatchlist={handleToggleWatchlist}
-              onOpenDetails={(s) => handleOpenDetails(s, 'trailer')}
-              onPlayShow={handlePlayShow}
-              onIncrementPoints={handleIncrementPoints}
-              isGlobalMuted={isGlobalMuted}
-              onToggleGlobalMute={handleToggleGlobalMute}
-              onHoverCardStart={() => setIsFeedCardHovered(true)}
-              onHoverCardEnd={() => setIsFeedCardHovered(false)}
-              isMobile={isMobile}
-              onLongPressShow={(s) => setActionSheetShow(s)}
-              enableStretchableCards={adminSettings.enableStretchableCards !== false}
-              showTop10Badges={adminSettings.showTop10Badges !== false}
-              modernTop10RankList={adminSettings.modernTop10RankList}
-              top10RankStyle={adminSettings.top10RankStyle}
-            />
-          </div>
-        ) : activeFilter === 'watchlist' ? (
-          /* Dedicated "My list" Page: Shows only user's saved content and watch history; shows nothing when cleared */
-          <div className="pt-20 sm:pt-24 pb-16 min-h-[50vh] animate-in fade-in duration-200">
-            {continueWatchingShows.length === 0 && userWatchlistShows.length === 0 ? (
-              /* Shows nothing when cleared as requested */
-              <div className="w-full" />
-            ) : (
-              <div className="relative z-20 space-y-2.5 md:space-y-3.5 mt-2 md:mt-3">
-                {/* 1st Feed Line: "Continue Watching" (shown only if items exist) */}
-                {continueWatchingShows.length > 0 && (
-                  <FeedStrip
-                    feed={{
-                      id: 'my-list-continue-watching',
-                      title: 'Continue Watching',
-                      categoryKey: 'custom',
-                      enabled: true
-                    }}
-                    shows={shows}
-                    customShows={continueWatchingShows}
-                    watchlist={watchlist}
-                    watchHistory={watchHistory}
-                    onToggleWatchlist={handleToggleWatchlist}
-                    onOpenDetails={(s) => handleOpenDetails(s, 'trailer')}
-                    onPlayShow={handlePlayShow}
-                    onIncrementPoints={handleIncrementPoints}
-                    isGlobalMuted={isGlobalMuted}
-                    onToggleGlobalMute={handleToggleGlobalMute}
-                    onHoverCardStart={() => setIsFeedCardHovered(true)}
-                    onHoverCardEnd={() => setIsFeedCardHovered(false)}
-                    isMobile={isMobile}
-                    isTablet={isTablet}
-                    onLongPressShow={(s) => setActionSheetShow(s)}
-                    enableStretchableCards={false}
-                    showTop10Badges={adminSettings.showTop10Badges !== false}
-                    modernTop10RankList={adminSettings.modernTop10RankList}
-                    top10RankStyle={adminSettings.top10RankStyle}
-                  />
-                )}
-
-                {/* 2nd Feed Line: "Watchlist" (shown only if items exist) */}
-                {userWatchlistShows.length > 0 && (
-                  <FeedStrip
-                    feed={{
-                      id: 'my-list-watchlist',
-                      title: 'Watchlist',
-                      categoryKey: 'custom',
-                      enabled: true
-                    }}
-                    shows={shows}
-                    customShows={userWatchlistShows}
-                    watchlist={watchlist}
-                    watchHistory={watchHistory}
-                    onToggleWatchlist={handleToggleWatchlist}
-                    onOpenDetails={(s) => handleOpenDetails(s, 'trailer')}
-                    onPlayShow={handlePlayShow}
-                    onIncrementPoints={handleIncrementPoints}
-                    isGlobalMuted={isGlobalMuted}
-                    onToggleGlobalMute={handleToggleGlobalMute}
-                    onHoverCardStart={() => setIsFeedCardHovered(true)}
-                    onHoverCardEnd={() => setIsFeedCardHovered(false)}
-                    isMobile={isMobile}
-                    isTablet={isTablet}
-                    onLongPressShow={(s) => setActionSheetShow(s)}
-                    enableStretchableCards={adminSettings.enableStretchableCards !== false}
-                    showTop10Badges={adminSettings.showTop10Badges !== false}
-                    modernTop10RankList={adminSettings.modernTop10RankList}
-                    top10RankStyle={adminSettings.top10RankStyle}
-                  />
-                )}
+                    );
+                  });
+                })()}
               </div>
             )}
+          </div>
+        ) : searchQuery.trim() ? (
+          /* Desktop Search Redesign: "More to explore" terms/genres strip + 4-column grid (max 8 rows), or SpecialSingleFeed Spotlight + 4 rows of 4 cards on exact title commit */
+          <div className="relative z-20 pt-20 md:pt-24 pb-16 space-y-6 animate-in fade-in duration-200">
+            {/* "More to explore:" related terms & genres bar */}
+            {desktopExploreTerms.length > 0 && (
+              <div className="w-full px-4 md:px-8 xl:px-12 relative">
+                <p className="text-xs text-zinc-400 font-medium mb-2.5 select-none">
+                  More to explore:
+                </p>
+                <div className="relative flex items-center">
+                  <div
+                    ref={searchExploreStripRef}
+                    className="flex items-center gap-2.5 overflow-x-auto no-scrollbar pr-12 py-0.5 scroll-smooth"
+                  >
+                    {desktopExploreTerms.map((term) => {
+                      const isActivePill = desktopSearchTermFilter.toLowerCase() === term.label.toLowerCase();
+                      return (
+                        <button
+                          key={term.label}
+                          onClick={() => {
+                            if (isActivePill) {
+                              setDesktopSearchTermFilter('');
+                            } else {
+                              setDesktopSearchTermFilter(term.label);
+                            }
+                          }}
+                          className={`px-4 py-2 rounded-md text-xs sm:text-[13px] shrink-0 transition-colors cursor-pointer whitespace-nowrap ${
+                            isActivePill
+                              ? 'bg-white text-black font-semibold shadow-md'
+                              : 'bg-[#222226] hover:bg-[#323238] text-zinc-200 font-medium'
+                          }`}
+                        >
+                          {term.label}
+                        </button>
+                      );
+                    })}
+                  </div>
+
+                  {/* Right chevron scroll button */}
+                  <button
+                    type="button"
+                    onClick={() => {
+                      searchExploreStripRef.current?.scrollBy({ left: 260, behavior: 'smooth' });
+                    }}
+                    className="absolute right-0 w-8 h-8 rounded-full bg-[#1a1a1d]/95 hover:bg-zinc-700 border border-white/15 text-white flex items-center justify-center shadow-xl cursor-pointer transition-colors"
+                    aria-label="Scroll related terms right"
+                  >
+                    <ChevronRight className="w-4 h-4" />
+                  </button>
+                </div>
+              </div>
+            )}
+
+            {/* Exact Title Spotlight Mode (ONLY when exact title matches) */}
+            {exactDesktopSpotlightShow && !desktopSearchTermFilter && (
+              <SpecialSingleFeed
+                shows={[exactDesktopSpotlightShow]}
+                onPlay={handlePlayShow}
+                onOpenDetails={(s, origin) => handleOpenDetails(s, 'trailer', 'main', undefined, undefined, origin || { sourceFeedType: 'other' })}
+                watchlist={watchlist}
+                onToggleWatchlist={handleToggleWatchlist}
+                isGlobalMuted={isGlobalMuted}
+                onToggleGlobalMute={handleToggleGlobalMute}
+                isMobile={isMobile && !isTablet}
+                isPaused={Boolean(playingMedia || selectedShowForDetail || isLoginPageOpen || isProfileLocked || isAlertPosterActive || (sharedTitleShow && !isMobile))}
+                isAnyOtherCardHovered={isFeedCardHovered}
+                isSearchSpotlight={true}
+              />
+            )}
+
+            {/* 4-Column Results Grid: max 8 rows (32 cards) when browsing/typing, max 4 rows (16 cards) below Exact Spotlight */}
+            <div className="w-full px-4 md:px-8 xl:px-12">
+              <h2 className="text-[15px] sm:text-base md:text-[17px] font-semibold text-white/95 tracking-tight mb-4">
+                {desktopGridHeading}
+              </h2>
+              {desktopGridShows.length > 0 ? (
+                <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-4 sm:gap-5">
+                  {desktopGridShows.map((s) => (
+                    <ShowCard
+                      key={`search-grid-${s.id}`}
+                      show={s}
+                      cardSize="full"
+                      isInWatchlist={watchlist.includes(s.id)}
+                      onToggleWatchlist={handleToggleWatchlist}
+                      onOpenDetails={(show, origin) => handleOpenDetails(show, 'trailer', 'main', undefined, undefined, origin)}
+                      onPlay={handlePlayShow}
+                      onIncrementPoints={handleIncrementPoints}
+                      isGlobalMuted={isGlobalMuted}
+                      onToggleGlobalMute={handleToggleGlobalMute}
+                      onHoverPreviewStart={() => setIsFeedCardHovered(true)}
+                      onHoverPreviewEnd={() => setIsFeedCardHovered(false)}
+                      onLongPress={(show) => setActionSheetShow(show)}
+                      showTop10Badge={adminSettings.showTop10Badges !== false}
+                      isLiked={likedShowIds.includes(s.id)}
+                      onToggleLike={handleToggleLike}
+                      popoutStyle={adminSettings.desktopPopoutStyle || 'classic'}
+                    />
+                  ))}
+                </div>
+              ) : (
+                <div className="py-16 text-center text-zinc-400">
+                  <p className="text-base font-medium text-white">No titles found for &quot;{desktopSearchTermFilter || searchQuery}&quot;</p>
+                </div>
+              )}
+            </div>
+          </div>
+        ) : activeFilter === 'watchlist' ? (
+          /* Dedicated "My list" Page: Shows Keep Watching, My List, and Series & Films You've Liked with EmptyListCard art when empty */
+          <div className="pt-20 sm:pt-24 pb-16 min-h-[60vh] animate-in fade-in duration-200">
+            <div className="relative z-20 space-y-5 md:space-y-6 mt-2 md:mt-3">
+              {/* 1st Section: "Keep Watching" */}
+              {continueWatchingShows.length > 0 ? (
+                <FeedStrip
+                  feed={{
+                    id: 'my-list-continue-watching',
+                    title: 'Keep Watching',
+                    categoryKey: 'custom',
+                    enabled: true
+                  }}
+                  shows={shows}
+                  customShows={continueWatchingShows}
+                  watchlist={watchlist}
+                  watchHistory={watchHistory}
+                  onToggleWatchlist={handleToggleWatchlist}
+                  onOpenDetails={(s, origin) => handleOpenDetails(s, 'trailer', 'main', undefined, undefined, origin)}
+                  onPlayShow={handlePlayShow}
+                  onIncrementPoints={handleIncrementPoints}
+                  isGlobalMuted={isGlobalMuted}
+                  onToggleGlobalMute={handleToggleGlobalMute}
+                  onHoverCardStart={() => setIsFeedCardHovered(true)}
+                  onHoverCardEnd={() => setIsFeedCardHovered(false)}
+                  isMobile={isMobile}
+                  isTablet={isTablet}
+                  onLongPressShow={(s) => setActionSheetShow(s)}
+                  enableStretchableCards={false}
+                  showTop10Badges={adminSettings.showTop10Badges !== false}
+                  modernTop10RankList={adminSettings.modernTop10RankList}
+                  top10RankStyle={adminSettings.top10RankStyle}
+                  likedShowIds={likedShowIds}
+                  onToggleLike={handleToggleLike}
+                  feedIndex={0}
+                  isPaused={Boolean(isLoginPageOpen || isProfileLocked || isAlertPosterActive || playingMedia || selectedShowForDetail || (sharedTitleShow && !isMobile))}
+                  desktopPopoutStyle={adminSettings.desktopPopoutStyle || 'classic'}
+                />
+              ) : (
+                <div className="px-2.5 sm:px-4 md:px-8 xl:px-12">
+                  <EmptyListCard variant="continue_watching" />
+                </div>
+              )}
+
+              {/* 2nd Section: "My List" */}
+              {userWatchlistShows.length > 0 ? (
+                <FeedStrip
+                  feed={{
+                    id: 'my-list-watchlist',
+                    title: 'My List',
+                    categoryKey: 'watchlist',
+                    enabled: true
+                  }}
+                  shows={shows}
+                  customShows={userWatchlistShows}
+                  watchlist={watchlist}
+                  watchHistory={watchHistory}
+                  onToggleWatchlist={handleToggleWatchlist}
+                  onOpenDetails={(s, origin) => handleOpenDetails(s, 'trailer', 'main', undefined, undefined, origin)}
+                  onPlayShow={handlePlayShow}
+                  onIncrementPoints={handleIncrementPoints}
+                  isGlobalMuted={isGlobalMuted}
+                  onToggleGlobalMute={handleToggleGlobalMute}
+                  onHoverCardStart={() => setIsFeedCardHovered(true)}
+                  onHoverCardEnd={() => setIsFeedCardHovered(false)}
+                  isMobile={isMobile}
+                  isTablet={isTablet}
+                  onLongPressShow={(s) => setActionSheetShow(s)}
+                  enableStretchableCards={false}
+                  showTop10Badges={adminSettings.showTop10Badges !== false}
+                  modernTop10RankList={adminSettings.modernTop10RankList}
+                  top10RankStyle={adminSettings.top10RankStyle}
+                  likedShowIds={likedShowIds}
+                  onToggleLike={handleToggleLike}
+                  feedIndex={0}
+                  isPaused={Boolean(isLoginPageOpen || isProfileLocked || isAlertPosterActive || playingMedia || selectedShowForDetail || (sharedTitleShow && !isMobile))}
+                  desktopPopoutStyle={adminSettings.desktopPopoutStyle || 'classic'}
+                />
+              ) : (
+                <div className="px-2.5 sm:px-4 md:px-8 xl:px-12">
+                  <EmptyListCard variant="my_list" />
+                </div>
+              )}
+
+              {/* 3rd Section: "Series & Films You've Liked" */}
+              {likedShows.length > 0 ? (
+                <FeedStrip
+                  feed={{
+                    id: 'my-list-liked',
+                    title: "Series & Films You've Liked",
+                    categoryKey: 'custom',
+                    enabled: true
+                  }}
+                  shows={shows}
+                  customShows={likedShows}
+                  watchlist={watchlist}
+                  watchHistory={watchHistory}
+                  onToggleWatchlist={handleToggleWatchlist}
+                  onOpenDetails={(s, origin) => handleOpenDetails(s, 'trailer', 'main', undefined, undefined, origin)}
+                  onPlayShow={handlePlayShow}
+                  onIncrementPoints={handleIncrementPoints}
+                  isGlobalMuted={isGlobalMuted}
+                  onToggleGlobalMute={handleToggleGlobalMute}
+                  onHoverCardStart={() => setIsFeedCardHovered(true)}
+                  onHoverCardEnd={() => setIsFeedCardHovered(false)}
+                  isMobile={isMobile}
+                  isTablet={isTablet}
+                  onLongPressShow={(s) => setActionSheetShow(s)}
+                  enableStretchableCards={false}
+                  showTop10Badges={adminSettings.showTop10Badges !== false}
+                  modernTop10RankList={adminSettings.modernTop10RankList}
+                  top10RankStyle={adminSettings.top10RankStyle}
+                  likedShowIds={likedShowIds}
+                  onToggleLike={handleToggleLike}
+                  feedIndex={0}
+                  isPaused={Boolean(isLoginPageOpen || isProfileLocked || isAlertPosterActive || playingMedia || selectedShowForDetail || (sharedTitleShow && !isMobile))}
+                  desktopPopoutStyle={adminSettings.desktopPopoutStyle || 'classic'}
+                />
+              ) : (
+                <div className="px-2.5 sm:px-4 md:px-8 xl:px-12">
+                  <EmptyListCard variant="liked" />
+                </div>
+              )}
+            </div>
           </div>
         ) : selectedSpecialFeed ? (
           /* Redesigned Special Feed Page matching Image 1 & Image 2:
@@ -2819,102 +3529,102 @@ export default function App() {
             shows={selectedSpecialFeed.shows}
             watchlist={watchlist}
             onToggleWatchlist={handleToggleWatchlist}
-            onOpenDetails={(s) => handleOpenDetails(s, 'trailer')}
+            onOpenDetails={(s, origin) => handleOpenDetails(s, 'trailer', 'main', undefined, undefined, origin)}
             onPlayShow={handlePlayShow}
             onIncrementPoints={handleIncrementPoints}
             isGlobalMuted={isGlobalMuted}
             onToggleGlobalMute={handleToggleGlobalMute}
             onHoverCardStart={() => setIsFeedCardHovered(true)}
             onHoverCardEnd={() => setIsFeedCardHovered(false)}
+            isFeedCardHovered={isFeedCardHovered}
+            desktopPopoutStyle={adminSettings.desktopPopoutStyle || 'classic'}
           />
         ) : activeFilter === 'categories' && !selectedCategoryFilter ? (
-          /* Dedicated Categories View with top mobile filter strip */
-          <div className={`w-full ${adminSettings.mobileRecommendationStyle === 'poster_no_preview' ? 'pt-14' : ''}`}>
-            {/* Mobile Top Header: show hamburger menu bar if poster_no_preview, else standard tabs */}
-            {adminSettings.mobileRecommendationStyle === 'poster_no_preview' ? (
-              <div
-                style={{
-                  backgroundColor: mobileHeaderOpacity > 0.05 ? `rgba(0, 0, 0, ${mobileHeaderOpacity})` : 'transparent',
-                  backgroundImage:
-                    mobileHeaderOpacity <= 0.05
-                      ? 'linear-gradient(to bottom, rgba(0,0,0,0.65) 0%, rgba(0,0,0,0.2) 60%, transparent 100%)'
-                      : undefined
-                }}
-                className={`md:hidden fixed top-0 inset-x-0 z-50 w-full px-4 h-14 flex items-center justify-between select-none transition-colors duration-150 border-0 ${
-                  mobileHeaderOpacity > 0.05 ? 'shadow-md' : 'shadow-none'
-                }`}
-              >
-                <div className="flex items-center gap-3">
-                  <button
-                    onClick={() => setIsHamburgerDrawerOpen(true)}
-                    className="p-1 -ml-1 text-white hover:text-white/80 active:scale-90 transition-transform cursor-pointer"
-                    aria-label="Open navigation menu"
-                  >
-                    <Menu className="w-6 h-6 text-white" />
-                  </button>
+          /* Dedicated Categories View with top mobile filter strip (hidden when a mobile category detail grid is open) */
+          <div className={`w-full ${adminSettings.mobileRecommendationStyle === 'poster_no_preview' && !isCategoriesDetailOpen ? 'pt-14' : ''}`}>
+            {!isCategoriesDetailOpen && (
+              adminSettings.mobileRecommendationStyle === 'poster_no_preview' ? (
+                <div
+                  data-mobile-top-navbar="true"
+                  style={{
+                    backgroundColor: mobileHeaderOpacity > 0.05 ? `rgba(0, 0, 0, ${mobileHeaderOpacity})` : 'transparent'
+                  }}
+                  className={`md:hidden fixed top-0 inset-x-0 z-50 w-full px-4 h-14 flex items-center justify-between select-none transition-colors duration-150 border-0 ${
+                    mobileHeaderOpacity > 0.05 ? 'shadow-md' : 'shadow-none'
+                  }`}
+                >
+                  <div className="flex items-center gap-3">
+                    <button
+                      onClick={() => setIsHamburgerDrawerOpen(true)}
+                      className="p-1 -ml-1 text-white hover:text-white/80 active:scale-90 transition-transform cursor-pointer"
+                      aria-label="Open navigation menu"
+                    >
+                      <Menu className="w-6 h-6 text-white" />
+                    </button>
 
-                  <div
-                    onClick={handleGoHome}
-                    className="flex items-center gap-1.5 cursor-pointer active:scale-95 transition-transform"
-                  >
-                    {adminSettings.platformIconUrl ? (
-                      <img
-                        src={adminSettings.platformIconUrl}
-                        alt={adminSettings.platformName || 'Platform'}
-                        className="h-6.5 w-auto object-contain"
-                      />
-                    ) : adminSettings.customLogoUrl ? (
-                      <img
-                        src={adminSettings.customLogoUrl}
-                        alt={adminSettings.platformName || 'Platform'}
-                        className="h-6.5 w-auto object-contain"
-                      />
-                    ) : (
-                      <span className="text-white font-black text-lg tracking-wider font-sans">
-                        HBO <span className="font-light text-zinc-300">max</span>
-                      </span>
-                    )}
+                    <div
+                      onClick={handleGoHome}
+                      className="flex items-center gap-1.5 cursor-pointer active:scale-95 transition-transform"
+                    >
+                      {adminSettings.platformIconUrl ? (
+                        <img
+                          src={adminSettings.platformIconUrl}
+                          alt={adminSettings.platformName || 'Platform'}
+                          className="h-6.5 w-auto object-contain"
+                        />
+                      ) : adminSettings.customLogoUrl ? (
+                        <img
+                          src={adminSettings.customLogoUrl}
+                          alt={adminSettings.platformName || 'Platform'}
+                          className="h-6.5 w-auto object-contain"
+                        />
+                      ) : (
+                        <span className="text-white font-black text-lg tracking-wider font-sans">
+                          HBO <span className="font-light text-zinc-300">max</span>
+                        </span>
+                      )}
+                    </div>
+                  </div>
+
+                  <div className="flex items-center gap-3">
+                    <button
+                      onClick={() => setIsNotificationOpen((prev) => !prev)}
+                      className="relative p-1 text-white hover:text-white/80 active:scale-90 transition-transform cursor-pointer"
+                      aria-label="Notifications"
+                    >
+                      <Bell className="w-5.5 h-5.5 text-white" />
+                      <span className="absolute top-1 right-1 w-2 h-2 rounded-full bg-red-600" />
+                    </button>
                   </div>
                 </div>
-
-                <div className="flex items-center gap-3">
-                  <button
-                    onClick={() => setIsNotificationOpen((prev) => !prev)}
-                    className="relative p-1 text-white hover:text-white/80 active:scale-90 transition-transform cursor-pointer"
-                    aria-label="Notifications"
-                  >
-                    <Bell className="w-5.5 h-5.5 text-white" />
-                    <span className="absolute top-1 right-1 w-2 h-2 rounded-full bg-red-600" />
-                  </button>
+              ) : (
+                <div className="md:hidden relative z-30 w-full px-4 pt-14 pb-[18px] flex items-center gap-2 overflow-x-auto no-scrollbar select-none">
+                  {[
+                    { id: 'all' as const, label: 'All' },
+                    { id: 'series' as const, label: 'Series' },
+                    { id: 'movies' as const, label: 'Movies' },
+                    { id: 'categories' as const, label: 'Categories' }
+                  ].map((tab) => {
+                    const isActive = activeFilter === tab.id;
+                    return (
+                      <button
+                        key={tab.id}
+                        onClick={() => {
+                          setSelectedCategoryFilter(null);
+                          handleSelectPage(tab.id);
+                        }}
+                        className={`px-4 py-1.5 rounded-full text-xs font-semibold transition-all cursor-pointer shrink-0 ${
+                          isActive
+                            ? 'bg-white text-black shadow-sm'
+                            : 'bg-white/[0.08] hover:bg-white/15 text-white backdrop-blur-none border-0'
+                        }`}
+                      >
+                        {tab.label}
+                      </button>
+                    );
+                  })}
                 </div>
-              </div>
-            ) : (
-              <div className="md:hidden relative z-30 w-full px-4 pt-14 pb-[18px] flex items-center gap-2 overflow-x-auto no-scrollbar select-none">
-                {[
-                  { id: 'all' as const, label: 'All' },
-                  { id: 'series' as const, label: 'Series' },
-                  { id: 'movies' as const, label: 'Movies' },
-                  { id: 'categories' as const, label: 'Categories' }
-                ].map((tab) => {
-                  const isActive = activeFilter === tab.id;
-                  return (
-                    <button
-                      key={tab.id}
-                      onClick={() => {
-                        setSelectedCategoryFilter(null);
-                        handleSelectPage(tab.id);
-                      }}
-                      className={`px-4 py-1.5 rounded-full text-xs font-semibold transition-all cursor-pointer shrink-0 ${
-                        isActive
-                          ? 'bg-white text-black shadow-sm'
-                          : 'bg-white/[0.08] hover:bg-white/15 text-white backdrop-blur-none border-0'
-                      }`}
-                    >
-                      {tab.label}
-                    </button>
-                  );
-                })}
-              </div>
+              )
             )}
             <CategoriesView
               shows={shows}
@@ -2925,22 +3635,31 @@ export default function App() {
               onPlayShow={handlePlayShow}
               onIncrementPoints={handleIncrementPoints}
               onCloseCategories={() => handleSelectPage('all')}
+              onCategorySelectionChange={(cat) => {
+                setIsCategoriesDetailOpen(Boolean(cat));
+                if (activeFilter === 'categories' && !selectedCategoryFilter) {
+                  if (cat) {
+                    const slug = cat.id || cat.name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '');
+                    pushRoute(`/categories/${encodeURIComponent(slug)}`);
+                  } else {
+                    pushRoute('/categories');
+                  }
+                }
+              }}
               resetKey={categoriesResetKey}
               initialCategory={selectedCategoryFromGenre}
+              mobileCategoriesStyle={adminSettings.mobileCategoriesStyle || 'grid'}
             />
           </div>
         ) : (
           <>
-            {/* Mobile Top Header / Filter Strip */}
-            {adminSettings.mobileRecommendationStyle === 'poster_no_preview' ? (
+            {/* Mobile Top Header / Filter Strip (hidden on mobile when category detail grid uses Top-10-style header) */}
+            {!selectedCategoryFilter && (adminSettings.mobileRecommendationStyle === 'poster_no_preview' ? (
               /* Mobile Header: Hamburger Menu + Platform Icon on left, Notification Bell on right (without profile icon) */
               <div
+                data-mobile-top-navbar="true"
                 style={{
-                  backgroundColor: mobileHeaderOpacity > 0.05 ? `rgba(0, 0, 0, ${mobileHeaderOpacity})` : 'transparent',
-                  backgroundImage:
-                    mobileHeaderOpacity <= 0.05
-                      ? 'linear-gradient(to bottom, rgba(0,0,0,0.65) 0%, rgba(0,0,0,0.2) 60%, transparent 100%)'
-                      : undefined
+                  backgroundColor: mobileHeaderOpacity > 0.05 ? `rgba(0, 0, 0, ${mobileHeaderOpacity})` : 'transparent'
                 }}
                 className={`md:hidden fixed top-0 inset-x-0 z-50 w-full px-4 h-14 flex items-center justify-between select-none transition-colors duration-150 border-0 ${
                   mobileHeaderOpacity > 0.05 ? 'shadow-md' : 'shadow-none'
@@ -3020,22 +3739,27 @@ export default function App() {
                   );
                 })}
               </div>
-            )}
+            ))}
 
-            {/* 2. Hero Recommendation with Ambient Glow (Placed below the filter strip) */}
+            {/* 2. Hero Recommendation with Ambient Glow (Hidden on mobile when a Category grid is open) */}
             {currentHeroShow ? (
-              <HeroRecommendation
+              <div className={selectedCategoryFilter ? 'hidden md:block' : ''}>
+                <HeroRecommendation
                 show={currentHeroShow}
                 isInWatchlist={watchlist.includes(currentHeroShow.id)}
                 onToggleWatchlist={handleToggleWatchlist}
-                onOpenDetails={(s) => handleOpenDetails(s, 'trailer')}
+                onOpenDetails={(s, origin) => handleOpenDetails(s, 'trailer', 'main', undefined, undefined, origin || { sourceFeedType: 'other' })}
                 onPlay={handlePlayShow}
                 isPausedByFeedHover={isFeedCardHovered}
                 isPausedByModal={
                   Boolean(selectedShowForDetail) ||
+                  Boolean(sharedTitleShow && !isMobile) ||
                   Boolean(playingMedia) ||
                   Boolean(selectedSpecialFeed) ||
                   Boolean(selectedActorForPool) ||
+                  isLoginPageOpen ||
+                  isProfileLocked ||
+                  isAlertPosterActive ||
                   isMobileSearchOpen ||
                   isMobileProfileOpen ||
                   isAccountModalOpen ||
@@ -3053,6 +3777,7 @@ export default function App() {
                 mobileRecommendationStyle={adminSettings.mobileRecommendationStyle || 'portrait'}
                 useNoPreviewButtonsFor2x3Recommendation={Boolean(adminSettings.useNoPreviewButtonsFor2x3Recommendation)}
               />
+              </div>
             ) : shows.length === 0 ? (
               <div className="min-h-[55vh] flex flex-col items-center justify-center px-4 py-16 text-center select-none">
                 <div className="w-16 h-16 rounded-2xl bg-white/5 border border-white/10 flex items-center justify-center mb-4 text-zinc-400 shadow-inner">
@@ -3071,44 +3796,64 @@ export default function App() {
               </div>
             ) : null}
 
-            {/* Active Category Filter Pill (shown ONLY for explicit custom category filter, NEVER on series or movies pages) */}
+            {/* Active Category Filter: Mobile gets Top-10-style fixed black header; Desktop keeps filter pill */}
             {Boolean(selectedCategoryFilter) && activeFilter !== 'series' && activeFilter !== 'movies' && (
-              <div className="relative z-30 w-full px-4 md:px-8 xl:px-12 my-3 sm:my-4 flex items-center justify-between">
-                <div className="inline-flex items-center gap-2.5 bg-white/20 backdrop-blur-sm text-white px-4 py-1.5 rounded-full shadow-sm text-xs sm:text-sm font-medium border-0">
-                  <Filter className="w-4 h-4 text-white/90 shrink-0" />
-                  <span className="text-zinc-200">Filtering by:</span>
-                  <span className="text-white font-bold capitalize tracking-wide">
-                    {selectedCategoryFilter!.name}
-                  </span>
-                  <button
-                    onClick={() => {
-                      setSelectedCategoryFilter(null);
-                      handleSelectPage('all');
-                    }}
-                    className="ml-2 w-6 h-6 rounded-full bg-white/10 hover:bg-white/25 text-white/80 hover:text-white flex items-center justify-center transition-colors cursor-pointer shadow-sm"
-                    aria-label="Clear filter"
-                  >
-                    <X className="w-3.5 h-3.5 stroke-[2.5]" />
-                  </button>
+              <>
+                <div className="md:hidden fixed top-0 inset-x-0 z-50 h-14 bg-black px-4 flex items-center justify-between border-b border-white/10 select-none">
+                  <div className="flex items-center gap-3 min-w-0">
+                    <button
+                      onClick={() => {
+                        setSelectedCategoryFilter(null);
+                        handleSelectPage('categories');
+                      }}
+                      className="p-1 -ml-1.5 text-white hover:text-white/80 active:scale-90 transition-transform cursor-pointer shrink-0"
+                      aria-label="Back to categories"
+                    >
+                      <ChevronLeft className="w-7 h-7 stroke-[2.2]" />
+                    </button>
+                    <h1 className="text-lg font-black text-white tracking-tight truncate">
+                      {selectedCategoryFilter!.name}
+                    </h1>
+                  </div>
                 </div>
-              </div>
+                <div className="hidden md:flex relative z-30 w-full px-4 md:px-8 xl:px-12 my-3 sm:my-4 items-center justify-between">
+                  <div className="inline-flex items-center gap-2.5 bg-white/20 backdrop-blur-sm text-white px-4 py-1.5 rounded-full shadow-sm text-xs sm:text-sm font-medium border-0">
+                    <Filter className="w-4 h-4 text-white/90 shrink-0" />
+                    <span className="text-zinc-200">Filtering by:</span>
+                    <span className="text-white font-bold capitalize tracking-wide">
+                      {selectedCategoryFilter!.name}
+                    </span>
+                    <button
+                      onClick={() => {
+                        setSelectedCategoryFilter(null);
+                        handleSelectPage('all');
+                      }}
+                      className="ml-2 w-6 h-6 rounded-full bg-white/10 hover:bg-white/25 text-white/80 hover:text-white flex items-center justify-center transition-colors cursor-pointer shadow-sm"
+                      aria-label="Clear filter"
+                    >
+                      <X className="w-3.5 h-3.5 stroke-[2.5]" />
+                    </button>
+                  </div>
+                </div>
+              </>
             )}
 
-            {/* 3. Shows Display: If in selected category, display 3 in a row 2:3 cards on mobile, 4 per line on desktop */}
+            {/* 3. Shows Display: If in selected category, display 3 in a row 2:3 cards matching Mobile More Like This, 4 per line on desktop */}
             {selectedCategoryFilter ? (
-              <div className="relative z-20 w-full px-2.5 sm:px-4 md:px-8 xl:px-12 mt-4 md:mt-6 pb-16">
-                {/* Mobile Layout (< sm): 3 in a row, 2:3 aspect ratio cards */}
+              <div className="relative z-20 w-full px-2.5 sm:px-4 md:px-8 xl:px-12 pt-16 md:pt-0 mt-0 md:mt-6 pb-16">
+                {/* Mobile Layout (< sm): 3 in a row, 2:3 aspect ratio cards matching DetailModal More Like This */}
                 <div className="grid sm:hidden grid-cols-3 gap-2 sm:gap-2.5">
                   {categoryMatchingShows.map((s) => (
                     <div
                       key={s.id}
-                      onClick={() => handleOpenDetails(s, 'trailer')}
+                      data-show-id={s.id}
+                      onClick={() => handleOpenDetails(s, 'trailer', 'main', undefined, undefined, { sourceFeedType: 'other' })}
                       className="aspect-[2/3] rounded-md overflow-hidden bg-black shadow cursor-pointer group active:scale-95 transition-transform"
                     >
                       <MediaImage
                         src={s.posterVerticalUrl || s.posterUrl || s.posterLandscapeUrl}
                         fallbackTitle={s.title}
-                        fallbackClassName="w-full h-full bg-[#181818] flex items-center justify-center p-2.5 text-center select-none"
+                        fallbackClassName="w-full h-full bg-[#111] flex items-center justify-center p-2.5 text-center select-none"
                         className="w-full h-full object-cover group-hover:scale-105 transition-transform"
                       />
                     </div>
@@ -3124,7 +3869,7 @@ export default function App() {
                       cardSize="full"
                       isInWatchlist={watchlist.includes(s.id)}
                       onToggleWatchlist={handleToggleWatchlist}
-                      onOpenDetails={(show) => handleOpenDetails(show, 'trailer')}
+                      onOpenDetails={(show, origin) => handleOpenDetails(show, 'trailer', 'main', undefined, undefined, origin)}
                       onPlay={handlePlayShow}
                       onIncrementPoints={handleIncrementPoints}
                       isGlobalMuted={isGlobalMuted}
@@ -3132,12 +3877,41 @@ export default function App() {
                       onHoverPreviewStart={() => setIsFeedCardHovered(true)}
                       onHoverPreviewEnd={() => setIsFeedCardHovered(false)}
                       onLongPress={(show) => setActionSheetShow(show)}
+                      popoutStyle={adminSettings.desktopPopoutStyle || 'classic'}
                     />
                   ))}
                 </div>
               </div>
-            ) : (
-              <div className="relative z-20 space-y-2.5 md:space-y-3.5 mt-2 md:mt-3">
+            ) : (() => {
+              const canShowSignupBanner =
+                activeFilter === 'all' &&
+                !selectedCategoryFilter &&
+                !searchQuery.trim() &&
+                Boolean(adminSettings.signupTileEnabled) &&
+                (adminSettings.signupTileLayouts || ['desktop', 'tablet', 'mobile']).includes(currentDeviceLayout);
+              const signupBannerInsertIdx =
+                dailyFeeds.length >= 4 ? dailyFeeds.length - 2 : dailyFeeds.length === 3 ? 2 : -1;
+
+              const renderSignupBanner = () => (
+                <SignupTileBanner
+                  shows={shows}
+                  title={adminSettings.signupTileTitle}
+                  subtitle={adminSettings.signupTileSubtitle}
+                  buttonText={adminSettings.signupTileButtonText}
+                  imageUrl={adminSettings.signupTileImageUrl}
+                  platformName={platformName}
+                  customLogoUrl={adminSettings.signupTileCustomLogoUrl?.trim() || adminSettings.customLogoUrl}
+                  useCustomLogo={Boolean(adminSettings.signupTileUseCustomLogo ?? adminSettings.useCustomLogo)}
+                  onActionClick={() => {
+                    setLoginInitialMode('create');
+                    setIsRecommendationPaused(true);
+                    setIsLoginPageOpen(true);
+                  }}
+                />
+              );
+
+              return (
+              <div className="relative z-20 space-y-5 sm:space-y-6 md:space-y-7 mt-2 md:mt-3">
                 {dailyFeeds.map((row, idx) => (
                   <React.Fragment key={row.id}>
                     <FeedStrip
@@ -3166,7 +3940,7 @@ export default function App() {
                       watchlist={watchlist}
                       watchHistory={watchHistory}
                       onToggleWatchlist={handleToggleWatchlist}
-                      onOpenDetails={(s) => handleOpenDetails(s, 'trailer')}
+                      onOpenDetails={(s, origin) => handleOpenDetails(s, 'trailer', 'main', undefined, undefined, origin)}
                       onPlayShow={handlePlayShow}
                       onIncrementPoints={handleIncrementPoints}
                       isGlobalMuted={isGlobalMuted}
@@ -3182,6 +3956,11 @@ export default function App() {
                       showTop10Badges={adminSettings.showTop10Badges !== false}
                       modernTop10RankList={adminSettings.modernTop10RankList}
                       top10RankStyle={adminSettings.top10RankStyle}
+                      likedShowIds={likedShowIds}
+                      onToggleLike={handleToggleLike}
+                      feedIndex={idx}
+                      isPaused={Boolean(isLoginPageOpen || isProfileLocked || isAlertPosterActive || playingMedia || selectedShowForDetail || (sharedTitleShow && !isMobile))}
+                      desktopPopoutStyle={adminSettings.desktopPopoutStyle || 'classic'}
                     />
 
                     {/* Special Single Feed Section: Rendered on Desktop & Mobile homepage */}
@@ -3189,43 +3968,60 @@ export default function App() {
                       <SpecialSingleFeed
                         shows={specialSingleFeedShows}
                         onPlay={handlePlayShow}
-                        onOpenDetails={(s) => handleOpenDetails(s, 'trailer')}
+                        onOpenDetails={(s, origin) => handleOpenDetails(s, 'trailer', 'main', undefined, undefined, origin || { sourceFeedType: 'other' })}
                         watchlist={watchlist}
                         onToggleWatchlist={handleToggleWatchlist}
                         isGlobalMuted={isGlobalMuted}
                         onToggleGlobalMute={handleToggleGlobalMute}
                         isMobile={isMobile && !isTablet}
-                        isPaused={Boolean(playingMedia || selectedShowForDetail)}
+                        isPaused={Boolean(playingMedia || selectedShowForDetail || isLoginPageOpen || isProfileLocked || isAlertPosterActive || (sharedTitleShow && !isMobile))}
                         isAnyOtherCardHovered={isFeedCardHovered}
                       />
                     )}
 
-                    {/* Browse by Genre Square Feed: Rendered on Desktop & Mobile homepage */}
+                    {/* Browse by Genre & Start from the 1st Episode (Desktop): Rendered on homepage */}
                     {idx === 2 && activeFilter === 'all' && !selectedCategoryFilter && !searchQuery.trim() && (
-                      <BrowseByGenreRow
-                        categories={categoriesList}
-                        shows={shows}
-                        managedGenres={adminSettings.managedGenres}
-                        onSelectGenre={handleSelectGenreFromFeed}
-                      />
+                      <>
+                        <BrowseByGenreRow
+                          categories={categoriesList}
+                          shows={shows}
+                          managedGenres={adminSettings.managedGenres}
+                          onSelectGenre={handleSelectGenreFromFeed}
+                        />
+                        {adminSettings.startFromFirstEpisodeEnabled !== false && (
+                          <StartFromFirstEpisodeRow
+                            shows={shows}
+                            selectedShowIds={adminSettings.startFromFirstEpisodeShowIds}
+                            onPlayEpisode={(show, ep) => handlePlayShow(show, ep)}
+                            onOpenDetails={(s, origin) => handleOpenDetails(s, 'trailer', 'main', undefined, undefined, origin)}
+                            watchlist={watchlist}
+                            onToggleWatchlist={handleToggleWatchlist}
+                            onIncrementPoints={handleIncrementPoints}
+                            desktopPopoutStyle={adminSettings.desktopPopoutStyle || 'classic'}
+                          />
+                        )}
+                      </>
                     )}
+
+                    {/* Promotional Sign-Up Tile Banner dynamically placed in lower feed section (not strictly fixed last) */}
+                    {canShowSignupBanner && idx === signupBannerInsertIdx && renderSignupBanner()}
                   </React.Fragment>
                 ))}
 
-                {/* If feeds list has fewer than 2 rows, guarantee SpecialSingleFeed and BrowseByGenreRow are shown on homepage */}
+                {/* If feeds list has fewer than 2 rows, guarantee SpecialSingleFeed, BrowseByGenreRow, and StartFromFirstEpisodeRow are shown on homepage */}
                 {dailyFeeds.length < 2 && activeFilter === 'all' && !selectedCategoryFilter && !searchQuery.trim() && (
                   <>
                     {specialSingleFeedShows.length > 0 && (
                       <SpecialSingleFeed
                         shows={specialSingleFeedShows}
                         onPlay={handlePlayShow}
-                        onOpenDetails={(s) => handleOpenDetails(s, 'trailer')}
+                        onOpenDetails={(s, origin) => handleOpenDetails(s, 'trailer', 'main', undefined, undefined, origin || { sourceFeedType: 'other' })}
                         watchlist={watchlist}
                         onToggleWatchlist={handleToggleWatchlist}
                         isGlobalMuted={isGlobalMuted}
                         onToggleGlobalMute={handleToggleGlobalMute}
                         isMobile={isMobile && !isTablet}
-                        isPaused={Boolean(playingMedia || selectedShowForDetail)}
+                        isPaused={Boolean(playingMedia || selectedShowForDetail || isLoginPageOpen || isProfileLocked || isAlertPosterActive || (sharedTitleShow && !isMobile))}
                         isAnyOtherCardHovered={isFeedCardHovered}
                       />
                     )}
@@ -3235,26 +4031,62 @@ export default function App() {
                       managedGenres={adminSettings.managedGenres}
                       onSelectGenre={handleSelectGenreFromFeed}
                     />
+                    {adminSettings.startFromFirstEpisodeEnabled !== false && (
+                      <StartFromFirstEpisodeRow
+                        shows={shows}
+                        selectedShowIds={adminSettings.startFromFirstEpisodeShowIds}
+                        onPlayEpisode={(show, ep) => handlePlayShow(show, ep)}
+                        onOpenDetails={(s, origin) => handleOpenDetails(s, 'trailer', 'main', undefined, undefined, origin)}
+                        watchlist={watchlist}
+                        onToggleWatchlist={handleToggleWatchlist}
+                        onIncrementPoints={handleIncrementPoints}
+                        desktopPopoutStyle={adminSettings.desktopPopoutStyle || 'classic'}
+                      />
+                    )}
                   </>
                 )}
                 {dailyFeeds.length === 2 && activeFilter === 'all' && !selectedCategoryFilter && !searchQuery.trim() && (
-                  <BrowseByGenreRow
-                    categories={categoriesList}
-                    shows={shows}
-                    managedGenres={adminSettings.managedGenres}
-                    onSelectGenre={handleSelectGenreFromFeed}
-                  />
+                  <>
+                    <BrowseByGenreRow
+                      categories={categoriesList}
+                      shows={shows}
+                      managedGenres={adminSettings.managedGenres}
+                      onSelectGenre={handleSelectGenreFromFeed}
+                    />
+                    {adminSettings.startFromFirstEpisodeEnabled !== false && (
+                      <StartFromFirstEpisodeRow
+                        shows={shows}
+                        selectedShowIds={adminSettings.startFromFirstEpisodeShowIds}
+                        onPlayEpisode={(show, ep) => handlePlayShow(show, ep)}
+                        onOpenDetails={(s, origin) => handleOpenDetails(s, 'trailer', 'main', undefined, undefined, origin)}
+                        watchlist={watchlist}
+                        onToggleWatchlist={handleToggleWatchlist}
+                        onIncrementPoints={handleIncrementPoints}
+                        desktopPopoutStyle={adminSettings.desktopPopoutStyle || 'classic'}
+                      />
+                    )}
+                  </>
                 )}
+
+                {/* Fallback placement when feed list has <= 2 rows */}
+                {canShowSignupBanner && signupBannerInsertIdx === -1 && renderSignupBanner()}
               </div>
-            )}
+              );
+            })()}
           </>
         )}
 
         {/* Global Redesign Footer */}
         <Footer
           shows={shows}
-          onOpenAccount={() => setIsAccountModalOpen(true)}
-          onOpenSettings={() => setIsAppSettingsModalOpen(true)}
+          onOpenAccount={() => {
+            setIsAccountModalOpen(true);
+            pushRoute('/account');
+          }}
+          onOpenSettings={() => {
+            setIsAppSettingsModalOpen(true);
+            pushRoute('/settings');
+          }}
           onRequestContent={() => setIsRequestContentModalOpen(true)}
           onOpenCategories={() => handleSelectPage('categories')}
           platformName={platformName}
@@ -3263,9 +4095,11 @@ export default function App() {
       </main>
 
       {/* 4. Full Detailed Page / Modal */}
-      {selectedShowForDetail && (
+      {selectedShowForDetail && (isMobile || !adminSettings.useFullSizeMoreInfoByDefault) && (() => {
+        const liveSelectedShow = shows.find((s) => s.id === selectedShowForDetail.id) || selectedShowForDetail;
+        return (
         <DetailModal
-          show={selectedShowForDetail}
+          show={liveSelectedShow}
           allShows={shows}
           adminSettings={adminSettings}
           isInWatchlist={watchlist.includes(selectedShowForDetail.id)}
@@ -3275,7 +4109,7 @@ export default function App() {
           onPlayShow={handlePlayShow}
           onMobileSeasonSheetChange={setIsMobileSeasonPickerOpen}
           onMobileInfoSheetChange={setIsMobileInfoSheetOpen}
-          onSelectShow={(newShow) => handleOpenDetails(newShow, 'trailer')}
+          onSelectShow={(newShow) => handleOpenDetails(newShow, 'trailer', 'main', undefined, undefined, { sourceFeedType: 'other' })}
           onSelectActor={(actor) => handleSelectActorForPool(actor)}
           onSelectGenre={(genre) => {
             handleCloseDetails();
@@ -3423,8 +4257,12 @@ export default function App() {
           isGlobalMuted={isGlobalMuted}
           onToggleGlobalMute={handleToggleGlobalMute}
           isFullPlayerOpen={Boolean(playingMedia)}
+          likedShowIds={likedShowIds}
+          onToggleLike={handleToggleLike}
+          originMeta={detailOriginMeta}
         />
-      )}
+        );
+      })()}
 
       {/* 5. Cast Pool Modal (When an actor is clicked) */}
       {selectedActorForPool && (
@@ -3437,11 +4275,16 @@ export default function App() {
           onSelectShow={(s) => {
             handleCloseActorPool();
             if (sharedTitleShow && !isMobile) {
+              if (sharedTitleShowRef.current && sharedTitleShowRef.current.id !== s.id) {
+                shareBackStackRef.current.push(sharedTitleShowRef.current);
+              }
+              setDetailOriginMeta({ sourceFeedType: 'other' });
               setSharedTitleShow(s);
-              window.history.pushState({}, '', `/share/${s.slug || s.id}`);
-              window.scrollTo({ top: 0, behavior: 'smooth' });
+              const scroller = document.querySelector<HTMLElement>('[data-share-overlay-scroll="true"]');
+              if (scroller) scroller.scrollTop = 0;
+              window.history.pushState({ showId: s.id, fullSizeMoreInfo: true }, '', `/share/${s.slug || s.id}`);
             } else {
-              handleOpenDetails(s, 'trailer');
+              handleOpenDetails(s, 'trailer', 'main', undefined, undefined, { sourceFeedType: 'other' });
             }
           }}
           onPlayShow={(s) => {
@@ -3459,7 +4302,7 @@ export default function App() {
         onRemoveFromWatchlist={handleToggleWatchlist}
         onSelectShow={(s) => {
           setIsWatchlistModalOpen(false);
-          handleOpenDetails(s, 'trailer');
+          handleOpenDetails(s, 'trailer', 'main', undefined, undefined, { sourceFeedType: 'other' });
         }}
         onPlayShow={(s) => {
           setIsWatchlistModalOpen(false);
@@ -3477,12 +4320,13 @@ export default function App() {
         platformName={platformName}
       />
 
-      {/* 8. Full Page Account / Edit Profile Settings (Exact 100% UI match to Image 2) */}
+      {/* 8. Full Page Account / Edit Profile Settings */}
       <EditProfilePage
         isOpen={isAccountModalOpen}
         onClose={() => {
           setIsAccountModalOpen(false);
           setIsRecommendationPaused(false);
+          pushRoute('/');
         }}
         platformName={platformName}
         userAvatar={userAvatar}
@@ -3517,6 +4361,7 @@ export default function App() {
         onClose={() => {
           setIsAppSettingsModalOpen(false);
           setIsRecommendationPaused(false);
+          pushRoute('/');
         }}
         platformName={platformName}
         onClearWatchlist={handleClearWatchlist}
@@ -3568,6 +4413,8 @@ export default function App() {
             dailymotionScriptUrl={adminSettings.dailymotionScriptUrl}
             backdropDarkness={playingMedia.show?.embedBackdropDarkness ?? 35}
             backdropBlur={playingMedia.show?.embedBackdropBlur ?? 0}
+            autoFullscreenLandscapeOnMobile={Boolean(adminSettings.mobileAutoFullscreenLandscapeEmbed)}
+            isEpisodePlayback={!playingMedia.isTrailer && (playingMedia.episodeNumber !== undefined || playingMedia.episodeId !== undefined)}
             onNextEpisode={() => {
               if (playingMedia.nextEpisodeInfo) {
                 const next = playingMedia.nextEpisodeInfo;
@@ -3663,11 +4510,26 @@ export default function App() {
       {/* Mobile Real-Time Search Modal */}
       <MobileSearchModal
         isOpen={isMobileSearchOpen}
-        onClose={() => setIsMobileSearchOpen(false)}
+        onClose={() => {
+          setIsMobileSearchOpen(false);
+          setSearchQuery('');
+          pushRoute('/');
+        }}
         shows={shows}
+        watchlist={watchlist}
+        onToggleWatchlist={handleToggleWatchlist}
+        initialQuery={searchQuery}
+        onQueryChange={(q) => {
+          setSearchQuery(q);
+          if (q.trim()) {
+            pushRoute(`/search?q=${encodeURIComponent(q.trim())}`, true);
+          } else {
+            pushRoute('/search', true);
+          }
+        }}
         onOpenDetails={(s) => {
           setIsMobileSearchOpen(false);
-          handleOpenDetails(s, 'trailer');
+          handleOpenDetails(s, 'trailer', 'main', undefined, undefined, { sourceFeedType: 'other' });
         }}
         onPlayShow={(s) => {
           setIsMobileSearchOpen(false);
@@ -3678,20 +4540,24 @@ export default function App() {
       {/* Mobile Profile & My List Modal */}
       <MobileProfileModal
         isOpen={isMobileProfileOpen}
-        onClose={() => setIsMobileProfileOpen(false)}
+        onClose={() => {
+          setIsMobileProfileOpen(false);
+          pushRoute('/');
+        }}
         userName={userName}
         userAvatar={userAvatar}
         watchHistory={watchHistory}
         onOpenPosterActionSheet={(s) => setActionSheetShow(s)}
         watchlistShows={watchlistShows}
         continueWatchingShows={continueWatchingShows}
+        likedShows={likedShows}
         onRemoveFromWatchlist={handleToggleWatchlist}
         onRemoveFromContinueWatching={handleRemoveFromWatchHistory}
         onClearWatchlist={handleClearWatchlist}
         onClearWatchHistory={handleClearWatchHistory}
         onOpenDetails={(s) => {
           setIsMobileProfileOpen(false);
-          handleOpenDetails(s, 'trailer');
+          handleOpenDetails(s, 'trailer', 'main', undefined, undefined, { sourceFeedType: 'other' });
         }}
         onPlayShow={(s) => {
           setIsMobileProfileOpen(false);
@@ -3702,15 +4568,17 @@ export default function App() {
         onOpenShowById={(showId) => {
           setIsMobileProfileOpen(false);
           const found = shows.find((s) => s.id === showId);
-          if (found) handleOpenDetails(found, 'trailer');
+          if (found) handleOpenDetails(found, 'trailer', 'main', undefined, undefined, { sourceFeedType: 'other' });
         }}
         onOpenAccountModal={() => {
           setIsMobileProfileOpen(false);
           setIsAccountModalOpen(true);
+          pushRoute('/account');
         }}
         onOpenAppSettings={() => {
           setIsMobileProfileOpen(false);
           setIsAppSettingsModalOpen(true);
+          pushRoute('/settings');
         }}
         onRequestContent={() => {
           setIsMobileProfileOpen(false);
@@ -3725,6 +4593,12 @@ export default function App() {
           setIsAdminPanelOpen(true);
         }}
         onToggleAuth={handleSignOut}
+        onOpenCreateAccount={() => {
+          setIsMobileProfileOpen(false);
+          setLoginInitialMode('create');
+          setIsRecommendationPaused(true);
+          setIsLoginPageOpen(true);
+        }}
         isLoggedIn={isLoggedIn}
         onSelectAvatar={(avatarUrl) => {
           setUserAvatar(avatarUrl);
@@ -3757,9 +4631,9 @@ export default function App() {
         onToggleWatchlist={handleToggleWatchlist}
         onPlayShow={(s) => handlePlayShow(s)}
         onWatchTrailer={(s) => {
-          handleOpenDetails(s, 'trailer');
+          handleOpenDetails(s, 'trailer', 'main', undefined, undefined, { sourceFeedType: 'other' });
         }}
-        onOpenDetails={(s) => handleOpenDetails(s, 'trailer')}
+        onOpenDetails={(s) => handleOpenDetails(s, 'trailer', 'main', undefined, undefined, { sourceFeedType: 'other' })}
         watchProgress={actionSheetShow ? watchHistory[actionSheetShow.id] : undefined}
         onRestartShow={(s) => {
           try {
@@ -3781,15 +4655,15 @@ export default function App() {
           setIsDownloadModalOpen(true);
         }}
         onShare={(s) => {
-          handleOpenDetails(s, 'trailer');
+          handleOpenDetails(s, 'trailer', 'main', undefined, undefined, { sourceFeedType: 'other' });
         }}
         onRemoveFromContinueWatching={(sId) => {
           handleRemoveFromWatchHistory(sId);
         }}
       />
 
-      {/* Mobile Floating / Bottom-Fixed Navigation Bar: hidden when popups / sheets / player are active */}
-      {isMobile && !isTablet && !actionSheetShow && !isMobileSeasonPickerOpen && !isMobileProfileEditOpen && !isMobileInfoSheetOpen && !playingMedia && !isHamburgerDrawerOpen && !isProfileLocked && !isLoginPageOpen && (
+      {/* Mobile Floating / Bottom-Fixed Navigation Bar: stays visible behind PIN lock with empty avatar slot until PIN unlock completes */}
+      {isMobile && !isTablet && !actionSheetShow && !isMobileSeasonPickerOpen && !isMobileProfileEditOpen && !isMobileInfoSheetOpen && !playingMedia && !isHamburgerDrawerOpen && !isLoginPageOpen && (
         <MobileBottomNav
           activeTab={isMobileSearchOpen ? 'search' : isMobileProfileOpen ? 'profile' : 'home'}
           onSelectTab={handleMobileSelectTab}
@@ -3799,6 +4673,8 @@ export default function App() {
           navbarStyle={adminSettings.mobileNavbarStyle || 'floating'}
           navbarTheme={adminSettings.mobileNavbarTheme || 'solid'}
           showLabels={adminSettings.mobileNavbarShowLabels !== false}
+          isHiddenBehindLock={false}
+          hideProfileAvatar={isProfileLocked}
         />
       )}
 
@@ -3890,6 +4766,17 @@ export default function App() {
               Movies
             </button>
 
+            <button
+              onClick={() => {
+                setIsHamburgerDrawerOpen(false);
+                setSharedTitleShow(null);
+                handleSelectPage('categories');
+              }}
+              className="block w-full text-left text-xl font-bold text-white hover:text-white/80 cursor-pointer active:translate-x-1 transition-transform"
+            >
+              Categories
+            </button>
+
             {/* Top 10 Lists: omitted on share direct page per user request ("don't add top 10 list there") */}
             {!(sharedTitleShow && !isMobile) && (
               <>
@@ -3897,6 +4784,7 @@ export default function App() {
                   onClick={() => {
                     setIsHamburgerDrawerOpen(false);
                     setDrawerDedicatedView('top_10_movies');
+                    pushRoute('/top10/movies');
                   }}
                   className="block w-full text-left text-xl font-bold text-white hover:text-white/80 cursor-pointer active:translate-x-1 transition-transform"
                 >
@@ -3907,6 +4795,7 @@ export default function App() {
                   onClick={() => {
                     setIsHamburgerDrawerOpen(false);
                     setDrawerDedicatedView('top_10_series');
+                    pushRoute('/top10/series');
                   }}
                   className="block w-full text-left text-xl font-bold text-white hover:text-white/80 cursor-pointer active:translate-x-1 transition-transform"
                 >
@@ -3919,6 +4808,7 @@ export default function App() {
               onClick={() => {
                 setIsHamburgerDrawerOpen(false);
                 setDrawerDedicatedView('vertical_my_list');
+                pushRoute('/mylist/saved');
               }}
               className="block w-full text-left text-xl font-bold text-white hover:text-white/80 cursor-pointer active:translate-x-1 transition-transform"
             >
@@ -3932,7 +4822,7 @@ export default function App() {
               }}
               className="block w-full text-left text-xl font-bold text-white hover:text-white/80 cursor-pointer active:translate-x-1 transition-transform"
             >
-              Continue Watching
+              Keep Watching
             </button>
           </div>
 
@@ -3941,6 +4831,7 @@ export default function App() {
             onClick={() => {
               setIsHamburgerDrawerOpen(false);
               setIsMobileProfileOpen(true);
+              pushRoute('/profile');
             }}
             className="mt-auto px-6 py-5 border-t border-white/10 flex items-center gap-3.5 cursor-pointer active:bg-white/5 transition-colors select-none shrink-0"
           >
@@ -3952,7 +4843,7 @@ export default function App() {
               />
             </div>
             <div className="flex flex-col text-left min-w-0">
-              <span className="text-white font-bold text-base truncate">{userName || 'Good'}</span>
+              <span className="text-white font-bold text-base truncate">{userName || 'Guest'}</span>
               <span className="text-xs text-zinc-400">Switch / Edit Profile</span>
             </div>
           </div>
@@ -3967,7 +4858,7 @@ export default function App() {
         >
           <div
             onClick={(e) => e.stopPropagation()}
-            className="relative w-full max-w-sm rounded-2xl bg-[#1a1b22] border border-white/10 p-5 shadow-2xl text-left animate-in fade-in zoom-in-95 duration-150"
+            className="relative w-full max-w-sm rounded-2xl bg-[#161618] border border-white/10 p-5 shadow-2xl text-left animate-in fade-in zoom-in-95 duration-150"
           >
             <div className="flex items-center justify-between pb-3 border-b border-white/10">
               <div className="flex items-center gap-2">
@@ -4002,6 +4893,16 @@ export default function App() {
         </div>
       )}
 
+      {/* Mobile Top 10 List Page Share Sheet */}
+      {mobileTop10ShareShow && (
+        <ShareModal
+          show={shows.find((s) => s.id === mobileTop10ShareShow.id) || mobileTop10ShareShow}
+          isOpen={true}
+          onClose={() => setMobileTop10ShareShow(null)}
+          platformName={platformName}
+        />
+      )}
+
       {/* Universal Top-Layer Custom Pointer Tooltip */}
       <GlobalTooltip />
 
@@ -4012,6 +4913,7 @@ export default function App() {
           platformName={platformName}
           customLogoUrl={adminSettings.customLogoUrl}
           initialEmail={userEmail}
+          initialAuthMode={loginInitialMode}
           isGlobalMuted={isGlobalMuted}
           onToggleGlobalMute={(muted) => {
             setIsGlobalMuted(muted);
@@ -4061,6 +4963,32 @@ export default function App() {
           }}
         />
       )}
+      {/* Global Alert Poster Announcement Modal (Prime style) */}
+      {isAlertPosterActive && (
+          <AlertPosterModal
+            isOpen={true}
+            imageUrl={adminSettings.alertPosterImageUrl}
+            title={adminSettings.alertPosterTitle}
+            subtitle={adminSettings.alertPosterSubtitle}
+            buttonText={adminSettings.alertPosterButtonText}
+            buttonAction={adminSettings.alertPosterButtonAction || 'close'}
+            buttonUrl={adminSettings.alertPosterButtonUrl}
+            onClose={() => {
+              setIsAlertPosterDismissed(true);
+              try {
+                sessionStorage.setItem('dizi_alert_poster_dismissed', 'true');
+              } catch {}
+            }}
+            onOpenLogin={() => {
+              setLoginInitialMode('login');
+              setIsLoginPageOpen(true);
+            }}
+            onNavigateInternal={(path) => {
+              pushRoute(path);
+              window.dispatchEvent(new PopStateEvent('popstate'));
+            }}
+          />
+        )}
     </div>
   );
 }

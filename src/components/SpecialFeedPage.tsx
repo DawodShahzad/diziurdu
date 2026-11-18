@@ -1,5 +1,5 @@
 import React, { useEffect } from 'react';
-import { Show, FeedConfig } from '../types';
+import { Show, FeedConfig, DetailsOriginMeta } from '../types';
 import { ShowCard } from './ShowCard';
 import { MediaImage } from './MediaImage';
 
@@ -8,13 +8,15 @@ interface SpecialFeedPageProps {
   shows: Show[];
   watchlist: string[];
   onToggleWatchlist: (showId: string) => void;
-  onOpenDetails: (show: Show) => void;
+  onOpenDetails: (show: Show, originMeta?: DetailsOriginMeta) => void;
   onPlayShow: (show: Show) => void;
   onIncrementPoints: (showId: string) => void;
   isGlobalMuted?: boolean;
   onToggleGlobalMute?: () => void;
   onHoverCardStart?: () => void;
   onHoverCardEnd?: () => void;
+  isFeedCardHovered?: boolean;
+  desktopPopoutStyle?: 'classic' | 'overlay_red' | 'immersive_fade';
 }
 
 export const SpecialFeedPage: React.FC<SpecialFeedPageProps> = ({
@@ -28,7 +30,8 @@ export const SpecialFeedPage: React.FC<SpecialFeedPageProps> = ({
   isGlobalMuted = false,
   onToggleGlobalMute,
   onHoverCardStart,
-  onHoverCardEnd
+  onHoverCardEnd,
+  desktopPopoutStyle = 'classic'
 }) => {
   // Scroll to top immediately when opening special feed page
   useEffect(() => {
@@ -46,7 +49,7 @@ export const SpecialFeedPage: React.FC<SpecialFeedPageProps> = ({
   const darknessPercent = typeof feed.specialBgDarkness === 'number' ? feed.specialBgDarkness : 0;
 
   return (
-    <div className="min-h-screen bg-[#141414] text-white font-sans selection:bg-red-600 selection:text-white">
+    <div className="min-h-screen bg-black lg:bg-[#141414] text-white font-sans selection:bg-red-600 selection:text-white">
       {/* 
         1. Special Feed Hero Section:
         - Mobile and tablet (< lg): 16:9 widescreen on top without cropping, with logo placed in the center
@@ -75,8 +78,8 @@ export const SpecialFeedPage: React.FC<SpecialFeedPageProps> = ({
         {/* Soft, gentle top vignette for navbar legibility without heavy glare */}
         <div className="absolute inset-x-0 top-0 h-14 sm:h-20 lg:h-28 bg-gradient-to-b from-black/50 via-black/15 to-transparent pointer-events-none" />
 
-        {/* Seamless, continuous bottom merge into base page color (#141414) where cards grid starts */}
-        <div className="absolute inset-x-0 bottom-0 h-16 sm:h-24 md:h-36 lg:h-64 bg-gradient-to-t from-[#141414] via-[#141414]/75 to-transparent pointer-events-none" />
+        {/* Seamless, continuous bottom merge into base page color (#000 on mobile, #141414 on desktop) */}
+        <div className="absolute inset-x-0 bottom-0 h-16 sm:h-24 md:h-36 lg:h-64 bg-gradient-to-t from-black via-black/75 lg:from-[#141414] lg:via-[#141414]/75 to-transparent pointer-events-none" />
 
         {/* Logo Placement: Centered on mobile and tablet (< lg); bottom-left on desktop (lg and up) */}
         <div className="absolute inset-0 lg:inset-auto lg:bottom-16 lg:left-12 xl:left-16 z-20 flex flex-col items-center justify-center text-center lg:items-start lg:text-left max-w-xl mx-auto lg:mx-0 px-4 lg:px-0 select-none pointer-events-none">
@@ -112,13 +115,19 @@ export const SpecialFeedPage: React.FC<SpecialFeedPageProps> = ({
           {shows.map((show) => (
             <div
               key={show.id}
-              onClick={() => onOpenDetails(show)}
-              className="relative aspect-[2/3] rounded-lg overflow-hidden bg-[#16171d] shadow-md cursor-pointer border border-white/5 active:scale-95 transition-transform"
+              onClick={(e) =>
+                onOpenDetails(show, {
+                  element: e.currentTarget,
+                  sourceFeedType: 'other',
+                  posterUrl: show.posterVerticalUrl || show.posterUrl || show.posterLandscapeUrl || ''
+                })
+              }
+              className="relative aspect-[2/3] rounded-lg overflow-hidden bg-[#111] shadow-md cursor-pointer border border-white/5 active:scale-95 transition-transform"
             >
               <MediaImage
                 src={show.posterVerticalUrl || show.posterUrl || show.posterLandscapeUrl || ''}
                 fallbackTitle={show.title}
-                fallbackClassName="w-full h-full bg-[#16171d] flex items-center justify-center p-2.5 text-center select-none"
+                fallbackClassName="w-full h-full bg-[#111] flex items-center justify-center p-2.5 text-center select-none"
                 className="w-full h-full object-cover"
                 loading="lazy"
               />
@@ -135,13 +144,16 @@ export const SpecialFeedPage: React.FC<SpecialFeedPageProps> = ({
               cardSize="full"
               isInWatchlist={watchlist.includes(s.id)}
               onToggleWatchlist={onToggleWatchlist}
-              onOpenDetails={onOpenDetails}
+              onOpenDetails={(item, meta) =>
+                onOpenDetails(item, meta ? { ...meta, sourceFeedType: 'other' } : { sourceFeedType: 'other' })
+              }
               onPlay={onPlayShow}
               onIncrementPoints={onIncrementPoints}
               isGlobalMuted={isGlobalMuted}
               onToggleGlobalMute={onToggleGlobalMute}
               onHoverPreviewStart={onHoverCardStart}
               onHoverPreviewEnd={onHoverCardEnd}
+              popoutStyle={desktopPopoutStyle}
             />
           ))}
         </div>

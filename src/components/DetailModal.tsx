@@ -1,20 +1,20 @@
-import React, { useState, useRef, useEffect, useMemo } from 'react';
-import { Show, Episode, AdminSettings, CastMember, TrailerItem } from '../types';
+import React, { useState, useRef, useEffect, useLayoutEffect, useMemo } from 'react';
+import { Show, Episode, AdminSettings, CastMember, TrailerItem, DetailsOriginMeta } from '../types';
 import { ShowTitleLogo } from './ShowTitleLogo';
 import { ShareModal } from './ShareModal';
+import { ShareArrowIcon } from './ShareArrowIcon';
+import { MobileReactionButton } from './MobileReactionButton';
 import { normalizeActorKey } from '../utils/actorIndex';
 import { attachHlsVideo } from '../utils/hlsHelper';
 import { MediaImage } from './MediaImage';
 import {
   X,
-  Play,
   Plus,
   Check,
   ThumbsUp,
   Volume2,
   VolumeX,
   ChevronDown,
-  Share2,
   Tv,
   Film,
   Sparkles,
@@ -24,8 +24,7 @@ import {
   Subtitles,
   Filter,
   Bookmark,
-  ArrowLeft,
-  Pause,
+  ChevronLeft,
   RotateCcw,
   Download,
   Info
@@ -42,7 +41,7 @@ interface DetailModalProps {
   watchlist?: string[];
   watchProgress?: WatchProgressItem;
   onToggleWatchlist: (showId: string) => void;
-  onClose: () => void;
+  onClose: (skipHistoryPush?: boolean) => void;
   onSelectShow?: (show: Show) => void;
   onSelectActor?: (actor: CastMember) => void;
   onSelectGenre?: (genre: string) => void;
@@ -60,6 +59,9 @@ interface DetailModalProps {
   isFullPlayerOpen?: boolean;
   onMobileSeasonSheetChange?: (isOpen: boolean) => void;
   onMobileInfoSheetChange?: (isOpen: boolean) => void;
+  likedShowIds?: string[];
+  onToggleLike?: (showId: string) => void;
+  originMeta?: DetailsOriginMeta | null;
 }
 
 export const DetailModal: React.FC<DetailModalProps> = ({
@@ -87,7 +89,10 @@ export const DetailModal: React.FC<DetailModalProps> = ({
   onToggleGlobalMute,
   isFullPlayerOpen = false,
   onMobileSeasonSheetChange,
-  onMobileInfoSheetChange
+  onMobileInfoSheetChange,
+  likedShowIds,
+  onToggleLike,
+  originMeta
 }) => {
   if (!show) return null;
 
@@ -148,7 +153,15 @@ export const DetailModal: React.FC<DetailModalProps> = ({
   // Audio & Like states
   const [localMuted, setLocalMuted] = useState<boolean>(false);
   const isMuted = onToggleGlobalMute ? isGlobalMuted : localMuted;
-  const [isLiked, setIsLiked] = useState<boolean>(false);
+  const [localLiked, setLocalLiked] = useState<boolean>(false);
+  const isLiked = likedShowIds ? likedShowIds.includes(show.id) : localLiked;
+  const handleLikeAction = () => {
+    if (onToggleLike) {
+      onToggleLike(show.id);
+    } else {
+      setLocalLiked((prev) => !prev);
+    }
+  };
   const [copyFeedback, setCopyFeedback] = useState<boolean>(false);
   const [isSeasonDropdownOpen, setIsSeasonDropdownOpen] = useState<boolean>(false);
   const [isTitleShrunk, setIsTitleShrunk] = useState<boolean>(false);
@@ -209,7 +222,14 @@ export const DetailModal: React.FC<DetailModalProps> = ({
     seasons.length > 0 &&
     seasons[0].episodes.length > 0;
 
-  const [mobileActiveTab, setMobileActiveTab] = useState<'episodes' | 'trailers' | 'whereToWatch' | 'moreLikeThis'>(
+  const hasWhereToWatch = Boolean(
+    adminSettings.enableWhereToWatch &&
+      show.whereToWatchEnabled !== false &&
+      show.whereToWatch &&
+      show.whereToWatch.length > 0
+  );
+
+  const [mobileActiveTab, setMobileActiveTab] = useState<'episodes' | 'trailers' | 'moreLikeThis'>(
     hasEpisodes ? 'episodes' : 'trailers'
   );
   const [isMobileInfoPageOpen, setIsMobileInfoPageOpen] = useState<boolean>(false);
@@ -255,7 +275,7 @@ export const DetailModal: React.FC<DetailModalProps> = ({
     };
   }, [isMobileInfoPageOpen, onMobileInfoSheetChange]);
 
-  // Mobile trailer player state: does NOT autoplay, shows thumbnail with centered play button, replay on end
+  // Mobile trailer player state: does NOT autoplay; bottom-right small Play/Pause/Reload button controls playback
   const [hasStartedTrailer, setHasStartedTrailer] = useState<boolean>(false);
   const [isMobileTrailerPlaying, setIsMobileTrailerPlaying] = useState<boolean>(false);
   const [isMobileTrailerLoading, setIsMobileTrailerLoading] = useState<boolean>(false);
@@ -264,16 +284,12 @@ export const DetailModal: React.FC<DetailModalProps> = ({
   const [mobileTrailerCurrentTime, setMobileTrailerCurrentTime] = useState<number>(0);
   const [mobileTrailerDuration, setMobileTrailerDuration] = useState<number>(0);
   const [isMobileTrailerMuted, setIsMobileTrailerMuted] = useState<boolean>(isMuted);
+  const [showPosterAfterPause, setShowPosterAfterPause] = useState<boolean>(false);
   const mobileVideoRef = useRef<HTMLVideoElement>(null);
+  const mobileSavedTimeRef = useRef<number>(0);
 
   const mobileControlsTimerRef = useRef<number | null>(null);
-
-  const formatMobileTime = (seconds: number) => {
-    if (isNaN(seconds) || seconds < 0) return '00:00';
-    const mins = Math.floor(seconds / 60);
-    const secs = Math.floor(seconds % 60);
-    return `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
-  };
+  const mobilePausePosterTimerRef = useRef<number | null>(null);
 
   const clearMobileControlsTimer = () => {
     if (mobileControlsTimerRef.current) {
@@ -282,79 +298,609 @@ export const DetailModal: React.FC<DetailModalProps> = ({
     }
   };
 
-  const resetMobileControlsTimer = () => {
-    clearMobileControlsTimer();
-    mobileControlsTimerRef.current = window.setTimeout(() => {
-      setIsMobileTrailerControlsVisible(false);
-    }, 2000);
+  const clearMobilePausePosterTimer = () => {
+    if (mobilePausePosterTimerRef.current) {
+      window.clearTimeout(mobilePausePosterTimerRef.current);
+      mobilePausePosterTimerRef.current = null;
+    }
   };
 
   useEffect(() => {
     return () => {
       clearMobileControlsTimer();
+      clearMobilePausePosterTimer();
     };
   }, []);
 
-  // Mobile Swipe/Drag-to-Dismiss Handler (Swiping down 30% of page height closes page)
+  // Mobile Swipe/Drag-to-Dismiss & Collapse-to-Card Animation Handler
   const [mobileDragY, setMobileDragY] = useState<number>(0);
   const [isMobileDragging, setIsMobileDragging] = useState<boolean>(false);
-  const mobileTouchStartYRef = useRef<number | null>(null);
+  const [mobileCollapseTransform, setMobileCollapseTransform] = useState<{
+    dx: number;
+    dy: number;
+    scale: number;
+    opacity: number;
+    animType?: 'slide_down' | 'slide_right' | 'fade_fast';
+  } | null>(null);
+  const [flyingPosterState, setFlyingPosterState] = useState<{
+    left: number;
+    top: number;
+    width: number;
+    height: number;
+    opacity: number;
+    borderRadius: string;
+    cardPosterUrl: string;
+    bannerPosterUrl: string;
+    showBannerLayer: boolean;
+    transitionMs: number;
+  } | null>(null);
+  const [isMobileOpeningHidingContent, setIsMobileOpeningHidingContent] = useState<boolean>(false);
+  const [mobileLowerContentStyle, setMobileLowerContentStyle] = useState<{
+    opacity: number;
+    transform: string;
+    transition: string;
+  } | null>(null);
+  const [desktopModalTransform, setDesktopModalTransform] = useState<{
+    transform: string;
+    opacity: number;
+    transition: string;
+    borderRadius?: string;
+  } | null>(null);
+  const [isClosingDesktop, setIsClosingDesktop] = useState<boolean>(false);
+  const desktopCardRef = useRef<HTMLDivElement>(null);
+  const mobileTouchStartPosRef = useRef<{ x: number; y: number; locked: 'x' | 'y' | null } | null>(null);
+  const mobileTouchSamplesRef = useRef<Array<{ y: number; t: number }>>([]);
   const mobileModalContainerRef = useRef<HTMLDivElement>(null);
+  const mobileHeroBannerRef = useRef<HTMLDivElement>(null);
+  const isClosingMobileRef = useRef<boolean>(false);
+  const mobileDragYRef = useRef<number>(0);
+  const isNormalFeedOrigin = originMeta?.sourceFeedType === 'normal' && Boolean(originMeta.element?.isConnected);
 
-  const handleMobileTouchStart = (e: React.TouchEvent) => {
-    mobileTouchStartYRef.current = e.touches[0].clientY;
-    setIsMobileDragging(true);
-  };
+  // Mobile Opening Animation:
+  // Normal feed: card leaves exact slot -> glides to top 16:9 hero banner while crossfading midway -> lower content enters seamlessly.
+  // Non-normal feed: clean slide/rise over transparent background.
+  useLayoutEffect(() => {
+    isClosingMobileRef.current = false;
+    setMobileCollapseTransform(null);
+    setFlyingPosterState(null);
+    setMobileDragY(0);
+    mobileDragYRef.current = 0;
 
-  const handleMobileTouchMove = (e: React.TouchEvent) => {
-    if (mobileTouchStartYRef.current === null) return;
-    const currentY = e.touches[0].clientY;
-    const deltaY = currentY - mobileTouchStartYRef.current;
-    if (deltaY > 0) {
-      setMobileDragY(deltaY);
+    if (!isMobileLayout) {
+      setIsMobileOpeningHidingContent(false);
+      setMobileLowerContentStyle(null);
+      return;
+    }
+
+    const vw = typeof window !== 'undefined' ? window.innerWidth : 390;
+    const targetH = Math.round(vw * (9 / 16));
+    const bannerSrc = mobileBackdrop || desktopBackdrop;
+    const cardSrc =
+      originMeta?.posterUrl ||
+      show.posterVerticalUrl ||
+      show.posterUrl ||
+      show.posterLandscapeUrl ||
+      bannerSrc;
+
+    if (isNormalFeedOrigin && originMeta?.element) {
+      const originRect = originMeta.element.getBoundingClientRect();
+      if (originRect.width > 12 && originRect.height > 12) {
+        setIsMobileOpeningHidingContent(true);
+        setMobileLowerContentStyle({
+          opacity: 0,
+          transform: 'translate3d(0, 32px, 0)',
+          transition: 'none'
+        });
+        setFlyingPosterState({
+          left: originRect.left,
+          top: originRect.top,
+          width: originRect.width,
+          height: originRect.height,
+          opacity: 1,
+          borderRadius: '7px',
+          cardPosterUrl: cardSrc,
+          bannerPosterUrl: bannerSrc,
+          showBannerLayer: false,
+          transitionMs: 320
+        });
+
+        let innerRaf = 0;
+        let midTimer: number | null = null;
+        let doneTimer: number | null = null;
+
+        const outerRaf = requestAnimationFrame(() => {
+          innerRaf = requestAnimationFrame(() => {
+            setFlyingPosterState((prev) =>
+              prev
+                ? {
+                    ...prev,
+                    left: 0,
+                    top: 0,
+                    width: vw,
+                    height: targetH,
+                    borderRadius: '0px',
+                    showBannerLayer: true,
+                    transitionMs: 320
+                  }
+                : null
+            );
+            setMobileLowerContentStyle({
+              opacity: 1,
+              transform: 'translate3d(0, 0, 0)',
+              transition: 'opacity 180ms ease-out 160ms, transform 240ms cubic-bezier(0.22, 1, 0.36, 1) 140ms'
+            });
+          });
+        });
+
+        midTimer = window.setTimeout(() => {
+          setIsMobileOpeningHidingContent(false);
+        }, 315);
+
+        doneTimer = window.setTimeout(() => {
+          setFlyingPosterState(null);
+          setMobileLowerContentStyle(null);
+        }, 355);
+
+        return () => {
+          cancelAnimationFrame(outerRaf);
+          cancelAnimationFrame(innerRaf);
+          if (midTimer) window.clearTimeout(midTimer);
+          if (doneTimer) window.clearTimeout(doneTimer);
+        };
+      }
+    }
+
+    // Non-normal feed on mobile: clean subtle rise-up over transparent background
+    setIsMobileOpeningHidingContent(false);
+    setMobileLowerContentStyle({
+      opacity: 0,
+      transform: 'translate3d(0, 26px, 0)',
+      transition: 'none'
+    });
+    let innerRaf = 0;
+    const outerRaf = requestAnimationFrame(() => {
+      innerRaf = requestAnimationFrame(() => {
+        setMobileLowerContentStyle({
+          opacity: 1,
+          transform: 'translate3d(0, 0, 0)',
+          transition: 'opacity 200ms ease-out, transform 240ms cubic-bezier(0.22, 1, 0.36, 1)'
+        });
+      });
+    });
+    const clearTimer = window.setTimeout(() => {
+      setMobileLowerContentStyle(null);
+    }, 260);
+    return () => {
+      cancelAnimationFrame(outerRaf);
+      cancelAnimationFrame(innerRaf);
+      window.clearTimeout(clearTimer);
+    };
+  }, [show.id, isMobileLayout, isNormalFeedOrigin]);
+
+  // Desktop: Shared-element flying poster from clicked card for normal feeds (matching mobile normal card animation); subtle slide/fade for other feeds
+  useLayoutEffect(() => {
+    if (isMobileLayout) return;
+    setIsClosingDesktop(false);
+    const cardEl = desktopCardRef.current;
+    const bannerEl = heroBannerRef.current;
+    if (!cardEl) return;
+
+    if (isNormalFeedOrigin && originMeta?.element && bannerEl) {
+      const originRect = originMeta.element.getBoundingClientRect();
+      const targetBannerRect = bannerEl.getBoundingClientRect();
+      const bannerSrc = desktopBackdrop || mobileBackdrop;
+
+      if (
+        originRect.width > 12 &&
+        originRect.height > 12 &&
+        targetBannerRect.width > 12 &&
+        targetBannerRect.height > 12
+      ) {
+        setDesktopModalTransform({
+          transform: 'translate3d(0, 14px, 0) scale(0.985)',
+          opacity: 0,
+          transition: 'none'
+        });
+        setFlyingPosterState({
+          left: originRect.left,
+          top: originRect.top,
+          width: originRect.width,
+          height: originRect.height,
+          opacity: 0.92,
+          borderRadius: '10px',
+          cardPosterUrl: bannerSrc,
+          bannerPosterUrl: bannerSrc,
+          showBannerLayer: true,
+          transitionMs: 280
+        });
+
+        let innerRaf = 0;
+        let settleFadeTimer: number | null = null;
+        let doneTimer: number | null = null;
+        const outerRaf = requestAnimationFrame(() => {
+          innerRaf = requestAnimationFrame(() => {
+            setFlyingPosterState((prev) =>
+              prev
+                ? {
+                    ...prev,
+                    left: targetBannerRect.left,
+                    top: targetBannerRect.top,
+                    width: targetBannerRect.width,
+                    height: targetBannerRect.height,
+                    opacity: 1,
+                    borderRadius: '16px 16px 0px 0px',
+                    showBannerLayer: true,
+                    transitionMs: 280
+                  }
+                : null
+            );
+            setDesktopModalTransform({
+              transform: 'translate3d(0, 0, 0) scale(1)',
+              opacity: 1,
+              transition: 'opacity 220ms ease-out 60ms, transform 280ms cubic-bezier(0.22, 1, 0.36, 1)'
+            });
+          });
+        });
+
+        settleFadeTimer = window.setTimeout(() => {
+          setFlyingPosterState((prev) =>
+            prev ? { ...prev, opacity: 0, transitionMs: 110 } : null
+          );
+        }, 285);
+
+        doneTimer = window.setTimeout(() => {
+          setFlyingPosterState(null);
+        }, 405);
+
+        return () => {
+          cancelAnimationFrame(outerRaf);
+          cancelAnimationFrame(innerRaf);
+          if (settleFadeTimer) window.clearTimeout(settleFadeTimer);
+          if (doneTimer) window.clearTimeout(doneTimer);
+        };
+      }
+    }
+
+    setDesktopModalTransform({
+      transform: 'translate3d(0, 28px, 0) scale(0.98)',
+      opacity: 0,
+      transition: 'none'
+    });
+    let innerRaf = 0;
+    const outerRaf = requestAnimationFrame(() => {
+      innerRaf = requestAnimationFrame(() => {
+        setDesktopModalTransform({
+          transform: 'translate3d(0, 0, 0) scale(1)',
+          opacity: 1,
+          transition: 'transform 260ms cubic-bezier(0.22, 1, 0.36, 1), opacity 200ms ease-out'
+        });
+      });
+    });
+    return () => {
+      cancelAnimationFrame(outerRaf);
+      cancelAnimationFrame(innerRaf);
+    };
+  }, [show.id, isMobileLayout, isNormalFeedOrigin]);
+
+  const triggerMobileClose = (
+    mode: 'back_button' | 'swipe_off_bottom' | 'fast_swipe' | 'slow_swipe',
+    skipHistoryPush = false,
+    vy = 0
+  ) => {
+    if (isClosingMobileRef.current) return;
+    isClosingMobileRef.current = true;
+    setIsMobileDragging(false);
+
+    if (mobileVideoRef.current && !mobileVideoRef.current.paused) {
+      mobileVideoRef.current.pause();
+    }
+
+    if (!isMobileLayout) {
+      isClosingMobileRef.current = false;
+      triggerDesktopClose(skipHistoryPush);
+      return;
+    }
+
+    const vw = window.innerWidth;
+    const vh = window.innerHeight;
+    const clickedEl = originMeta?.element;
+    const isClickedValid = Boolean(originMeta?.sourceFeedType === 'normal' && clickedEl && clickedEl.isConnected);
+
+    // Non-normal feed OR dragged >= 75% down screen: slide out cleanly over transparent background
+    if (!isClickedValid || !clickedEl || mode === 'swipe_off_bottom') {
+      if (mode === 'back_button' && !isClickedValid) {
+        // Non-normal feed Back button or System Back -> swipe/slide right
+        setMobileCollapseTransform({
+          dx: vw,
+          dy: mobileDragYRef.current,
+          scale: 1,
+          opacity: 0.96,
+          animType: 'slide_right'
+        });
+        window.setTimeout(() => onClose(skipHistoryPush), 245);
+      } else {
+        // Swipe down or non-normal swipe -> continue straight down off bottom
+        setMobileCollapseTransform({
+          dx: 0,
+          dy: vh,
+          scale: 1,
+          opacity: 1,
+          animType: 'slide_down'
+        });
+        window.setTimeout(() => onClose(skipHistoryPush), 235);
+      }
+      return;
+    }
+
+    // Normal feed: direct hero-to-card morph back to exact origin card (NO center stop!)
+    const targetRect = clickedEl.getBoundingClientRect();
+    const heroRect = mobileHeroBannerRef.current?.getBoundingClientRect();
+    const startLeft = heroRect ? heroRect.left : 0;
+    const startTop = heroRect ? heroRect.top : mobileDragYRef.current;
+    const startW = heroRect && heroRect.width > 20 ? heroRect.width : vw;
+    const startH = heroRect && heroRect.height > 20 ? heroRect.height : Math.round(vw * (9 / 16));
+    const bannerSrc = mobileBackdrop || desktopBackdrop;
+    const posterUrl =
+      originMeta?.posterUrl ||
+      show.posterVerticalUrl ||
+      show.posterUrl ||
+      show.posterLandscapeUrl ||
+      bannerSrc;
+
+    setMobileCollapseTransform({
+      dx: 0,
+      dy: startTop,
+      scale: 1,
+      opacity: 0,
+      animType: 'fade_fast'
+    });
+
+    const isFastSwipe = mode === 'fast_swipe' && vy > 0.65;
+    const inertialDip = isFastSwipe ? Math.min(72, Math.max(24, Math.round(vy * 36))) : 0;
+
+    setFlyingPosterState({
+      left: startLeft,
+      top: startTop,
+      width: startW,
+      height: startH,
+      opacity: 1,
+      borderRadius: mobileDragYRef.current > 8 ? '12px' : '0px',
+      cardPosterUrl: posterUrl,
+      bannerPosterUrl: bannerSrc,
+      showBannerLayer: true,
+      transitionMs: isFastSwipe ? 85 : 270
+    });
+
+    const flyToCard = () => {
+      const liveRect = clickedEl.isConnected ? clickedEl.getBoundingClientRect() : targetRect;
+      setFlyingPosterState((prev) =>
+        prev
+          ? {
+              ...prev,
+              left: liveRect.left,
+              top: liveRect.top,
+              width: liveRect.width,
+              height: liveRect.height,
+              opacity: 0.96,
+              borderRadius: '7px',
+              showBannerLayer: false,
+              transitionMs: 265
+            }
+          : null
+      );
+      window.setTimeout(() => {
+        onClose(skipHistoryPush);
+      }, 275);
+    };
+
+    if (isFastSwipe) {
+      requestAnimationFrame(() => {
+        setFlyingPosterState((prev) =>
+          prev
+            ? {
+                ...prev,
+                top: startTop + inertialDip,
+                borderRadius: '14px',
+                transitionMs: 85
+              }
+            : null
+        );
+      });
+      window.setTimeout(flyToCard, 85);
     } else {
-      setMobileDragY(0);
+      // Back button, system back, or slow drag -> NO downward dip, fly straight to clicked card
+      requestAnimationFrame(() => {
+        requestAnimationFrame(flyToCard);
+      });
     }
   };
 
-  const handleMobileTouchEnd = () => {
-    if (mobileTouchStartYRef.current === null) return;
-    const modalHeight = mobileModalContainerRef.current?.offsetHeight || window.innerHeight;
-    if (mobileDragY > modalHeight * 0.3) {
-      onClose();
+  const triggerDesktopClose = (skipHistoryPush = false) => {
+    if (isClosingDesktop) return;
+    if (videoRef.current && !videoRef.current.paused) {
+      videoRef.current.pause();
     }
+    if (isMobileLayout) {
+      triggerMobileClose('back_button', skipHistoryPush);
+      return;
+    }
+    setIsClosingDesktop(true);
+    const clickedEl = originMeta?.element;
+    const bannerEl = heroBannerRef.current;
+    if (isNormalFeedOrigin && clickedEl && clickedEl.isConnected && bannerEl) {
+      const liveOriginRect = clickedEl.getBoundingClientRect();
+      const bannerRect = bannerEl.getBoundingClientRect();
+      const vw = window.innerWidth;
+      const vh = window.innerHeight;
+      if (
+        liveOriginRect.width > 12 &&
+        liveOriginRect.height > 12 &&
+        liveOriginRect.bottom > -80 &&
+        liveOriginRect.top < vh + 80 &&
+        liveOriginRect.right > -40 &&
+        liveOriginRect.left < vw + 40 &&
+        bannerRect.width > 12 &&
+        bannerRect.height > 12
+      ) {
+        const bannerSrc = desktopBackdrop || mobileBackdrop;
+        const posterUrl =
+          originMeta?.posterUrl ||
+          show.posterLandscapeUrl ||
+          show.backdropUrl ||
+          bannerSrc;
+
+        setDesktopModalTransform({
+          transform: 'translate3d(0, 0, 0) scale(1)',
+          opacity: 0,
+          transition: 'opacity 130ms ease-out'
+        });
+
+        setFlyingPosterState({
+          left: bannerRect.left,
+          top: bannerRect.top,
+          width: bannerRect.width,
+          height: bannerRect.height,
+          opacity: 1,
+          borderRadius: '16px 16px 0px 0px',
+          cardPosterUrl: posterUrl,
+          bannerPosterUrl: bannerSrc,
+          showBannerLayer: true,
+          transitionMs: 265
+        });
+
+        requestAnimationFrame(() => {
+          requestAnimationFrame(() => {
+            const targetRect = clickedEl.isConnected ? clickedEl.getBoundingClientRect() : liveOriginRect;
+            setFlyingPosterState((prev) =>
+              prev
+                ? {
+                    ...prev,
+                    left: targetRect.left,
+                    top: targetRect.top,
+                    width: targetRect.width,
+                    height: targetRect.height,
+                    opacity: 0.96,
+                    borderRadius: '10px',
+                    showBannerLayer: false,
+                    transitionMs: 265
+                  }
+                : null
+            );
+          });
+        });
+
+        window.setTimeout(() => onClose(skipHistoryPush), 275);
+        return;
+      }
+    }
+
+    setDesktopModalTransform({
+      transform: 'translate3d(0, 36px, 0) scale(0.97)',
+      opacity: 0,
+      transition: 'transform 200ms cubic-bezier(0.22, 1, 0.36, 1), opacity 180ms ease-in'
+    });
+    window.setTimeout(() => onClose(skipHistoryPush), 205);
+  };
+
+  // Keyboard Escape and System Back (popstate) trigger exact animated collapse instead of instant unmount
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        e.preventDefault();
+        triggerDesktopClose(false);
+      }
+    };
+    const onSystemBack = (e: Event) => {
+      e.preventDefault();
+      if (isMobileLayout) {
+        triggerMobileClose('back_button', true);
+      } else {
+        triggerDesktopClose(true);
+      }
+    };
+    window.addEventListener('keydown', onKey);
+    window.addEventListener('dizi-detail-system-back', onSystemBack);
+    return () => {
+      window.removeEventListener('keydown', onKey);
+      window.removeEventListener('dizi-detail-system-back', onSystemBack);
+    };
+  });
+
+  const handleMobilePageTouchStart = (e: React.TouchEvent) => {
+    if (!isMobileLayout || e.touches.length !== 1 || mobileCollapseTransform || isClosingMobileRef.current) return;
+    if (isMobileInfoPageOpen || isMobileSeasonDropdownOpen) return;
+    const sc = scrollContainerRef.current;
+    if (!sc || sc.scrollTop > 2) {
+      mobileTouchStartPosRef.current = null;
+      return;
+    }
+    const y = e.touches[0].clientY;
+    mobileTouchStartPosRef.current = {
+      x: e.touches[0].clientX,
+      y,
+      locked: null
+    };
+    mobileTouchSamplesRef.current = [{ y, t: performance.now() }];
+  };
+
+  const handleMobilePageTouchMove = (e: React.TouchEvent) => {
+    const start = mobileTouchStartPosRef.current;
+    if (!start || e.touches.length !== 1 || mobileCollapseTransform || isClosingMobileRef.current) return;
+    const y = e.touches[0].clientY;
+    const dx = e.touches[0].clientX - start.x;
+    const dy = y - start.y;
+
+    if (start.locked === null) {
+      if (Math.hypot(dx, dy) < 10) return;
+      if (dy > 0 && Math.abs(dy) > Math.abs(dx) * 1.15 && (scrollContainerRef.current?.scrollTop || 0) <= 2) {
+        start.locked = 'y';
+        setIsMobileDragging(true);
+      } else {
+        start.locked = 'x';
+        return;
+      }
+    }
+
+    if (start.locked === 'y') {
+      const nextDrag = dy > 0 ? dy * 0.94 : 0;
+      mobileDragYRef.current = nextDrag;
+      setMobileDragY(nextDrag);
+      mobileTouchSamplesRef.current.push({ y, t: performance.now() });
+      if (mobileTouchSamplesRef.current.length > 6) {
+        mobileTouchSamplesRef.current.shift();
+      }
+    }
+  };
+
+  const handleMobilePageTouchEnd = () => {
+    const start = mobileTouchStartPosRef.current;
+    if (!start) return;
+    if (start.locked === 'y') {
+      const samples = mobileTouchSamplesRef.current;
+      let vy = 0;
+      if (samples.length >= 2) {
+        const last = samples[samples.length - 1];
+        const recent = samples.find((s) => last.t - s.t <= 95) || samples[0];
+        const dt = Math.max(1, last.t - recent.t);
+        vy = Math.max(0, (last.y - recent.y) / dt);
+      }
+      const dragY = mobileDragYRef.current;
+      const vh = window.innerHeight || 800;
+      mobileTouchStartPosRef.current = null;
+
+      if (dragY >= vh * 0.75) {
+        triggerMobileClose('swipe_off_bottom', false, vy);
+        return;
+      }
+      if (dragY > 88 || (vy > 0.55 && dragY > 36)) {
+        triggerMobileClose(vy > 0.65 ? 'fast_swipe' : 'slow_swipe', false, vy);
+        return;
+      }
+    }
+    mobileDragYRef.current = 0;
     setMobileDragY(0);
     setIsMobileDragging(false);
-    mobileTouchStartYRef.current = null;
-  };
-
-  const handleMobileMouseDown = (e: React.MouseEvent) => {
-    mobileTouchStartYRef.current = e.clientY;
-    setIsMobileDragging(true);
-
-    const onMouseMove = (moveEvent: MouseEvent) => {
-      if (mobileTouchStartYRef.current === null) return;
-      const deltaY = moveEvent.clientY - mobileTouchStartYRef.current;
-      setMobileDragY(deltaY > 0 ? deltaY : 0);
-    };
-
-    const onMouseUp = (upEvent: MouseEvent) => {
-      if (mobileTouchStartYRef.current !== null) {
-        const deltaY = upEvent.clientY - mobileTouchStartYRef.current;
-        const modalHeight = mobileModalContainerRef.current?.offsetHeight || window.innerHeight;
-        if (deltaY > modalHeight * 0.3) {
-          onClose();
-        }
-      }
-      setMobileDragY(0);
-      setIsMobileDragging(false);
-      mobileTouchStartYRef.current = null;
-      window.removeEventListener('mousemove', onMouseMove);
-      window.removeEventListener('mouseup', onMouseUp);
-    };
-
-    window.addEventListener('mousemove', onMouseMove);
-    window.addEventListener('mouseup', onMouseUp);
+    mobileTouchStartPosRef.current = null;
   };
 
   // Info Page Drag-to-Dismiss Handler
@@ -392,24 +938,33 @@ export const DetailModal: React.FC<DetailModalProps> = ({
 
   const handleStartMobileTrailer = (e?: React.MouseEvent) => {
     e?.stopPropagation();
+    if (!currentVideoSrc) return;
+    clearMobilePausePosterTimer();
+    setShowPosterAfterPause(false);
     setHasStartedTrailer(true);
     setIsMobileTrailerEnded(false);
-    setIsMobileTrailerPlaying(true);
     setIsMobileTrailerLoading(true);
     setIsMobileTrailerControlsVisible(true);
-    resetMobileControlsTimer();
     const v = mobileVideoRef.current;
     if (v) {
+      if (mobileSavedTimeRef.current > 0 && Math.abs(v.currentTime - mobileSavedTimeRef.current) > 0.25) {
+        try {
+          v.currentTime = mobileSavedTimeRef.current;
+        } catch {}
+      }
       v.muted = isMobileTrailerMuted;
       v.play().then(() => {
         setIsMobileTrailerLoading(false);
+        setIsMobileTrailerPlaying(true);
       }).catch(() => {
         v.muted = true;
         setIsMobileTrailerMuted(true);
         v.play().then(() => {
           setIsMobileTrailerLoading(false);
+          setIsMobileTrailerPlaying(true);
         }).catch(() => {
           setIsMobileTrailerLoading(false);
+          setIsMobileTrailerPlaying(false);
         });
       });
     }
@@ -417,58 +972,84 @@ export const DetailModal: React.FC<DetailModalProps> = ({
 
   const handleToggleMobileTrailerPlay = (e?: React.MouseEvent) => {
     e?.stopPropagation();
+    if (!currentVideoSrc) return;
     const v = mobileVideoRef.current;
     if (!v) return;
-    if (!hasStartedTrailer) {
-      handleStartMobileTrailer(e);
+    if (!hasStartedTrailer || isMobileTrailerEnded) {
+      if (isMobileTrailerEnded) {
+        handleMobileTrailerReplay(e);
+      } else {
+        handleStartMobileTrailer(e);
+      }
       return;
     }
     if (v.paused) {
+      clearMobilePausePosterTimer();
+      setShowPosterAfterPause(false);
       setIsMobileTrailerLoading(true);
+      if (mobileSavedTimeRef.current > 0 && Math.abs(v.currentTime - mobileSavedTimeRef.current) > 0.25) {
+        try {
+          v.currentTime = mobileSavedTimeRef.current;
+        } catch {}
+      }
       v.play().then(() => {
         setIsMobileTrailerLoading(false);
         setIsMobileTrailerPlaying(true);
         setIsMobileTrailerControlsVisible(true);
-        resetMobileControlsTimer();
       }).catch(() => {
         setIsMobileTrailerLoading(false);
+        setIsMobileTrailerPlaying(false);
       });
     } else {
+      clearMobilePausePosterTimer();
+      setShowPosterAfterPause(false);
+      mobileSavedTimeRef.current = v.currentTime;
       v.pause();
       setIsMobileTrailerPlaying(false);
+      setIsMobileTrailerLoading(false);
       setIsMobileTrailerControlsVisible(true);
-      resetMobileControlsTimer(); // Other controls hide after 2 seconds; progress bar and play button remain
+      mobilePausePosterTimerRef.current = window.setTimeout(() => {
+        setShowPosterAfterPause(true);
+        mobilePausePosterTimerRef.current = null;
+      }, 2000);
     }
   };
 
   const handleMobileTrailerReplay = (e?: React.MouseEvent) => {
     e?.stopPropagation();
+    if (!currentVideoSrc) return;
+    clearMobilePausePosterTimer();
+    setShowPosterAfterPause(false);
+    mobileSavedTimeRef.current = 0;
     setIsMobileTrailerEnded(false);
     setHasStartedTrailer(true);
-    setIsMobileTrailerPlaying(true);
     setIsMobileTrailerLoading(true);
     setIsMobileTrailerControlsVisible(true);
-    resetMobileControlsTimer();
     const v = mobileVideoRef.current;
     if (v) {
       v.currentTime = 0;
+      v.muted = isMobileTrailerMuted;
       v.play().then(() => {
         setIsMobileTrailerLoading(false);
+        setIsMobileTrailerPlaying(true);
       }).catch(() => {
-        setIsMobileTrailerLoading(false);
+        v.muted = true;
+        setIsMobileTrailerMuted(true);
+        v.play().then(() => {
+          setIsMobileTrailerLoading(false);
+          setIsMobileTrailerPlaying(true);
+        }).catch(() => {
+          setIsMobileTrailerLoading(false);
+          setIsMobileTrailerPlaying(false);
+        });
       });
     }
   };
 
   const handleMobilePlayerTap = (e: React.MouseEvent) => {
     e.stopPropagation();
-    if (isMobileTrailerEnded) return;
-    if (!isMobileTrailerControlsVisible) {
-      setIsMobileTrailerControlsVisible(true);
-      resetMobileControlsTimer();
-    } else {
-      handleToggleMobileTrailerPlay(e);
-    }
+    // Only play/toggle preview when user clicks
+    handleToggleMobileTrailerPlay(e);
   };
 
   const handleToggleMobileMute = (e?: React.MouseEvent) => {
@@ -483,16 +1064,6 @@ export const DetailModal: React.FC<DetailModalProps> = ({
     }
   };
 
-  const handleMobileScrub = (e: React.MouseEvent<HTMLDivElement>) => {
-    e.stopPropagation();
-    const v = mobileVideoRef.current;
-    if (!v || !mobileTrailerDuration) return;
-    const rect = e.currentTarget.getBoundingClientRect();
-    const pos = Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width));
-    v.currentTime = pos * mobileTrailerDuration;
-    setMobileTrailerCurrentTime(v.currentTime);
-  };
-
   const mobileTabs = useMemo(() => {
     if (hasEpisodes) {
       return [
@@ -501,16 +1072,77 @@ export const DetailModal: React.FC<DetailModalProps> = ({
         { id: 'moreLikeThis' as const, label: 'More Like This' },
       ];
     } else {
-      const list: Array<{ id: 'trailers' | 'whereToWatch' | 'moreLikeThis'; label: string }> = [
-        { id: 'trailers', label: 'Trailers' },
+      return [
+        { id: 'trailers' as const, label: 'Trailers' },
+        { id: 'moreLikeThis' as const, label: 'More Like This' },
       ];
-      if (adminSettings.enableWhereToWatch && (show.whereToWatchEnabled !== false) && show.whereToWatch && show.whereToWatch.length > 0) {
-        list.push({ id: 'whereToWatch', label: 'Where to Watch' });
-      }
-      list.push({ id: 'moreLikeThis', label: 'More Like This' });
-      return list;
     }
-  }, [hasEpisodes, adminSettings.enableWhereToWatch, show.whereToWatchEnabled, show.whereToWatch]);
+  }, [hasEpisodes]);
+
+  // Smooth horizontal touch-swipe switching across mobile tabs (Episodes <-> Trailers <-> More Like This)
+  const [mobileTabSwipeOffset, setMobileTabSwipeOffset] = useState<number>(0);
+  const [isSwipingMobileTab, setIsSwipingMobileTab] = useState<boolean>(false);
+  const tabSwipeStartRef = useRef<{ x: number; y: number; locked: 'x' | 'y' | null } | null>(null);
+
+  const activeMobileTabIdx = useMemo(() => {
+    const idx = mobileTabs.findIndex((t) => t.id === mobileActiveTab);
+    return idx >= 0 ? idx : 0;
+  }, [mobileTabs, mobileActiveTab]);
+
+  const handleMobileTabTouchStart = (e: React.TouchEvent) => {
+    if (e.touches.length !== 1) return;
+    const target = e.target as HTMLElement | null;
+    if (target) {
+      const hScroll = target.closest('.overflow-x-auto') as HTMLElement | null;
+      if (hScroll && hScroll.scrollWidth > hScroll.clientWidth + 4) {
+        return;
+      }
+    }
+    tabSwipeStartRef.current = {
+      x: e.touches[0].clientX,
+      y: e.touches[0].clientY,
+      locked: null
+    };
+  };
+
+  const handleMobileTabTouchMove = (e: React.TouchEvent) => {
+    const start = tabSwipeStartRef.current;
+    if (!start || e.touches.length !== 1) return;
+    const dx = e.touches[0].clientX - start.x;
+    const dy = e.touches[0].clientY - start.y;
+
+    if (start.locked === null) {
+      if (Math.hypot(dx, dy) < 10) return;
+      if (Math.abs(dx) > Math.abs(dy) * 1.15) {
+        start.locked = 'x';
+        setIsSwipingMobileTab(true);
+      } else {
+        start.locked = 'y';
+        return;
+      }
+    }
+
+    if (start.locked === 'x') {
+      const atStartEdge = activeMobileTabIdx === 0 && dx > 0;
+      const atEndEdge = activeMobileTabIdx === mobileTabs.length - 1 && dx < 0;
+      setMobileTabSwipeOffset(atStartEdge || atEndEdge ? dx * 0.22 : dx);
+    }
+  };
+
+  const handleMobileTabTouchEnd = () => {
+    const start = tabSwipeStartRef.current;
+    if (start && start.locked === 'x') {
+      const threshold = 48;
+      if (mobileTabSwipeOffset < -threshold && activeMobileTabIdx < mobileTabs.length - 1) {
+        setMobileActiveTab(mobileTabs[activeMobileTabIdx + 1].id as any);
+      } else if (mobileTabSwipeOffset > threshold && activeMobileTabIdx > 0) {
+        setMobileActiveTab(mobileTabs[activeMobileTabIdx - 1].id as any);
+      }
+    }
+    tabSwipeStartRef.current = null;
+    setIsSwipingMobileTab(false);
+    setMobileTabSwipeOffset(0);
+  };
 
   const ratingScore = show.imdbRating || (show.points ? Math.min(9.8, Math.max(6.5, show.points / 10)).toFixed(1) : '7.8');
   const reviewVotesText = show.imdbVotes ? `${show.imdbVotes} ratings` : `${Math.floor((show.points || 85) * 3500).toLocaleString()} ratings`;
@@ -595,6 +1227,23 @@ export const DetailModal: React.FC<DetailModalProps> = ({
     if (!container) return;
 
     const handleContainerScroll = () => {
+      // Mobile: pause preview playback when user scrolls down, saving currentTime for manual resume
+      if (window.innerWidth <= 768) {
+        if (container.scrollTop > 40 && mobileVideoRef.current && !mobileVideoRef.current.paused) {
+          clearMobilePausePosterTimer();
+          setShowPosterAfterPause(false);
+          mobileSavedTimeRef.current = mobileVideoRef.current.currentTime;
+          mobileVideoRef.current.pause();
+          setIsMobileTrailerPlaying(false);
+          setIsMobileTrailerLoading(false);
+          mobilePausePosterTimerRef.current = window.setTimeout(() => {
+            setShowPosterAfterPause(true);
+            mobilePausePosterTimerRef.current = null;
+          }, 2000);
+        }
+        return;
+      }
+
       const banner = heroBannerRef.current;
       if (!banner) return;
 
@@ -739,6 +1388,13 @@ export const DetailModal: React.FC<DetailModalProps> = ({
     isPreviewEndedRef.current = false;
     setIsPausedByScroll(false);
     isPausedByScrollRef.current = false;
+    clearMobilePausePosterTimer();
+    setShowPosterAfterPause(false);
+    mobileSavedTimeRef.current = 0;
+    setHasStartedTrailer(false);
+    setIsMobileTrailerPlaying(false);
+    setIsMobileTrailerEnded(false);
+    setIsMobileTrailerLoading(false);
 
     if (shrinkTimerRef.current) {
       window.clearTimeout(shrinkTimerRef.current);
@@ -1272,16 +1928,37 @@ export const DetailModal: React.FC<DetailModalProps> = ({
         data-modal-open="true"
         ref={scrollContainerRef}
       tabIndex={-1}
-      className="fixed inset-0 z-50 overflow-y-auto overflow-x-hidden bg-black/50 animate-modal-backdrop custom-scrollbar outline-none"
+      style={
+        isMobileLayout
+          ? { backgroundColor: 'rgba(0, 0, 0, 0)' }
+          : undefined
+      }
+      className={`fixed inset-0 z-50 overflow-y-auto overflow-x-hidden custom-scrollbar outline-none transition-colors duration-250 ${
+        isMobileLayout
+          ? 'bg-transparent'
+          : isClosingDesktop
+          ? 'bg-black/0'
+          : 'bg-black/50 animate-modal-backdrop'
+      }`}
       onClick={(e) => {
-        if (e.target === e.currentTarget) onClose();
+        if (e.target === e.currentTarget) triggerDesktopClose(false);
       }}
     >
       <div className="min-h-full flex items-start justify-center py-0 md:py-8 px-0 md:px-4 pointer-events-none">
         <div
-          className="relative w-full md:max-w-[780px] bg-[#181818] border-0 rounded-none md:rounded-2xl overflow-hidden shadow-2xl animate-modal-content select-none pointer-events-auto min-h-screen md:min-h-0 pb-0 flex flex-col"
+          ref={desktopCardRef}
+          className={`relative w-full md:max-w-[780px] ${
+            isMobileLayout ? 'bg-transparent' : 'bg-[#181818]'
+          } border-0 rounded-none md:rounded-2xl overflow-hidden shadow-2xl select-none pointer-events-auto min-h-screen md:min-h-0 pb-0 flex flex-col will-change-transform`}
           style={{
-            boxShadow: '0 25px 60px -15px rgba(0,0,0,0.95)'
+            boxShadow: isMobileLayout ? 'none' : '0 25px 60px -15px rgba(0,0,0,0.95)',
+            ...(!isMobileLayout && desktopModalTransform
+              ? {
+                  transform: desktopModalTransform.transform,
+                  opacity: desktopModalTransform.opacity,
+                  transition: desktopModalTransform.transition
+                }
+              : {})
           }}
           onClick={(e) => e.stopPropagation()}
         >
@@ -1291,7 +1968,7 @@ export const DetailModal: React.FC<DetailModalProps> = ({
             {!isCastViewOpen && !isBlogViewOpen && (
               <div className="absolute top-4 right-4 z-40 flex items-center gap-2">
                 <button
-                  onClick={onClose}
+                  onClick={() => triggerDesktopClose(false)}
                   className="w-9 h-9 rounded-full bg-[#181818]/80 hover:bg-[#282828] text-white flex items-center justify-center border border-white/20 transition-colors cursor-pointer shadow-lg"
                   aria-label="Close modal"
                 >
@@ -1463,7 +2140,7 @@ export const DetailModal: React.FC<DetailModalProps> = ({
             <div
               ref={heroBannerRef}
               onClick={handlePlayMain}
-              className="relative w-full aspect-[16/9] bg-[#181818] overflow-hidden cursor-pointer select-none"
+              className="relative w-full aspect-[16/9] bg-[#181818] md:rounded-t-2xl overflow-hidden isolate [transform:translateZ(0)] cursor-pointer select-none"
               data-no-tooltip="true"
             >
             {/* Primary Base Layer: Backdrop Image (Guaranteed visible immediately upon opening modal) */}
@@ -1479,7 +2156,7 @@ export const DetailModal: React.FC<DetailModalProps> = ({
                   setModalBackdropSrc(show.posterLandscapeUrl);
                 }
               }}
-              className="absolute inset-0 w-full h-full object-cover"
+              className="absolute inset-0 w-full h-full object-cover md:rounded-t-2xl"
             />
 
             {/* Optional Background Video Overlay (loads after backdrop display, desktop/tablet only) */}
@@ -1532,15 +2209,15 @@ export const DetailModal: React.FC<DetailModalProps> = ({
                 onError={(e) => {
                   console.warn('DetailModal preview playback error:', e);
                 }}
-                className={`absolute inset-0 w-full h-full object-cover scale-102 z-10 transition-opacity duration-500 ${
+                className={`absolute inset-0 w-full h-full object-cover md:rounded-t-2xl scale-[1.03] z-10 transition-opacity duration-500 ${
                   isVideoPlaying && !isPausedByScroll ? 'opacity-100' : 'opacity-0'
                 }`}
               />
             )}
 
             {/* Uniform smooth bottom glare matching Netflix - zero visible divider between hero preview and content */}
-            <div className="absolute inset-x-0 bottom-0 h-40 sm:h-48 md:h-56 bg-gradient-to-t from-[#181818] via-[#181818]/80 via-35% via-[#181818]/20 to-transparent pointer-events-none z-10" />
-            <div className="absolute inset-0 bg-gradient-to-tr from-black/40 via-transparent to-transparent pointer-events-none" />
+            <div className="absolute inset-x-0 bottom-0 h-40 sm:h-48 md:h-56 bg-gradient-to-t from-[#181818] via-[#181818]/80 via-35% via-[#181818]/20 to-transparent pointer-events-none z-[12]" />
+            <div className="absolute inset-0 bg-gradient-to-tr from-black/40 via-transparent to-transparent pointer-events-none z-[12] md:rounded-t-2xl" />
 
             {/* Top-Left Source Watermark (visible ONLY with video preview, hides when video pauses or ends) */}
             {shouldLoadPreview && !videoError && isVideoPlaying && !isPreviewEnded && !isPausedByScroll && show.sourceWatermarkUrl && (
@@ -1638,7 +2315,7 @@ export const DetailModal: React.FC<DetailModalProps> = ({
                 <button
                   onClick={(e) => {
                     e.stopPropagation();
-                    setIsLiked(!isLiked);
+                    handleLikeAction();
                   }}
                   className="w-9 h-9 md:w-10 md:h-10 rounded-full border-2 border-white/40 hover:border-white bg-black/25 hover:bg-black/45 backdrop-blur-none text-white flex items-center justify-center transition-colors cursor-pointer"
                   data-tooltip="Like"
@@ -1654,7 +2331,7 @@ export const DetailModal: React.FC<DetailModalProps> = ({
                   data-tooltip="Share"
                   aria-label="Share"
                 >
-                  <Share2 className="w-4.5 h-4.5 text-white stroke-[2]" />
+                  <ShareArrowIcon className="w-4.5 h-4.5 text-white" />
                 </button>
               </div>
             </div>
@@ -1889,7 +2566,9 @@ export const DetailModal: React.FC<DetailModalProps> = ({
                         />
                         <div className="absolute inset-0 bg-black/30 flex items-center justify-center opacity-0 group-hover/thumb:opacity-100 transition-opacity">
                           <div className="w-8 h-8 rounded-full bg-black/70 border border-white/60 flex items-center justify-center">
-                            <Play className="w-4 h-4 fill-white text-white ml-0.5" />
+                            <svg className="w-4 h-4 fill-white text-white ml-0.5" viewBox="0 0 24 24">
+                              <polygon points="6,4 20,12 6,20" />
+                            </svg>
                           </div>
                         </div>
 
@@ -1966,7 +2645,9 @@ export const DetailModal: React.FC<DetailModalProps> = ({
                     {/* Centered Circular White Ring Play Button */}
                     <div className="absolute inset-0 bg-black/25 flex items-center justify-center">
                       <div className="w-12 h-12 rounded-full border-2 border-white bg-black/60 flex items-center justify-center shadow-lg">
-                        <Play className="w-5 h-5 fill-white text-white ml-0.5" />
+                        <svg className="w-5 h-5 fill-white text-white ml-0.5" viewBox="0 0 24 24">
+                          <polygon points="6,4 20,12 6,20" />
+                        </svg>
                       </div>
                     </div>
                     {/* Time duration badge: reduced dark background, 75% transparency (25% opacity), zero blur */}
@@ -2088,32 +2769,76 @@ export const DetailModal: React.FC<DetailModalProps> = ({
           {/* ===================== MOBILE LAYOUT (REDESIGNED FOR MOBILE ONLY) ===================== */}
           <div
             ref={mobileModalContainerRef}
+            onTouchStart={handleMobilePageTouchStart}
+            onTouchMove={handleMobilePageTouchMove}
+            onTouchEnd={handleMobilePageTouchEnd}
+            onTouchCancel={handleMobilePageTouchEnd}
             style={{
-              transform: mobileDragY > 0 ? `translateY(${mobileDragY}px)` : undefined,
-              transition: isMobileDragging ? 'none' : 'transform 0.25s cubic-bezier(0.16, 1, 0.3, 1)'
+              transform: mobileCollapseTransform
+                ? `translate3d(${mobileCollapseTransform.dx}px, ${mobileCollapseTransform.dy}px, 0) scale(${mobileCollapseTransform.scale})`
+                : mobileDragY > 0
+                ? `translate3d(0, ${mobileDragY}px, 0)`
+                : undefined,
+              opacity: mobileCollapseTransform
+                ? mobileCollapseTransform.opacity
+                : isMobileOpeningHidingContent
+                ? 0
+                : 1,
+              borderRadius: mobileCollapseTransform
+                ? mobileCollapseTransform.animType === 'slide_right'
+                  ? '0px'
+                  : '14px'
+                : mobileDragY > 0
+                ? `${Math.min(20, mobileDragY / 6)}px`
+                : '0px',
+              overflow: mobileCollapseTransform || mobileDragY > 0 ? 'hidden' : undefined,
+              transformOrigin: 'center top',
+              transition: isMobileDragging
+                ? 'none'
+                : mobileCollapseTransform?.animType === 'slide_right'
+                ? 'transform 240ms cubic-bezier(0.22, 1, 0.36, 1), opacity 220ms ease-out'
+                : mobileCollapseTransform?.animType === 'slide_down'
+                ? 'transform 230ms cubic-bezier(0.22, 1, 0.36, 1)'
+                : mobileCollapseTransform?.animType === 'fade_fast'
+                ? 'opacity 90ms ease-out'
+                : isMobileOpeningHidingContent
+                ? 'opacity 140ms ease-out 180ms'
+                : 'transform 240ms cubic-bezier(0.16, 1, 0.3, 1), border-radius 200ms ease, opacity 140ms ease-out'
             }}
-            className="block md:hidden bg-[#181818] min-h-[100dvh] pb-14 relative flex flex-col flex-1"
+            className="block md:hidden bg-black min-h-[100dvh] pb-14 relative flex flex-col flex-1"
           >
             {/* 1. Mobile Trailer Video Player Container (Starts at top of screen) */}
             <div
+              ref={mobileHeroBannerRef}
               onClick={handleMobilePlayerTap}
               className="relative aspect-video w-full bg-black overflow-hidden select-none cursor-pointer shrink-0"
             >
-              {/* Back button inside video thumbnail: transparent when trailer is playing, no border */}
+              {/* Back button: unified clean white borderless chevron, triggers direct collapse/slide-right */}
               <button
                 onClick={(e) => {
                   e.stopPropagation();
-                  onClose();
+                  triggerMobileClose('back_button', false);
                 }}
-                className={`absolute top-3 left-3 z-30 w-9 h-9 rounded-full backdrop-blur-none text-white flex items-center justify-center cursor-pointer active:scale-95 transition-all ${
-                  hasStartedTrailer && !isMobileTrailerEnded
-                    ? 'bg-transparent hover:bg-transparent shadow-none'
-                    : 'bg-black/25 hover:bg-black/40 shadow-md'
-                }`}
+                className="absolute top-3 left-2.5 z-30 p-1 bg-transparent hover:bg-transparent shadow-none text-white flex items-center justify-center cursor-pointer active:scale-90 transition-transform"
                 aria-label="Back"
               >
-                <ArrowLeft className="w-5 h-5 text-white drop-shadow" />
+                <ChevronLeft className="w-7 h-7 stroke-[2.2] text-white drop-shadow-[0_2px_6px_rgba(0,0,0,0.85)]" />
               </button>
+
+              {/* Top-Right Mute Button: reduced opacity, no container border */}
+              {currentVideoSrc && hasStartedTrailer && !isMobileTrailerEnded && (
+                <button
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    handleToggleMobileMute(e);
+                  }}
+                  className="absolute top-3 right-3 z-30 w-8 h-8 rounded-full bg-black/35 hover:bg-black/55 border-0 text-white flex items-center justify-center cursor-pointer active:scale-95 transition-transform"
+                  aria-label="Toggle mute"
+                >
+                  {isMobileTrailerMuted ? <VolumeX className="w-4 h-4" /> : <Volume2 className="w-4 h-4" />}
+                </button>
+              )}
+
               {/* Mobile Trailer Video Element */}
               <video
                 ref={mobileVideoRef}
@@ -2126,11 +2851,11 @@ export const DetailModal: React.FC<DetailModalProps> = ({
                   setIsMobileTrailerLoading(false);
                   setIsMobileTrailerPlaying(true);
                 }}
-                onCanPlay={() => setIsMobileTrailerLoading(false)}
                 onSeeking={() => setIsMobileTrailerLoading(true)}
                 onSeeked={() => setIsMobileTrailerLoading(false)}
                 onTimeUpdate={() => {
                   if (mobileVideoRef.current) {
+                    mobileSavedTimeRef.current = mobileVideoRef.current.currentTime;
                     setMobileTrailerCurrentTime(mobileVideoRef.current.currentTime);
                     if (!mobileTrailerDuration && mobileVideoRef.current.duration) {
                       setMobileTrailerDuration(mobileVideoRef.current.duration);
@@ -2144,188 +2869,112 @@ export const DetailModal: React.FC<DetailModalProps> = ({
                 }}
                 onEnded={() => {
                   clearMobileControlsTimer();
+                  clearMobilePausePosterTimer();
+                  setShowPosterAfterPause(false);
+                  mobileSavedTimeRef.current = 0;
                   setIsMobileTrailerEnded(true);
                   setIsMobileTrailerPlaying(false);
-                  setIsMobileTrailerControlsVisible(false);
+                  setIsMobileTrailerControlsVisible(true);
                   setIsMobileTrailerLoading(false);
                 }}
-                className={`w-full h-full object-cover ${
-                  hasStartedTrailer && !isMobileTrailerEnded ? 'opacity-100' : 'opacity-0'
+                className={`w-full h-full object-cover transition-opacity duration-300 ${
+                  hasStartedTrailer && !isMobileTrailerEnded && !showPosterAfterPause ? 'opacity-100' : 'opacity-0'
                 }`}
               />
 
-              {/* State A: Initial Trailer Thumbnail with Centered Play Button (when trailer not yet started) */}
-              {!hasStartedTrailer && !isMobileTrailerEnded && (
-                <div
-                  onClick={handleStartMobileTrailer}
-                  className="absolute inset-0 w-full h-full cursor-pointer z-10"
-                >
+              {/* Poster Layer when preview has not started, after preview ended, or 2s after pausing */}
+              {(!hasStartedTrailer || isMobileTrailerEnded || showPosterAfterPause) && (
+                <div className={`absolute inset-0 w-full h-full z-10 pointer-events-none ${showPosterAfterPause ? 'animate-in fade-in duration-300' : ''}`}>
                   <MediaImage
                     src={modalBackdropSrc}
                     fallbackTitle={show.title}
-                    fallbackClassName="w-full h-full bg-[#181818] flex items-center justify-center p-4 text-center select-none"
+                    fallbackClassName="w-full h-full bg-black flex items-center justify-center p-4 text-center select-none"
                     className="w-full h-full object-cover"
                   />
-                  {/* Clean white play button with exact recommendation cinema play symbol - shadow removed, reduced glare */}
-                  <div className="absolute inset-0 bg-black/10 flex items-center justify-center">
-                    <svg className="w-13 h-13 fill-white text-white ml-1.5" viewBox="0 0 24 24">
-                      <path d="M7.05 3.6A1.5 1.5 0 0 0 4.75 4.9v14.2a1.5 1.5 0 0 0 2.3 1.3l12.1-7.1a1.5 1.5 0 0 0 0-2.6L7.05 3.6z" fill="currentColor" />
-                    </svg>
-                  </div>
                 </div>
               )}
 
-              {/* Loading Spinner while video is buffering / loading */}
-              {hasStartedTrailer && !isMobileTrailerEnded && isMobileTrailerLoading && (
-                <div className="absolute inset-0 z-30 flex items-center justify-center pointer-events-none">
-                  <div className="w-10 h-10 border-[3px] border-white/20 border-t-white rounded-full animate-spin shadow-lg" />
-                </div>
-              )}
+              {/* Persistent Seamless Bottom Merge Glare into pure black page base (taller upper feather, softer bottom density) */}
+              <div
+                className="absolute inset-x-0 bottom-0 h-28 pointer-events-none z-20"
+                style={{
+                  background:
+                    'linear-gradient(to top, #000000 0%, rgba(0,0,0,0.72) 12%, rgba(0,0,0,0.44) 32%, rgba(0,0,0,0.22) 56%, rgba(0,0,0,0.07) 80%, transparent 100%)'
+                }}
+              />
 
-              {/* State B: Centered Replay Button when trailer video ends (Over landscape poster, NOT black section) */}
-              {isMobileTrailerEnded && (
-                <div
-                  onClick={handleMobileTrailerReplay}
-                  className="absolute inset-0 w-full h-full cursor-pointer z-20"
-                >
-                  <MediaImage
-                    src={modalBackdropSrc}
-                    fallbackTitle={show.title}
-                    fallbackClassName="w-full h-full bg-[#181818] flex items-center justify-center p-4 text-center select-none"
-                    className="w-full h-full object-cover"
+              {/* Bottom-Left Title Logo (parallel to bottom-right Play button, bounded away from controls) */}
+              <div className="absolute bottom-2.5 left-4 z-30 pointer-events-none max-w-[calc(100%-78px)] flex items-end">
+                {show.titleLogoUrl ? (
+                  <img
+                    src={show.titleLogoUrl}
+                    alt={show.title}
+                    referrerPolicy="no-referrer"
+                    className="min-h-[34px] h-10 sm:h-12 max-h-12 max-w-[235px] sm:max-w-[280px] w-auto object-contain object-left drop-shadow-[0_2px_10px_rgba(0,0,0,0.9)] select-none"
                   />
-                  <div className="absolute inset-0 bg-black/25 flex items-center justify-center">
-                    <RotateCcw className="w-10 h-10 text-white" />
-                  </div>
-                </div>
-              )}
+                ) : (
+                  <h1 className="text-xl sm:text-2xl font-black text-white font-display tracking-tight leading-tight line-clamp-2 drop-shadow-[0_2px_8px_rgba(0,0,0,0.9)]">
+                    {show.title}
+                  </h1>
+                )}
+              </div>
 
-              {/* Bottom fade out gradient: only shown when poster/replay is showing, NOT when trailer is playing */}
-              {(!hasStartedTrailer || isMobileTrailerEnded) && (
-                <div className="absolute inset-x-0 bottom-0 h-14 sm:h-20 bg-gradient-to-t from-[#181818] via-[#181818]/60 to-transparent pointer-events-none z-25" />
-              )}
-
-              {/* Centered Play / Pause Button (No shadow, no animation):
-                  - When trailer is playing: disappears after 2 seconds when controls hide
-                  - When trailer is paused: controls hide after 2 seconds, but play button still appears */}
-              {hasStartedTrailer && !isMobileTrailerEnded && !isMobileTrailerLoading && (!isMobileTrailerPlaying || isMobileTrailerControlsVisible) && (
-                <div className="absolute inset-0 z-20 flex items-center justify-center pointer-events-none">
+              {/* Compact Bottom-Right Preview Control: Reduced opacity Play / Pause / Reload */}
+              {currentVideoSrc && (
+                <div className="absolute bottom-3 right-3 z-30 flex items-center">
                   <button
                     onClick={(e) => {
                       e.stopPropagation();
-                      handleToggleMobileTrailerPlay(e);
+                      if (isMobileTrailerEnded) {
+                        handleMobileTrailerReplay(e);
+                      } else if (!hasStartedTrailer) {
+                        handleStartMobileTrailer(e);
+                      } else {
+                        handleToggleMobileTrailerPlay(e);
+                      }
                     }}
-                    className="p-4 flex items-center justify-center text-white cursor-pointer pointer-events-auto"
-                    aria-label="Pause or Play trailer"
+                    className="w-8 h-8 rounded-full bg-black/35 hover:bg-black/55 text-white border border-white/15 flex items-center justify-center cursor-pointer shadow-md active:scale-95 transition-transform"
+                    aria-label={
+                      isMobileTrailerEnded
+                        ? 'Replay preview'
+                        : isMobileTrailerPlaying
+                        ? 'Pause preview'
+                        : 'Play preview'
+                    }
                   >
-                    {mobileVideoRef.current && !mobileVideoRef.current.paused ? (
-                      <svg className="w-10 h-10 fill-white text-white" viewBox="0 0 24 24">
-                        <rect x="6" y="4" width="3.5" height="16" rx="0.5" fill="currentColor" />
-                        <rect x="14.5" y="4" width="3.5" height="16" rx="0.5" fill="currentColor" />
+                    {isMobileTrailerLoading ? (
+                      <div className="w-4 h-4 border-2 border-white/25 border-t-white rounded-full animate-spin" />
+                    ) : isMobileTrailerEnded ? (
+                      <RotateCcw className="w-3.5 h-3.5 text-white" />
+                    ) : isMobileTrailerPlaying ? (
+                      <svg className="w-3.5 h-3.5 fill-white text-white" viewBox="0 0 24 24">
+                        <rect x="5" y="4" width="4.8" height="16" rx="1" />
+                        <rect x="14.2" y="4" width="4.8" height="16" rx="1" />
                       </svg>
                     ) : (
-                      <svg className="w-12 h-12 fill-white text-white ml-1" viewBox="0 0 24 24">
-                        <path d="M7.05 3.6A1.5 1.5 0 0 0 4.75 4.9v14.2a1.5 1.5 0 0 0 2.3 1.3l12.1-7.1a1.5 1.5 0 0 0 0-2.6L7.05 3.6z" fill="currentColor" />
+                      <svg className="w-3.5 h-3.5 fill-white text-white ml-0.5" viewBox="0 0 24 24">
+                        <polygon points="6,4 20,12 6,20" />
                       </svg>
                     )}
                   </button>
                 </div>
               )}
-
-              {/* Always-on bottom thin progress line when controls are hidden (pushed to bottom of player, WITHOUT knob) */}
-              {!isMobileTrailerControlsVisible && hasStartedTrailer && !isMobileTrailerEnded && (
-                <div className="absolute bottom-0 inset-x-0 h-1 bg-white/20 pointer-events-none z-20">
-                  <div
-                    className="h-full bg-red-600 transition-all duration-100"
-                    style={{
-                      width: `${
-                        mobileTrailerDuration > 0
-                          ? Math.min(100, Math.max(0, (mobileTrailerCurrentTime / mobileTrailerDuration) * 100))
-                          : 0
-                      }%`
-                    }}
-                  />
-                </div>
-              )}
-
-              {/* State C: Controls Overlay while trailer is playing/paused & controls are visible (reduced glare) */}
-              {hasStartedTrailer && !isMobileTrailerEnded && isMobileTrailerControlsVisible && (
-                <div
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    handleToggleMobileTrailerPlay(e);
-                  }}
-                  className="absolute inset-0 z-10 flex flex-col justify-end bg-black/15 pointer-events-auto"
-                >
-                  {/* Bottom Controls Area: Mute button pushed ABOVE progress bar, Scrubber bar + time info (reduced glare) */}
-                  <div
-                    onClick={(e) => e.stopPropagation()}
-                    className="px-3 pb-2 pt-6 bg-gradient-to-t from-black/60 via-black/15 to-transparent relative"
-                  >
-                    {/* Mute/Unmute button: NO white border, NO animation */}
-                    <div className="flex items-center justify-end mb-2 pr-1">
-                      <button
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          handleToggleMobileMute(e);
-                          resetMobileControlsTimer();
-                        }}
-                        className="w-8 h-8 rounded-full bg-black/60 text-white hover:text-white/80 flex items-center justify-center cursor-pointer shadow"
-                        aria-label="Toggle mute"
-                      >
-                        {isMobileTrailerMuted ? <VolumeX className="w-4 h-4" /> : <Volume2 className="w-4 h-4" />}
-                      </button>
-                    </div>
-
-                    {/* Red scrub line with circular handle & elapsed timestamp on right (matching screenshot 00:38) */}
-                    <div className="flex items-center gap-3">
-                      <div
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          handleMobileScrub(e);
-                          resetMobileControlsTimer();
-                        }}
-                        className="relative flex-1 h-4 flex items-center cursor-pointer group/scrub"
-                      >
-                        <div className="w-full h-1 bg-white/30 rounded-full overflow-hidden">
-                          <div
-                            className="h-full bg-red-600 rounded-full"
-                            style={{
-                              width: `${
-                                mobileTrailerDuration > 0
-                                  ? Math.min(100, Math.max(0, (mobileTrailerCurrentTime / mobileTrailerDuration) * 100))
-                                  : 0
-                              }%`
-                            }}
-                          />
-                        </div>
-                        <div
-                          className="w-3.5 h-3.5 bg-red-600 rounded-full absolute top-1/2 -translate-y-1/2 -translate-x-1/2 shadow-md pointer-events-none"
-                          style={{
-                            left: `${
-                              mobileTrailerDuration > 0
-                                ? Math.min(100, Math.max(0, (mobileTrailerCurrentTime / mobileTrailerDuration) * 100))
-                                : 0
-                            }%`
-                          }}
-                        />
-                      </div>
-
-                      {/* Time display on right: e.g. 00:38 */}
-                      <span className="text-xs font-semibold text-white/95 shrink-0 select-none">
-                        {formatMobileTime(mobileTrailerCurrentTime)}
-                      </span>
-                    </div>
-                  </div>
-                </div>
-              )}
             </div>
 
-            {/* 2. Title & First Line Badges (No HD or Spatial Audio badges, all badges in first line) */}
-            <div className="px-4 pt-3 pb-1">
-              <h1 className="text-2xl font-black text-white font-display tracking-tight leading-tight">
-                {show.title}
-              </h1>
+            {/* 2. Metadata & Badges + Mobile Lower Sections (animate smoothly below flying top image during opening) */}
+            <div
+              style={
+                mobileLowerContentStyle
+                  ? {
+                      opacity: mobileLowerContentStyle.opacity,
+                      transform: mobileLowerContentStyle.transform,
+                      transition: mobileLowerContentStyle.transition
+                    }
+                  : undefined
+              }
+              className="flex flex-col flex-1 bg-black"
+            >
+            <div className="px-4 pt-1.5 pb-1">
               <div className="flex flex-wrap items-center gap-2.5 text-xs font-semibold text-white/90 mt-2 mb-2">
                 <span>{show.releaseYear.split('-')[0].trim()}</span>
                 <span className="px-1.5 py-0.5 rounded border border-white/40 text-[10px] font-bold text-white leading-none">
@@ -2370,9 +3019,9 @@ export const DetailModal: React.FC<DetailModalProps> = ({
               </div>
             )}
 
-            {/* 3. Action Buttons Row: Play / Resume on left; Like, Add to List, Share, Info spread across screen width */}
-            <div className="w-full px-4 py-2.5 overflow-x-auto no-scrollbar">
-              <div className="flex items-center justify-between w-full min-w-[330px] gap-2.5 sm:gap-4">
+            {/* 3. Action Buttons Row: Fixed gap & icon spacing so "Resume" never squeezes Like, My List, Share, Info */}
+            <div className="w-full px-4 py-2.5 overflow-x-auto no-scrollbar touch-pan-x">
+              <div className="flex items-center justify-between gap-4 w-max min-w-full">
                 <button
                   onClick={handlePlayButton}
                   className="pl-4 pr-5 sm:pl-5 sm:pr-6 py-2.5 sm:py-3 rounded-full bg-white hover:bg-white/90 active:scale-95 text-black font-bold text-base flex items-center gap-1.5 shadow-xl cursor-pointer transition-transform shrink-0"
@@ -2381,79 +3030,122 @@ export const DetailModal: React.FC<DetailModalProps> = ({
                   <svg className="w-6 h-6 shrink-0 fill-current" viewBox="0 0 24 24">
                     <path d="M7.05 3.6A1.5 1.5 0 0 0 4.75 4.9v14.2a1.5 1.5 0 0 0 2.3 1.3l12.1-7.1a1.5 1.5 0 0 0 0-2.6L7.05 3.6z" />
                   </svg>
-                  <span className="tracking-wide">{watchProgress && (watchProgress.progressPercent > 0 || watchProgress.isNextEpisodePrompt) ? 'Resume' : 'Play'}</span>
+                  <span className="tracking-wide whitespace-nowrap">
+                    {watchProgress && (watchProgress.progressPercent > 0 || watchProgress.isNextEpisodePrompt) ? 'Resume' : 'Play'}
+                  </span>
                 </button>
 
-                {/* Like, My List, Share, Info spread with equal spacing across screen width */}
-                <div className="flex-1 flex items-center justify-around gap-1 sm:gap-3">
-                  {/* Like Button */}
-                  <button
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      setIsLiked(!isLiked);
-                    }}
-                    className="flex flex-col items-center justify-center gap-1 text-white hover:text-white/80 active:scale-95 cursor-pointer flex-1 py-1"
-                    aria-label="Like"
-                  >
-                    <ThumbsUp
-                      className={`w-5 h-5 transition-colors ${
-                        isLiked ? 'text-red-500 fill-red-500 stroke-red-500' : 'text-white stroke-[2]'
-                      }`}
-                    />
-                    <span className="text-[10px] font-medium text-zinc-300">Like</span>
-                  </button>
+                {/* Like, My List, Share, Info keep identical fixed gap & slot width; compact larger icons when labels hidden */}
+                {(() => {
+                  const hideActionLabels = Boolean(adminSettings.hideMobileDetailActionLabels);
+                  return (
+                    <div className={`flex items-center shrink-0 ${hideActionLabels ? 'gap-2.5 sm:gap-3.5' : 'gap-4 sm:gap-5'}`}>
+                      {/* Reaction Button (Thumbs or Animated Emoji + Hold Pill) */}
+                      <MobileReactionButton
+                        showId={show.id}
+                        styleMode={adminSettings.mobileLikeButtonStyle || 'thumbs'}
+                        isLiked={isLiked}
+                        onToggleLike={handleLikeAction}
+                        hideLabel={hideActionLabels}
+                      />
 
-                  {/* Add to List */}
-                  <button
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      onToggleWatchlist(show.id);
-                    }}
-                    className="flex flex-col items-center justify-center gap-1 text-white hover:text-white/80 active:scale-95 cursor-pointer flex-1 py-1"
-                    aria-label="My List"
-                  >
-                    {isInWatchlist ? (
-                      <Check className="w-5 h-5 text-emerald-400 stroke-[2.5]" />
-                    ) : (
-                      <Plus className="w-5 h-5 text-white stroke-[2]" />
-                    )}
-                    <span className="text-[10px] font-medium text-zinc-300">My List</span>
-                  </button>
+                      {/* Add to List */}
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          onToggleWatchlist(show.id);
+                        }}
+                        className={`flex flex-col items-center justify-center gap-1 text-white hover:text-white/80 active:scale-95 cursor-pointer shrink-0 py-1 ${
+                          hideActionLabels ? 'w-9' : 'w-11'
+                        }`}
+                        aria-label="My List"
+                      >
+                        {isInWatchlist ? (
+                          <Check className={`${hideActionLabels ? 'w-6 h-6' : 'w-5 h-5'} text-emerald-400 stroke-[2.5]`} />
+                        ) : (
+                          <Plus className={`${hideActionLabels ? 'w-6 h-6' : 'w-5 h-5'} text-white stroke-[2]`} />
+                        )}
+                        {!hideActionLabels && <span className="text-[10px] font-medium text-zinc-300">My List</span>}
+                      </button>
 
-                  {/* Share */}
-                  <button
-                    onClick={handleShare}
-                    className="flex flex-col items-center justify-center gap-1 text-white hover:text-white/80 active:scale-95 cursor-pointer flex-1 py-1"
-                    aria-label="Share"
-                  >
-                    {copyFeedback ? (
-                      <Check className="w-5 h-5 text-emerald-400 stroke-[2.5]" />
-                    ) : (
-                      <Share2 className="w-5 h-5 text-white stroke-[2]" />
-                    )}
-                    <span className="text-[10px] font-medium text-zinc-300">Share</span>
-                  </button>
+                      {/* Share */}
+                      <button
+                        onClick={handleShare}
+                        className={`flex flex-col items-center justify-center gap-1 text-white hover:text-white/80 active:scale-95 cursor-pointer shrink-0 py-1 ${
+                          hideActionLabels ? 'w-9' : 'w-11'
+                        }`}
+                        aria-label="Share"
+                      >
+                        {copyFeedback ? (
+                          <Check className={`${hideActionLabels ? 'w-6 h-6' : 'w-5 h-5'} text-emerald-400 stroke-[2.5]`} />
+                        ) : (
+                          <ShareArrowIcon className={`${hideActionLabels ? 'w-6 h-6' : 'w-5 h-5'} text-white`} />
+                        )}
+                        {!hideActionLabels && <span className="text-[10px] font-medium text-zinc-300">Share</span>}
+                      </button>
 
-                  {/* More Info */}
-                  <button
-                    onClick={() => {
-                      if (mobileVideoRef.current && !mobileVideoRef.current.paused) {
-                        mobileVideoRef.current.pause();
-                        setIsMobileTrailerPlaying(false);
-                      }
-                      setIsMobileInfoPageOpen(true);
-                    }}
-                    className="flex flex-col items-center justify-center gap-1 text-white hover:text-white/80 active:scale-95 cursor-pointer flex-1 py-1"
-                    aria-label="More Info"
-                  >
-                    <Info className="w-5 h-5 text-white stroke-[2]" />
-                    <span className="text-[10px] font-medium text-zinc-300">Info</span>
-                  </button>
-                </div>
+                      {/* More Info */}
+                      <button
+                        onClick={() => {
+                          if (mobileVideoRef.current && !mobileVideoRef.current.paused) {
+                            clearMobilePausePosterTimer();
+                            setShowPosterAfterPause(false);
+                            mobileSavedTimeRef.current = mobileVideoRef.current.currentTime;
+                            mobileVideoRef.current.pause();
+                            setIsMobileTrailerPlaying(false);
+                            mobilePausePosterTimerRef.current = window.setTimeout(() => {
+                              setShowPosterAfterPause(true);
+                              mobilePausePosterTimerRef.current = null;
+                            }, 2000);
+                          }
+                          setIsMobileInfoPageOpen(true);
+                        }}
+                        className={`flex flex-col items-center justify-center gap-1 text-white hover:text-white/80 active:scale-95 cursor-pointer shrink-0 py-1 ${
+                          hideActionLabels ? 'w-9' : 'w-11'
+                        }`}
+                        aria-label="More Info"
+                      >
+                        <Info className={`${hideActionLabels ? 'w-6 h-6' : 'w-5 h-5'} text-white stroke-[2]`} />
+                        {!hideActionLabels && <span className="text-[10px] font-medium text-zinc-300">Info</span>}
+                      </button>
+                    </div>
+                  );
+                })()}
               </div>
             </div>
 
-            {/* 4. Page Navigator / Tabs Strip (Order: Episodes -> Trailers -> More Like This or Trailers -> Where to Watch -> More Like This) */}
+            {/* Where to Watch below Action Buttons Row for series with episode section turned off */}
+            {hasWhereToWatch && show.type === 'series' && !hasEpisodes && show.whereToWatch && (
+              <div className="px-4 pt-1 pb-2 space-y-2">
+                <p className="text-[11px] font-bold text-zinc-400 uppercase tracking-wider">Where to Watch</p>
+                <div className="flex flex-wrap items-center gap-2">
+                  {show.whereToWatch.map((item, idx) => {
+                    const customBg = item.bgColor || 'rgba(255, 255, 255, 0.12)';
+                    const customText = item.textColor || '#ffffff';
+                    const prefix = item.textBefore !== undefined ? item.textBefore : 'Watch on';
+                    const suffix = item.textAfter !== undefined ? item.textAfter : (item.name || item.provider);
+                    return (
+                      <a
+                        key={idx}
+                        href={item.url}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        style={{ backgroundColor: customBg, color: customText }}
+                        className="inline-flex items-center justify-center gap-1.5 px-3.5 py-2 rounded-lg text-xs font-bold shadow-md cursor-pointer active:scale-95 transition-transform"
+                      >
+                        {prefix && <span className="whitespace-nowrap font-bold">{prefix}</span>}
+                        {item.logoUrl && (
+                          <img src={item.logoUrl} alt="" referrerPolicy="no-referrer" className="h-4 w-auto max-w-[68px] object-contain shrink-0" />
+                        )}
+                        {suffix && <span className="whitespace-nowrap font-bold">{suffix}</span>}
+                      </a>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+
+            {/* 4. Page Navigator / Tabs Strip */}
             <div className="px-4 flex items-center border-b border-white/10 mt-2">
               {mobileTabs.map((tab) => {
                 const isActive = mobileActiveTab === tab.id;
@@ -2474,179 +3166,175 @@ export const DetailModal: React.FC<DetailModalProps> = ({
               })}
             </div>
 
-            {/* 5. Tab Content: Episodes */}
-            {mobileActiveTab === 'episodes' && hasEpisodes && (
-              <div className="px-4 py-4 space-y-4">
-                {/* Season selector on left, episode count on right */}
-                <div className="flex items-center justify-between">
-                  {seasons.length > 1 ? (
-                    <button
-                      onClick={() => setIsMobileSeasonDropdownOpen(true)}
-                      className="bg-[#242424] hover:bg-[#2c2c2c] border border-white/15 text-white font-semibold text-xs px-3 py-1.5 rounded-md flex items-center gap-2 cursor-pointer transition-colors active:scale-95"
-                    >
-                      <span>Season {selectedSeasonNumber}</span>
-                      <ChevronDown className="w-3.5 h-3.5" />
-                    </button>
-                  ) : (
-                    <div className="bg-[#242424] border border-white/15 text-white font-semibold text-xs px-3 py-1.5 rounded-md">
-                      <span>Season 1</span>
-                    </div>
-                  )}
+            {/* 5. Horizontal Swipeable Tab Content Track */}
+            <div
+              className="w-full overflow-hidden touch-pan-y"
+              onTouchStart={handleMobileTabTouchStart}
+              onTouchMove={handleMobileTabTouchMove}
+              onTouchEnd={handleMobileTabTouchEnd}
+              onTouchCancel={handleMobileTabTouchEnd}
+            >
+              <div
+                className="flex items-start w-full will-change-transform"
+                style={{
+                  transform: `translate3d(calc(-${activeMobileTabIdx * 100}% + ${mobileTabSwipeOffset}px), 0, 0)`,
+                  transition: isSwipingMobileTab ? 'none' : 'transform 260ms cubic-bezier(0.22, 1, 0.36, 1)'
+                }}
+              >
+                {mobileTabs.map((tab) => {
+                  const isActivePanel = tab.id === mobileActiveTab;
+                  const isPanelCollapsed = !isActivePanel && !isSwipingMobileTab;
+                  const slideClass = isPanelCollapsed
+                    ? 'w-full shrink-0 h-0 overflow-hidden pointer-events-none'
+                    : !isActivePanel && isSwipingMobileTab
+                    ? 'w-full shrink-0 max-h-[75vh] overflow-hidden'
+                    : 'w-full shrink-0';
 
-                  {/* Number of episodes in this season replaces info button */}
-                  <span className="text-xs font-semibold text-zinc-400">
-                    {currentSeason.episodes.length} Episodes
-                  </span>
-                </div>
-
-                {/* Episodes List: Old episode number, increased thumbnail, full title & duration, NO download icon, NO play overlay, NO progress line, NO synopsis */}
-                <div className="space-y-3">
-                  {currentSeason.episodes.map((ep) => {
-                    const isCurrent = activePlaybackSource === 'episode' && selectedEpisode?.id === ep.id;
+                  if (tab.id === 'episodes' && hasEpisodes) {
                     return (
-                      <div
-                        key={ep.id}
-                        onClick={() => handlePlayEpisode(ep)}
-                        className={`p-2.5 rounded-xl flex items-center gap-3 cursor-pointer transition-all border ${
-                          isCurrent
-                            ? 'bg-[#252525] border-white/20 shadow-md'
-                            : 'bg-transparent border-transparent hover:bg-white/5'
-                        }`}
-                      >
-                        {/* Old layout episode number to left side of thumbnail */}
-                        <span className="text-lg font-bold text-zinc-400 w-5 text-center shrink-0">
-                          {ep.episodeNumber}
-                        </span>
+                      <div key="panel-episodes" className={`${slideClass} px-4 py-4 space-y-4`}>
+                        {/* Season selector on left, episode count on right */}
+                        <div className="flex items-center justify-between">
+                          {seasons.length > 1 ? (
+                            <button
+                              onClick={() => setIsMobileSeasonDropdownOpen(true)}
+                              className="bg-[#242424] hover:bg-[#2c2c2c] border border-white/15 text-white font-semibold text-xs px-3 py-1.5 rounded-md flex items-center gap-2 cursor-pointer transition-colors active:scale-95"
+                            >
+                              <span>Season {selectedSeasonNumber}</span>
+                              <ChevronDown className="w-3.5 h-3.5" />
+                            </button>
+                          ) : (
+                            <div className="bg-[#242424] border border-white/15 text-white font-semibold text-xs px-3 py-1.5 rounded-md">
+                              <span>Season 1</span>
+                            </div>
+                          )}
 
-                        {/* Thumbnail with red progress line running along bottom for watched episode (Image 4) */}
-                        <div className="w-32 sm:w-36 aspect-video rounded-md overflow-hidden relative shrink-0 bg-black shadow-md">
-                          <MediaImage
-                            src={ep.thumbnailUrl}
-                            fallbackTitle={ep.title || `Episode ${ep.episodeNumber}`}
-                            fallbackClassName="w-full h-full bg-[#181818] flex items-center justify-center p-2 text-center select-none"
-                            fallbackTextClassName="text-white/95 font-semibold text-xs leading-tight line-clamp-2 break-words font-sans"
-                            className="w-full h-full object-cover"
-                          />
-                          {(() => {
-                            const epKey = ep.id || `s${ep.seasonNumber || 1}e${ep.episodeNumber}`;
-                            const epProg = watchProgress?.episodesProgress?.[epKey];
-                            const percent = epProg?.progressPercent || (watchProgress?.episodeNumber === ep.episodeNumber && watchProgress?.seasonNumber === (ep.seasonNumber || 1) ? watchProgress.progressPercent : 0);
-                            if (percent > 0) {
-                              return (
-                                <div className="absolute bottom-0 left-0 right-0 h-1 bg-[#404040]/80 z-20">
-                                  <div
-                                    className="h-full bg-[#e50914]"
-                                    style={{ width: `${Math.min(100, Math.max(0, percent))}%` }}
-                                  />
-                                </div>
-                              );
-                            }
-                            return null;
-                          })()}
+                          <span className="text-xs font-semibold text-zinc-400">
+                            {currentSeason.episodes.length} Episodes
+                          </span>
                         </div>
 
-                        {/* Full Title (NO truncation) & Duration (NO synopsis) */}
-                        <div className="flex-1 min-w-0 pr-1">
-                          <h4 className="text-sm font-bold text-white leading-snug break-words">
-                            {ep.title}
-                          </h4>
-                          <p className="text-xs text-zinc-400 font-medium mt-1">
-                            {ep.duration}
-                          </p>
+                        <div className="space-y-3">
+                          {currentSeason.episodes.map((ep) => {
+                            const isCurrent = activePlaybackSource === 'episode' && selectedEpisode?.id === ep.id;
+                            return (
+                              <div
+                                key={ep.id}
+                                onClick={() => handlePlayEpisode(ep)}
+                                className={`p-2.5 rounded-xl flex items-center gap-3 cursor-pointer transition-all border ${
+                                  isCurrent
+                                    ? 'bg-[#252525] border-white/20 shadow-md'
+                                    : 'bg-transparent border-transparent hover:bg-white/5'
+                                }`}
+                              >
+                                <span className="text-lg font-bold text-zinc-400 w-5 text-center shrink-0">
+                                  {ep.episodeNumber}
+                                </span>
+
+                                <div className="w-[141px] sm:w-[158px] aspect-video rounded-md overflow-hidden relative shrink-0 bg-black shadow-md">
+                                  <MediaImage
+                                    src={ep.thumbnailUrl}
+                                    fallbackTitle={ep.title || `Episode ${ep.episodeNumber}`}
+                                    fallbackClassName="w-full h-full bg-[#111] flex items-center justify-center p-2 text-center select-none"
+                                    fallbackTextClassName="text-white/95 font-semibold text-xs leading-tight line-clamp-2 break-words font-sans"
+                                    className="w-full h-full object-cover"
+                                  />
+                                  {(() => {
+                                    const epKey = ep.id || `s${ep.seasonNumber || 1}e${ep.episodeNumber}`;
+                                    const epProg = watchProgress?.episodesProgress?.[epKey];
+                                    const percent = epProg?.progressPercent || (watchProgress?.episodeNumber === ep.episodeNumber && watchProgress?.seasonNumber === (ep.seasonNumber || 1) ? watchProgress.progressPercent : 0);
+                                    if (percent > 0) {
+                                      return (
+                                        <div className="absolute bottom-0 left-0 right-0 h-1 bg-[#404040]/80 z-20">
+                                          <div
+                                            className="h-full bg-[#e50914]"
+                                            style={{ width: `${Math.min(100, Math.max(0, percent))}%` }}
+                                          />
+                                        </div>
+                                      );
+                                    }
+                                    return null;
+                                  })()}
+                                </div>
+
+                                <div className="flex-1 min-w-0 pr-1">
+                                  <h4 className="text-sm font-bold text-white leading-snug break-words">
+                                    {ep.title}
+                                  </h4>
+                                  <p className="text-xs text-zinc-400 font-medium mt-1">
+                                    {ep.duration}
+                                  </p>
+                                </div>
+                              </div>
+                            );
+                          })}
                         </div>
                       </div>
                     );
-                  })}
-                </div>
-              </div>
-            )}
+                  }
 
-            {/* 5. Tab Content: Trailers */}
-            {mobileActiveTab === 'trailers' && (
-              <div className="px-4 py-4 space-y-4">
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                  {trailersList.map((trailer) => (
-                    <div
-                      key={trailer.id}
-                      onClick={() => handlePlayClip(trailer)}
-                      className="cursor-pointer space-y-2 group"
-                    >
-                      <div className="aspect-video w-full rounded-md overflow-hidden bg-black relative shadow-md">
-                        <MediaImage
-                          src={trailer.thumbnailUrl}
-                          fallbackTitle={trailer.title}
-                          fallbackClassName="w-full h-full bg-[#181818] flex items-center justify-center p-3 text-center select-none"
-                          className="w-full h-full object-cover"
-                        />
-                        <div className="absolute inset-0 bg-black/25 flex items-center justify-center">
-                          <div className="w-10 h-10 rounded-full border-2 border-white bg-black/60 flex items-center justify-center shadow-lg">
-                            <Play className="w-4 h-4 fill-white text-white ml-0.5" />
-                          </div>
+                  if (tab.id === 'trailers') {
+                    return (
+                      <div key="panel-trailers" className={`${slideClass} px-4 py-4 space-y-4`}>
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                          {trailersList.map((trailer) => (
+                            <div
+                              key={trailer.id}
+                              onClick={() => handlePlayClip(trailer)}
+                              className="cursor-pointer space-y-2 group"
+                            >
+                              <div className="aspect-video w-full rounded-md overflow-hidden bg-black relative shadow-md">
+                                <MediaImage
+                                  src={trailer.thumbnailUrl}
+                                  fallbackTitle={trailer.title}
+                                  fallbackClassName="w-full h-full bg-[#111] flex items-center justify-center p-3 text-center select-none"
+                                  className="w-full h-full object-cover"
+                                />
+                                <div className="absolute inset-0 bg-black/25 flex items-center justify-center">
+                                  <div className="w-10 h-10 rounded-full border-2 border-white bg-black/60 flex items-center justify-center shadow-lg">
+                                    <svg className="w-4 h-4 fill-white text-white ml-0.5" viewBox="0 0 24 24">
+                                      <polygon points="6,4 20,12 6,20" />
+                                    </svg>
+                                  </div>
+                                </div>
+                              </div>
+                              <div className="flex items-center justify-between text-xs">
+                                <h4 className="font-bold text-white truncate max-w-[220px]">{trailer.title}</h4>
+                                <span className="text-zinc-400 font-medium">{trailer.duration}</span>
+                              </div>
+                            </div>
+                          ))}
                         </div>
                       </div>
-                      <div className="flex items-center justify-between text-xs">
-                        <h4 className="font-bold text-white truncate max-w-[220px]">{trailer.title}</h4>
-                        <span className="text-zinc-400 font-medium">{trailer.duration}</span>
+                    );
+                  }
+
+                  return (
+                    <div key="panel-more" className={`${slideClass} px-2.5 sm:px-4 py-4`}>
+                      <h3 className="text-lg font-bold text-white font-display mb-3">More Like This</h3>
+                      <div className="grid grid-cols-3 gap-2 sm:gap-2.5">
+                        {matchingRelatedShows.map((relShow) => (
+                          <div
+                            key={relShow.id}
+                            data-show-id={relShow.id}
+                            onClick={() => handleSelectRelatedShow(relShow)}
+                            className="aspect-[2/3] rounded-md overflow-hidden bg-black shadow cursor-pointer group active:scale-95 transition-transform"
+                          >
+                            <MediaImage
+                              src={relShow.posterVerticalUrl || relShow.posterUrl || relShow.posterLandscapeUrl}
+                              fallbackTitle={relShow.title}
+                              fallbackClassName="w-full h-full bg-[#111] flex items-center justify-center p-2.5 text-center select-none"
+                              className="w-full h-full object-cover group-hover:scale-105 transition-transform"
+                            />
+                          </div>
+                        ))}
                       </div>
                     </div>
-                  ))}
-                </div>
+                  );
+                })}
               </div>
-            )}
-
-            {/* 5. Tab Content: Where to Watch */}
-            {mobileActiveTab === 'whereToWatch' && (
-              <div className="px-4 py-4 space-y-3">
-                <h3 className="text-lg font-bold text-white font-display mb-3">Where to Watch</h3>
-                {show.whereToWatch && show.whereToWatch.length > 0 ? (
-                  <div className="flex flex-col gap-2.5">
-                    {show.whereToWatch.map((item, idx) => (
-                      <a
-                        key={idx}
-                        href={item.url}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        style={{
-                          backgroundColor: item.bgColor || 'rgba(255, 255, 255, 0.1)',
-                          color: item.textColor || '#ffffff'
-                        }}
-                        className="flex items-center justify-between px-4 py-3 rounded-lg text-sm font-bold shadow-md cursor-pointer"
-                      >
-                        <span>{item.textBefore || 'Watch on'} {item.name || item.provider}</span>
-                        {item.logoUrl && (
-                          <img src={item.logoUrl} alt="" className="h-5 w-auto object-contain" />
-                        )}
-                      </a>
-                    ))}
-                  </div>
-                ) : (
-                  <p className="text-sm text-zinc-400">Available exclusively on {adminSettings.platformName || 'Dizi Urdu'}.</p>
-                )}
-              </div>
-            )}
-
-            {/* 5. Tab Content: More Like This */}
-            {mobileActiveTab === 'moreLikeThis' && (
-              <div className="px-2.5 sm:px-4 py-4">
-                <h3 className="text-lg font-bold text-white font-display mb-3">More Like This</h3>
-                <div className="grid grid-cols-3 gap-2 sm:gap-2.5">
-                  {matchingRelatedShows.map((relShow) => (
-                    <div
-                      key={relShow.id}
-                      onClick={() => handleSelectRelatedShow(relShow)}
-                      className="aspect-[2/3] rounded-md overflow-hidden bg-black shadow cursor-pointer group active:scale-95 transition-transform"
-                    >
-                      <MediaImage
-                        src={relShow.posterVerticalUrl || relShow.posterUrl || relShow.posterLandscapeUrl}
-                        fallbackTitle={relShow.title}
-                        fallbackClassName="w-full h-full bg-[#181818] flex items-center justify-center p-2.5 text-center select-none"
-                        className="w-full h-full object-cover group-hover:scale-105 transition-transform"
-                      />
-                    </div>
-                  ))}
-                </div>
-              </div>
-            )}
+            </div>
+            </div>
 
           </div>
         </div>
@@ -2706,6 +3394,37 @@ export const DetailModal: React.FC<DetailModalProps> = ({
             <div className="text-xs font-black text-amber-400 tracking-wider">IMDb</div>
             <div className="text-xs text-zinc-400">{reviewVotesText}</div>
           </div>
+
+          {/* Where to Watch inside Info sheet ABOVE Cast row for series with episode section OR movies */}
+          {hasWhereToWatch && (hasEpisodes || show.type === 'movie') && show.whereToWatch && (
+            <div className="space-y-2 pt-1 border-t border-white/10">
+              <p className="text-xs text-zinc-400 font-semibold uppercase tracking-wider">Where to Watch</p>
+              <div className="flex flex-wrap items-center gap-2">
+                {show.whereToWatch.map((item, idx) => {
+                  const customBg = item.bgColor || 'rgba(255, 255, 255, 0.12)';
+                  const customText = item.textColor || '#ffffff';
+                  const prefix = item.textBefore !== undefined ? item.textBefore : 'Watch on';
+                  const suffix = item.textAfter !== undefined ? item.textAfter : (item.name || item.provider);
+                  return (
+                    <a
+                      key={idx}
+                      href={item.url}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      style={{ backgroundColor: customBg, color: customText }}
+                      className="inline-flex items-center justify-center gap-1.5 px-3.5 py-2 rounded-lg text-xs font-bold shadow-md cursor-pointer active:scale-95 transition-transform"
+                    >
+                      {prefix && <span className="whitespace-nowrap font-bold">{prefix}</span>}
+                      {item.logoUrl && (
+                        <img src={item.logoUrl} alt="" referrerPolicy="no-referrer" className="h-4 w-auto max-w-[68px] object-contain shrink-0" />
+                      )}
+                      {suffix && <span className="whitespace-nowrap font-bold">{suffix}</span>}
+                    </a>
+                  );
+                })}
+              </div>
+            </div>
+          )}
 
           {/* Cast (circular avatars matching image_3157a629.png) */}
           {show.cast && show.cast.length > 0 && (
@@ -2876,6 +3595,43 @@ export const DetailModal: React.FC<DetailModalProps> = ({
       show={show}
       platformName={adminSettings?.platformName}
     />
+
+    {/* Mobile Normal Feed Flying Poster Overlay (Opening & Direct-to-Card Collapse) */}
+    {flyingPosterState && (
+      <div
+        className="fixed z-[95] overflow-hidden shadow-2xl pointer-events-none bg-black"
+        style={{
+          left: `${flyingPosterState.left}px`,
+          top: `${flyingPosterState.top}px`,
+          width: `${flyingPosterState.width}px`,
+          height: `${flyingPosterState.height}px`,
+          opacity: flyingPosterState.opacity,
+          borderRadius: flyingPosterState.borderRadius,
+          transition: `left ${flyingPosterState.transitionMs}ms cubic-bezier(0.22, 1, 0.36, 1), top ${flyingPosterState.transitionMs}ms cubic-bezier(0.22, 1, 0.36, 1), width ${flyingPosterState.transitionMs}ms cubic-bezier(0.22, 1, 0.36, 1), height ${flyingPosterState.transitionMs}ms cubic-bezier(0.22, 1, 0.36, 1), border-radius ${flyingPosterState.transitionMs}ms ease, opacity ${flyingPosterState.transitionMs}ms ease`
+        }}
+      >
+        {flyingPosterState.cardPosterUrl && (
+          <img
+            src={flyingPosterState.cardPosterUrl}
+            alt={show.title}
+            referrerPolicy="no-referrer"
+            className="absolute inset-0 w-full h-full object-cover"
+          />
+        )}
+        {flyingPosterState.bannerPosterUrl && (
+          <img
+            src={flyingPosterState.bannerPosterUrl}
+            alt={show.title}
+            referrerPolicy="no-referrer"
+            style={{
+              opacity: flyingPosterState.showBannerLayer ? 1 : 0,
+              transition: `opacity ${Math.round(flyingPosterState.transitionMs * 0.55)}ms ease ${flyingPosterState.showBannerLayer ? Math.round(flyingPosterState.transitionMs * 0.32) : 0}ms`
+            }}
+            className="absolute inset-0 w-full h-full object-cover"
+          />
+        )}
+      </div>
+    )}
   </>
 );
 };

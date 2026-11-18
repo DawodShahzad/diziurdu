@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState, useCallback } from 'react';
-import { ArrowLeft, SkipForward } from 'lucide-react';
+import { ChevronLeft, SkipForward } from 'lucide-react';
 import { VideoSourceType } from '../types';
 
 interface EmbedPlayerModalProps {
@@ -22,6 +22,8 @@ interface EmbedPlayerModalProps {
   backdropBlur?: number;
   onProgressUpdate?: (currentTime: number, duration: number, rawVideoTime?: number) => void;
   initialCurrentTime?: number;
+  autoFullscreenLandscapeOnMobile?: boolean;
+  isEpisodePlayback?: boolean;
 }
 
 export function parseTimeToSeconds(timeStr?: string): number | null {
@@ -175,15 +177,21 @@ export const EmbedPlayerModal: React.FC<EmbedPlayerModalProps> = ({
   backdropDarkness,
   backdropBlur,
   onProgressUpdate,
-  initialCurrentTime
+  initialCurrentTime,
+  autoFullscreenLandscapeOnMobile = false,
+  isEpisodePlayback = false
 }) => {
+  const modalRootRef = useRef<HTMLDivElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const dailymotionPlayerRef = useRef<any>(null);
   const iframeRef = useRef<HTMLIFrameElement>(null);
   const ytPlayerRef = useRef<any>(null);
   const [sdkFailed, setSdkFailed] = useState<boolean>(false);
   const [isMobile, setIsMobile] = useState<boolean>(() =>
-    typeof window !== 'undefined' ? window.innerWidth < 640 : false
+    typeof window !== 'undefined' ? window.innerWidth < 768 : false
+  );
+  const [viewportDims, setViewportDims] = useState<{ w: number; h: number }>(() =>
+    typeof window !== 'undefined' ? { w: window.innerWidth, h: window.innerHeight } : { w: 1280, h: 720 }
   );
 
   // Absolute video playback tracker: captures REAL time reported by YouTube/Dailymotion
@@ -703,6 +711,77 @@ export const EmbedPlayerModal: React.FC<EmbedPlayerModalProps> = ({
     onClose();
   }, [emitCalculatedProgress, onClose]);
 
+  const { src, provider } = getEmbedSourceInfo(
+    videoUrl,
+    videoSourceType,
+    startTime,
+    endTime,
+    dailymotionScriptUrl,
+    initialCurrentTime
+  );
+
+  const isEmbedEpisode = isEpisodePlayback || episodeNumber !== undefined;
+  const shouldUseMobileLandscapeFullscreen = Boolean(
+    isOpen &&
+      autoFullscreenLandscapeOnMobile &&
+      isMobile &&
+      isEmbedEpisode &&
+      (provider === 'youtube' || provider === 'dailymotion')
+  );
+
+  // Track viewport size for responsive landscape orientation check
+  useEffect(() => {
+    const handleResize = () => {
+      setIsMobile(window.innerWidth < 768);
+      setViewportDims({ w: window.innerWidth, h: window.innerHeight });
+    };
+    handleResize();
+    window.addEventListener('resize', handleResize);
+    window.addEventListener('orientationchange', handleResize);
+    return () => {
+      window.removeEventListener('resize', handleResize);
+      window.removeEventListener('orientationchange', handleResize);
+    };
+  }, []);
+
+  // Automatically request fullscreen & lock landscape orientation when enabled on mobile Dailymotion/YouTube episode
+  useEffect(() => {
+    if (!shouldUseMobileLandscapeFullscreen) return;
+    const rootEl = modalRootRef.current as any;
+    const requestFs = async () => {
+      try {
+        if (rootEl && !document.fullscreenElement) {
+          if (typeof rootEl.requestFullscreen === 'function') {
+            await rootEl.requestFullscreen();
+          } else if (typeof rootEl.webkitRequestFullscreen === 'function') {
+            await rootEl.webkitRequestFullscreen();
+          }
+        }
+      } catch {}
+      try {
+        const orientation = (window.screen as any)?.orientation;
+        if (orientation && typeof orientation.lock === 'function') {
+          await orientation.lock('landscape');
+        }
+      } catch {}
+    };
+    requestFs();
+
+    return () => {
+      try {
+        const orientation = (window.screen as any)?.orientation;
+        if (orientation && typeof orientation.unlock === 'function') {
+          orientation.unlock();
+        }
+      } catch {}
+      try {
+        if (document.fullscreenElement && typeof document.exitFullscreen === 'function') {
+          document.exitFullscreen().catch(() => {});
+        }
+      } catch {}
+    };
+  }, [shouldUseMobileLandscapeFullscreen]);
+
   // Keyboard shortcut: Escape to close, N to skip to next episode
   useEffect(() => {
     if (!isOpen) return;
@@ -731,21 +810,28 @@ export const EmbedPlayerModal: React.FC<EmbedPlayerModalProps> = ({
 
   if (!isOpen) return null;
 
-  const { src, provider } = getEmbedSourceInfo(
-    videoUrl,
-    videoSourceType,
-    startTime,
-    endTime,
-    dailymotionScriptUrl,
-    initialCurrentTime
-  );
-
   const darknessPercent = backdropDarkness !== undefined ? backdropDarkness : 35;
   const darknessDecimal = Math.max(0, Math.min(100, darknessPercent)) / 100;
   const blurAmountPx = backdropBlur !== undefined ? backdropBlur : 0;
+  const needsRotatedLandscapeContainer = shouldUseMobileLandscapeFullscreen && viewportDims.h > viewportDims.w;
 
   return (
-    <div className="fixed inset-0 z-[250] flex flex-col justify-between bg-black overflow-hidden select-none animate-in fade-in duration-300">
+    <div
+      ref={modalRootRef}
+      style={
+        needsRotatedLandscapeContainer
+          ? {
+              width: '100vh',
+              height: '100vw',
+              top: '50%',
+              left: '50%',
+              transform: 'translate(-50%, -50%) rotate(90deg)',
+              transformOrigin: 'center center'
+            }
+          : undefined
+      }
+      className="fixed inset-0 z-[250] flex flex-col justify-between bg-black overflow-hidden select-none animate-in fade-in duration-300"
+    >
       {/* 1. Immersive Atmospheric Backdrop Image */}
       {playerBgImageUrl ? (
         <div
@@ -777,10 +863,10 @@ export const EmbedPlayerModal: React.FC<EmbedPlayerModalProps> = ({
         <div className="flex items-center gap-3 sm:gap-4 min-w-0 z-20">
           <button
             onClick={handleModalClose}
-            className="w-10 h-10 sm:w-11 sm:h-11 rounded-full bg-black/60 hover:bg-black/90 text-white flex items-center justify-center transition-all duration-200 cursor-pointer shadow-lg hover:scale-105 active:scale-95 border border-white/10 shrink-0"
+            className="p-1.5 -ml-1.5 text-white hover:text-white/80 flex items-center justify-center transition-transform active:scale-90 cursor-pointer shrink-0"
             aria-label="Back to details"
           >
-            <ArrowLeft className="w-5 h-5 sm:w-6 sm:h-6" />
+            <ChevronLeft className="w-7 h-7 sm:w-8 sm:h-8 stroke-[2.2]" />
           </button>
 
           {/* Desktop-only Title Logo beside back button */}
@@ -843,24 +929,44 @@ export const EmbedPlayerModal: React.FC<EmbedPlayerModalProps> = ({
         </div>
       </header>
 
-      {/* 3. Centered Video Player Screen (Reduced size by 50% as requested) */}
-      <div className="relative z-30 flex-1 w-full flex items-center justify-center p-3 sm:p-5 md:p-6 lg:p-8 min-h-0 overflow-hidden">
+      {/* 3. Centered Video Player Screen (or full landscape bleed on mobile auto-landscape fullscreen) */}
+      <div
+        className={`relative z-30 flex-1 w-full flex items-center justify-center min-h-0 overflow-hidden ${
+          shouldUseMobileLandscapeFullscreen ? 'p-0' : 'p-3 sm:p-5 md:p-6 lg:p-8'
+        }`}
+      >
         <div
-          className="relative w-full max-w-[360px] xs:max-w-[440px] sm:max-w-[560px] md:max-w-[640px] lg:max-w-[680px] flex items-center justify-center"
-          style={{
-            maxHeight: 'calc(65vh)'
-          }}
+          className={`relative w-full flex items-center justify-center ${
+            shouldUseMobileLandscapeFullscreen
+              ? 'h-full max-w-none max-h-none'
+              : 'max-w-[360px] xs:max-w-[440px] sm:max-w-[560px] md:max-w-[640px] lg:max-w-[680px]'
+          }`}
+          style={
+            shouldUseMobileLandscapeFullscreen
+              ? undefined
+              : {
+                  maxHeight: 'calc(65vh)'
+                }
+          }
         >
           <div
-            className="relative w-full aspect-[16/9] overflow-hidden rounded-[18px] sm:rounded-[22px] bg-black border border-white/10 shadow-2xl flex items-center justify-center"
-            style={{
-              clipPath: 'inset(0 round 20px)',
-              WebkitClipPath: 'inset(0 round 20px)',
-              borderRadius: '20px',
-              WebkitMaskImage: '-webkit-radial-gradient(white, black)',
-              transform: 'translateZ(0)',
-              isolation: 'isolate'
-            }}
+            className={`relative w-full overflow-hidden bg-black flex items-center justify-center ${
+              shouldUseMobileLandscapeFullscreen
+                ? 'h-full rounded-none border-0 shadow-none'
+                : 'aspect-[16/9] rounded-[18px] sm:rounded-[22px] border border-white/10 shadow-2xl'
+            }`}
+            style={
+              shouldUseMobileLandscapeFullscreen
+                ? undefined
+                : {
+                    clipPath: 'inset(0 round 20px)',
+                    WebkitClipPath: 'inset(0 round 20px)',
+                    borderRadius: '20px',
+                    WebkitMaskImage: '-webkit-radial-gradient(white, black)',
+                    transform: 'translateZ(0)',
+                    isolation: 'isolate'
+                  }
+            }
           >
             <iframe
               ref={iframeRef}
@@ -870,15 +976,21 @@ export const EmbedPlayerModal: React.FC<EmbedPlayerModalProps> = ({
               aria-label={title}
               data-no-tooltip="true"
               scrolling="no"
-              className="w-full h-full border-0 outline-none rounded-[18px] sm:rounded-[22px] block overflow-hidden"
-              style={{
-                borderRadius: '20px',
-                clipPath: 'inset(0 round 20px)',
-                WebkitClipPath: 'inset(0 round 20px)',
-                transform: 'translateZ(0)'
-              }}
+              className={`w-full h-full border-0 outline-none block overflow-hidden ${
+                shouldUseMobileLandscapeFullscreen ? 'rounded-none' : 'rounded-[18px] sm:rounded-[22px]'
+              }`}
+              style={
+                shouldUseMobileLandscapeFullscreen
+                  ? undefined
+                  : {
+                      borderRadius: '20px',
+                      clipPath: 'inset(0 round 20px)',
+                      WebkitClipPath: 'inset(0 round 20px)',
+                      transform: 'translateZ(0)'
+                    }
+              }
               referrerPolicy="no-referrer-when-downgrade"
-              allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
+              allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share; fullscreen"
               allowFullScreen
             />
           </div>

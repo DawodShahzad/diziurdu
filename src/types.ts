@@ -54,6 +54,7 @@ export interface CategoryItem {
   id: string;
   name: string;
   imageUrl: string;
+  narrowLandscapeUrl?: string;
   description?: string;
   genreKeywords?: string[];
 }
@@ -336,6 +337,12 @@ export interface ManagedGenreItem {
   enabled?: boolean;
 }
 
+export interface DetailsOriginMeta {
+  element?: HTMLElement | null;
+  sourceFeedType: 'normal' | 'other';
+  posterUrl?: string;
+}
+
 export interface AdminSettings {
   enableWhereToWatch: boolean;
   enableHorizontalEpisodes: boolean;
@@ -360,6 +367,37 @@ export interface AdminSettings {
   modernTop10RankList?: boolean; // Legacy boolean for Top 10 rank list
   top10RankStyle?: 'classic' | 'modern' | 'inside_card'; // 3 rank styles: classic portrait/badge, modern outlined side number, or solid inside-card number
   managedGenres?: ManagedGenreItem[]; // Admin-configured genre cards shown in Browse by Genre row
+  startFromFirstEpisodeEnabled?: boolean; // Enable "Start from the 1st Episode" desktop row
+  startFromFirstEpisodeShowIds?: string[]; // Admin-picked series IDs for "Start from the 1st Episode" row
+  mobileCategoriesStyle?: 'grid' | 'stacked_cards'; // Mobile categories page style: 2:3 card grid vs stacked horizontal landscape cards
+  mobileLikeButtonStyle?: 'thumbs' | 'emoji'; // Mobile More Info reaction button: classic thumbs up vs emoji face with 3-reaction hold pill
+  desktopPopoutStyle?: 'classic' | 'overlay_red' | 'immersive_fade'; // Desktop hover popout style
+  desktopNavbarStyle?: 'classic' | 'floating_glass'; // Classic top bar vs floating blurred transparent glass top bar (hamburger left, logo center, search + profile right)
+
+  // Promotional Sign-Up Tile Banner (Apple TV style)
+  signupTileEnabled?: boolean;
+  signupTileTitle?: string;
+  signupTileSubtitle?: string;
+  signupTileButtonText?: string;
+  signupTileImageUrl?: string;
+  signupTileUseCustomLogo?: boolean;
+  signupTileCustomLogoUrl?: string;
+  signupTileLayouts?: ('desktop' | 'tablet' | 'mobile')[];
+
+  // Global Alert Poster Modal (Prime Video Traveling style)
+  alertPosterEnabled?: boolean;
+  alertPosterImageUrl?: string;
+  alertPosterTitle?: string;
+  alertPosterSubtitle?: string;
+  alertPosterButtonText?: string;
+  alertPosterButtonAction?: 'close' | 'link' | 'login';
+  alertPosterButtonUrl?: string;
+  alertPosterLayouts?: ('desktop' | 'tablet' | 'mobile')[];
+
+  // Detail & Player UI Options
+  hideMobileDetailActionLabels?: boolean;
+  mobileAutoFullscreenLandscapeEmbed?: boolean;
+  hideFullSizeEpisodeTitles?: boolean;
 }
 
 export interface WatchHistoryItem {

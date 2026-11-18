@@ -11,6 +11,15 @@
     }
   }
 
+  @media (max-width: 767px) {
+    html, body {
+      background-color: #000000 !important;
+      touch-action: pan-x pan-y;
+      -ms-touch-action: pan-x pan-y;
+      overscroll-behavior-x: none;
+    }
+  }
+
   body {
     font-family: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
     font-size: 1rem;
@@ -97,37 +106,76 @@
   animation: pulseAmbient 9s ease-in-out infinite;
 }
 
-/* Smooth, slowed-down distinctive Netflix-style card pop-up animation */
+/* Smooth continuous Netflix-style card pop-up & collapse animations originating from base card geometry */
 @keyframes netflixCardPopIn {
   0% {
-    opacity: 0;
-    scale: 0.92;
+    opacity: 0.35;
+    transform: translate3d(0, 0, 0) scale(0.68);
   }
   100% {
     opacity: 1;
-    scale: 1;
+    transform: translate3d(0, 0, 0) scale(1);
+  }
+}
+
+@keyframes netflixCardPopInCenter {
+  0% {
+    opacity: 0.35;
+    transform: translate3d(-50%, 0, 0) scale(0.68);
+  }
+  100% {
+    opacity: 1;
+    transform: translate3d(-50%, 0, 0) scale(1);
   }
 }
 
 .animate-card-pop {
-  animation: netflixCardPopIn 0.45s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+  animation: netflixCardPopIn 0.32s cubic-bezier(0.22, 1, 0.36, 1) forwards;
   will-change: transform, opacity;
 }
 
-/* Smooth popout collapse animation */
+.animate-card-pop-center {
+  animation: netflixCardPopInCenter 0.32s cubic-bezier(0.22, 1, 0.36, 1) forwards;
+  will-change: transform, opacity;
+}
+
+/* Smooth continuous popout collapse animation straight back into base card */
 @keyframes netflixCardPopOut {
   0% {
     opacity: 1;
-    scale: 1;
+    transform: translate3d(0, 0, 0) scale(1);
+  }
+  75% {
+    opacity: 0.92;
   }
   100% {
     opacity: 0;
-    scale: 0.92;
+    transform: var(--collapse-transform, translate3d(0, 0, 0) scale(0.68));
+  }
+}
+
+@keyframes netflixCardPopOutCenter {
+  0% {
+    opacity: 1;
+    transform: translate3d(-50%, 0, 0) scale(1);
+  }
+  75% {
+    opacity: 0.92;
+  }
+  100% {
+    opacity: 0;
+    transform: var(--collapse-transform-center, translate3d(-50%, 0, 0) scale(0.68));
   }
 }
 
 .animate-card-pop-out {
-  animation: netflixCardPopOut 0.35s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+  animation: netflixCardPopOut 0.21s cubic-bezier(0.22, 1, 0.36, 1) forwards;
+  will-change: transform, opacity;
+  pointer-events: none;
+}
+
+.animate-card-pop-out-center {
+  animation: netflixCardPopOutCenter 0.21s cubic-bezier(0.22, 1, 0.36, 1) forwards;
   will-change: transform, opacity;
   pointer-events: none;
 }
@@ -176,4 +224,35 @@ img, video {
   -webkit-touch-callout: none;
 }
 
+/* Staggered Prefeed Loading Wave Shimmer */
+@keyframes skeletonWave {
+  0%, 100% {
+    background-color: #161619;
+  }
+  45% {
+    background-color: #27272c;
+  }
+}
 
+.skeleton-wave {
+  animation: skeletonWave 1.5s ease-in-out infinite;
+  will-change: background-color;
+}
+
+/* Reverse-parabola arc glide for PIN unlock avatar flight */
+@keyframes pinAvatarParabolaY {
+  0% {
+    transform: translate3d(0, 0, 0);
+  }
+  32% {
+    transform: translate3d(var(--arc-out-x, 0px), var(--arc-peak, -40px), 0);
+  }
+  100% {
+    transform: translate3d(0, var(--arc-dy, 0px), 0);
+  }
+}
+
+.pin-avatar-parabola-y {
+  animation: pinAvatarParabolaY 760ms cubic-bezier(0.32, 0.08, 0.25, 1) forwards;
+  will-change: transform;
+}

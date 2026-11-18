@@ -13,7 +13,7 @@ import {
   HardDrive,
   Trash2,
   RotateCcw,
-  ArrowLeft
+  ChevronLeft
 } from 'lucide-react';
 
 interface AppSettingsModalProps {
@@ -100,16 +100,16 @@ export const AppSettingsModal: React.FC<AppSettingsModalProps> = ({
   return (
     <>
       {/* ===================== MOBILE LAYOUT: ANDROID / YOUTUBE APP SETTINGS ===================== */}
-      <div className="fixed inset-0 z-50 sm:hidden bg-[#0f0f0f] text-white flex flex-col overflow-hidden animate-in fade-in duration-200 select-none">
+      <div className="fixed inset-0 z-50 sm:hidden bg-black text-white flex flex-col overflow-hidden animate-in fade-in duration-200 select-none">
         {/* Android Top AppBar */}
-        <div className="sticky top-0 z-30 bg-[#0f0f0f] border-b border-white/[0.08] px-3 py-3 flex items-center justify-between shadow-sm">
+        <div className="sticky top-0 z-30 bg-black border-b border-white/[0.08] px-3 py-3 flex items-center justify-between shadow-sm">
           <div className="flex items-center gap-3">
             <button
               onClick={onClose}
-              className="p-1.5 rounded-full hover:bg-white/10 active:bg-white/20 text-white transition-colors cursor-pointer"
+              className="p-1 -ml-1 text-white hover:text-white/80 active:scale-90 transition-transform cursor-pointer"
               aria-label="Back"
             >
-              <ArrowLeft className="w-5 h-5" />
+              <ChevronLeft className="w-7 h-7 stroke-[2.2]" />
             </button>
             <h2 className="text-lg font-medium text-white tracking-normal">Settings</h2>
           </div>
@@ -254,7 +254,7 @@ export const AppSettingsModal: React.FC<AppSettingsModalProps> = ({
             {onClearWatchHistory && (
               <div className="px-5 py-3 flex items-center justify-between">
                 <div>
-                  <p className="text-sm font-medium text-white">Clear Continue Watching</p>
+                  <p className="text-sm font-medium text-white">Clear Keep Watching</p>
                   <p className="text-xs text-zinc-400 mt-0.5">Reset your saved episode watch progress</p>
                 </div>
                 <button
@@ -735,7 +735,7 @@ export const AppSettingsModal: React.FC<AppSettingsModalProps> = ({
                 <div>
                   <span className="font-bold text-white block text-sm">Clear Watch History</span>
                   <span className="text-zinc-400 text-xs">
-                    Reset all playback progress, continue watching rows, and completed episode tracking
+                    Reset all playback progress, keep watching rows, and completed episode tracking
                   </span>
                 </div>
                 <button

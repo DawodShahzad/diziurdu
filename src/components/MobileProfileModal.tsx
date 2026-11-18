@@ -5,7 +5,7 @@ import {
   Bell,
   Settings,
   Edit3,
-  ArrowLeft,
+  ChevronLeft,
   Play,
   ChevronRight,
   HelpCircle,
@@ -20,9 +20,17 @@ import {
   EyeOff,
   Mail,
   Phone,
-  Lock
+  Lock,
+  Shield,
+  AlertCircle,
+  Fingerprint,
+  UserPlus
 } from 'lucide-react';
 import { PROFILE_AVATAR_GROUPS } from './AccountModal';
+import { ProfileLockScreen } from './ProfileLockScreen';
+import { EmptyListCard } from './EmptyListCard';
+import { isFingerprintUnlockEnabled, registerNativeFingerprint, setFingerprintUnlockEnabled } from '../utils/biometricUnlock';
+import { formatProgressTime } from '../utils/watchProgress';
 import fullBackupData from '../full_backup.json';
 
 interface MobileProfileModalProps {
@@ -35,6 +43,7 @@ interface MobileProfileModalProps {
   onOpenPosterActionSheet?: (show: Show) => void;
   watchlistShows: Show[];
   continueWatchingShows: Show[];
+  likedShows?: Show[];
   onRemoveFromWatchlist: (showId: string) => void;
   onRemoveFromContinueWatching?: (showId: string) => void;
   onClearWatchlist?: () => void;
@@ -50,6 +59,7 @@ interface MobileProfileModalProps {
   onOpenDownloadModal?: () => void;
   onOpenAdminPanel?: () => void;
   onToggleAuth?: () => void;
+  onOpenCreateAccount?: () => void;
   isLoggedIn?: boolean;
   onSelectAvatar?: (avatarUrl: string) => void;
   onUpdateUserName?: (name: string) => void;
@@ -67,6 +77,7 @@ export const MobileProfileModal: React.FC<MobileProfileModalProps> = ({
   onOpenPosterActionSheet,
   watchlistShows,
   continueWatchingShows,
+  likedShows = [],
   onRemoveFromWatchlist,
   onRemoveFromContinueWatching,
   onClearWatchlist,
@@ -80,6 +91,7 @@ export const MobileProfileModal: React.FC<MobileProfileModalProps> = ({
   onOpenAppSettings,
   onRequestContent,
   onToggleAuth,
+  onOpenCreateAccount,
   isLoggedIn = true,
   onSelectAvatar,
   onUpdateUserName,
@@ -117,20 +129,20 @@ export const MobileProfileModal: React.FC<MobileProfileModalProps> = ({
   };
 
   const [editProfileView, setEditProfileView] = useState<'fields' | 'choose-avatar'>('fields');
-  const [tempUserName, setTempUserName] = useState<string>(userName);
+  const [tempUserName, setTempUserName] = useState<string>(userName || '');
   const [tempUserHandle, setTempUserHandle] = useState<string>(() => {
     if (userHandle) return userHandle;
     try {
       const saved = localStorage.getItem('cineflix_user_handle');
       if (saved) return saved;
     } catch {}
-    return userName.toLowerCase().replace(/\s+/g, '');
+    return '';
   });
   const [tempUserEmail, setTempUserEmail] = useState<string>(() => {
     try {
-      return localStorage.getItem('cineflix_user_email') || 'user@diziurdu.com';
+      return localStorage.getItem('cineflix_user_email') || '';
     } catch {
-      return 'user@diziurdu.com';
+      return '';
     }
   });
   const [tempUserPhone, setTempUserPhone] = useState<string>(() => {
@@ -142,13 +154,29 @@ export const MobileProfileModal: React.FC<MobileProfileModalProps> = ({
   });
   const [tempUserPassword, setTempUserPassword] = useState<string>(() => {
     try {
-      return localStorage.getItem('cineflix_user_password') || '••••••••';
+      return localStorage.getItem('cineflix_user_password') || '';
     } catch {
-      return '••••••••';
+      return '';
     }
   });
   const [showPassword, setShowPassword] = useState<boolean>(false);
   const [selectedAvatarUrl, setSelectedAvatarUrl] = useState<string>(userAvatar);
+
+  // Profile Lock (4-Digit PIN) State for Mobile Profile
+  const [isProfileLockEnabled, setIsProfileLockEnabled] = useState<boolean>(() => {
+    try {
+      return localStorage.getItem('dizi_profile_lock_enabled') === 'true';
+    } catch {
+      return false;
+    }
+  });
+  const [isFingerprintEnabled, setIsFingerprintEnabled] = useState<boolean>(() => isFingerprintUnlockEnabled());
+  const [isBiometricSetupBusy, setIsBiometricSetupBusy] = useState<boolean>(false);
+  const [isPinSetupModalOpen, setIsPinSetupModalOpen] = useState<boolean>(false);
+  const [isPinDisablePromptOpen, setIsPinDisablePromptOpen] = useState<boolean>(false);
+  const [disablePinInput, setDisablePinInput] = useState<string>('');
+  const [disablePinError, setDisablePinError] = useState<string>('');
+  const [pinToast, setPinToast] = useState<string | null>(null);
 
   const [adminGroups, setAdminGroups] = useState<any[]>(() => {
     try {
@@ -178,9 +206,9 @@ export const MobileProfileModal: React.FC<MobileProfileModalProps> = ({
   }, []);
 
   useEffect(() => {
-    setTempUserName(userName);
+    setTempUserName(userName || '');
     setSelectedAvatarUrl(userAvatar);
-    setTempUserHandle(userHandle || userName.toLowerCase().replace(/\s+/g, ''));
+    setTempUserHandle(userHandle || '');
   }, [userName, userAvatar, userHandle]);
 
   useEffect(() => {
@@ -332,8 +360,16 @@ export const MobileProfileModal: React.FC<MobileProfileModalProps> = ({
         transform: dragY > 0 ? `translateY(${dragY}px)` : undefined,
         transition: isDragging ? 'none' : 'transform 0.25s cubic-bezier(0.16, 1, 0.3, 1)'
       }}
-      className="fixed inset-0 z-50 bg-[#121316] flex flex-col justify-start overflow-hidden animate-in fade-in duration-200"
+      className="fixed inset-0 z-50 bg-black flex flex-col justify-start overflow-hidden animate-in fade-in duration-200"
     >
+      {/* Floating PIN Toast */}
+      {pinToast && (
+        <div className="fixed top-14 left-1/2 -translate-x-1/2 z-[160] bg-[#1e1f24] border border-white/20 text-white px-4 py-2 rounded-full shadow-2xl flex items-center gap-2 text-xs font-bold animate-in fade-in duration-200">
+          <Check className="w-3.5 h-3.5 text-emerald-400 stroke-[3]" />
+          <span>{pinToast}</span>
+        </div>
+      )}
+
       {/* Floating Back Button: ONLY back button floating, NO black bar behind it */}
       <button
         onClick={() => {
@@ -346,10 +382,10 @@ export const MobileProfileModal: React.FC<MobileProfileModalProps> = ({
             onClose();
           }
         }}
-        className="absolute top-4 left-4 z-40 w-9 h-9 rounded-full bg-zinc-800/80 hover:bg-zinc-700 text-zinc-300 hover:text-white flex items-center justify-center cursor-pointer transition-all shadow-md border border-white/10 active:scale-95"
+        className="absolute top-3.5 left-3.5 z-40 p-1 text-white hover:text-white/80 flex items-center justify-center cursor-pointer transition-transform active:scale-90"
         aria-label="Back"
       >
-        <ArrowLeft className="w-4 h-4" />
+        <ChevronLeft className="w-7 h-7 stroke-[2.2]" />
       </button>
 
       {/* Subview Title pill (floating centered badge only when in a subview) */}
@@ -357,7 +393,7 @@ export const MobileProfileModal: React.FC<MobileProfileModalProps> = ({
         <div className="absolute top-4 inset-x-0 flex justify-center pointer-events-none z-30">
           <span className="text-sm font-bold text-white tracking-tight px-3.5 py-1.5 rounded-full bg-black/60 backdrop-blur-md border border-white/10 shadow pointer-events-auto">
             {seeAllView === 'continue-watching'
-              ? 'Continue Watching'
+              ? 'Keep Watching'
               : seeAllView === 'my-list'
               ? 'My List'
               : isAboutViewOpen
@@ -367,7 +403,7 @@ export const MobileProfileModal: React.FC<MobileProfileModalProps> = ({
         </div>
       )}
 
-      {/* SUBVIEW 1: SEE ALL CONTINUE WATCHING (1 title per row with edit/remove) */}
+      {/* SUBVIEW 1: SEE ALL KEEP WATCHING (1 title per row with edit/remove) */}
       {seeAllView === 'continue-watching' ? (
         <div className="flex-1 overflow-y-auto custom-scrollbar px-4 pt-16 pb-16">
           <div className="flex items-center justify-between mb-4 pb-2 border-b border-white/10 px-1">
@@ -386,7 +422,7 @@ export const MobileProfileModal: React.FC<MobileProfileModalProps> = ({
 
           {continueWatchingShows.length === 0 ? (
             <div className="p-8 rounded-2xl bg-white/[0.02] border-0 text-center my-6">
-              <p className="text-sm font-medium text-white">No titles in continue watching</p>
+              <p className="text-sm font-medium text-white">No titles in keep watching</p>
               <p className="text-xs text-zinc-400 mt-1">Shows you start watching will appear here.</p>
             </div>
           ) : (
@@ -610,26 +646,28 @@ export const MobileProfileModal: React.FC<MobileProfileModalProps> = ({
             <h1 className="text-2xl font-extrabold text-white tracking-tight">Profile</h1>
           </div>
 
-          {/* Main Profile Card: matching user instructions */}
-          <div className="relative rounded-2xl bg-[#1d1f24] border border-white/[0.06] p-4 shadow-xl flex items-center justify-between">
+          {/* Main Profile Card */}
+          <div className="relative rounded-2xl bg-[#141416] border border-white/[0.06] p-4 shadow-xl flex items-center justify-between">
             <div className="flex items-center gap-3.5 min-w-0">
-              {/* Profile Avatar on Left - NO square border */}
+              {/* Profile Avatar on Left */}
               <img
                 src={selectedAvatarUrl || userAvatar}
-                alt={userName}
+                alt={userName || 'Guest'}
                 className="w-16 h-16 rounded-xl object-cover shadow-lg border-0 shrink-0"
               />
 
-              {/* Name on Right and Username below without game icon */}
+              {/* Name & handle */}
               <div className="min-w-0">
                 <h3 className="text-base sm:text-lg font-bold text-white tracking-tight truncate">
-                  {userName}
+                  {userName || 'Guest Profile'}
                 </h3>
-                <div className="text-xs text-zinc-400 font-medium flex items-center gap-1 mt-0.5 truncate">
-                  <span className="truncate">
-                    @{tempUserHandle ? tempUserHandle.replace(/^@/, '') : (userHandle ? userHandle.replace(/^@/, '') : userName.toLowerCase().replace(/\s+/g, ''))}
-                  </span>
-                </div>
+                {(tempUserHandle || userHandle) && (
+                  <div className="text-xs text-zinc-400 font-medium flex items-center gap-1 mt-0.5 truncate">
+                    <span className="truncate">
+                      @{(tempUserHandle || userHandle || '').replace(/^@/, '')}
+                    </span>
+                  </div>
+                )}
               </div>
             </div>
 
@@ -646,15 +684,14 @@ export const MobileProfileModal: React.FC<MobileProfileModalProps> = ({
             </button>
           </div>
 
-          {/* Continue Watching Section matching image_74bcd37d.png */}
-          {/* Continue Watching Section matching image_74bcd37d.png */}
-          {continueWatchingShows.length > 0 && (
-            <div className="space-y-2.5 pt-1">
+          {/* Keep Watching Section */}
+          {continueWatchingShows.length > 0 ? (
+            <div className="space-y-1.5 pt-1">
               <div className="flex items-center justify-between px-1">
                 <h4 className="text-sm font-bold text-white tracking-tight">
-                  Continue Watching
+                  Keep Watching
                 </h4>
-                {/* See All Element as requested */}
+                {/* See All Element */}
                 <button
                   onClick={() => setSeeAllView('continue-watching')}
                   className="text-xs font-semibold text-zinc-300 hover:text-white flex items-center gap-1 cursor-pointer transition-colors"
@@ -663,26 +700,26 @@ export const MobileProfileModal: React.FC<MobileProfileModalProps> = ({
                   <ChevronRight className="w-3.5 h-3.5 stroke-[2.5]" />
                 </button>
               </div>
-              <div className="flex items-center gap-2.5 overflow-x-auto no-scrollbar scroll-smooth py-1 -mx-3 px-3">
+              <div className="flex items-center gap-2.5 overflow-x-auto no-scrollbar py-1 -mx-3 px-3">
                 {continueWatchingShows.map((show) => {
                   const prog = watchHistory ? watchHistory[show.id] : undefined;
                   const progPercent = prog?.progressPercent && prog.progressPercent > 0 ? prog.progressPercent : 35;
                   const remainingText = prog?.duration && prog?.currentTime !== undefined && prog.duration > prog.currentTime
-                    ? `${Math.max(1, Math.round((prog.duration - prog.currentTime) / 60))} min left`
-                    : '24 min left';
+                    ? formatProgressTime(prog.currentTime, prog.duration)
+                    : '24m left';
 
                   return (
                     <div
                       key={`cw-${show.id}`}
-                      className="shrink-0 w-[185px] sm:w-[215px] select-none"
+                      className="shrink-0 w-[calc((100vw-28px)/2.18)] sm:w-[215px] select-none"
                     >
-                      {/* 16:9 Thumbnail with bottom progress bar inside */}
+                      {/* 16:9 Thumbnail with slightly smaller radius + bottom progress bar */}
                       <div
                         onClick={() => {
                           onClose();
                           onPlayShow(show);
                         }}
-                        className="relative w-full aspect-video rounded-xl overflow-hidden bg-[#181920] border-0 cursor-pointer shadow-md group active:scale-98 transition-transform"
+                        className="relative w-full aspect-video rounded-[7px] overflow-hidden bg-[#181920] border-0 cursor-pointer shadow-md group active:scale-98 transition-transform"
                       >
                         <img
                           src={show.posterLandscapeUrl || show.backdropUrl}
@@ -730,16 +767,17 @@ export const MobileProfileModal: React.FC<MobileProfileModalProps> = ({
                 <div className="shrink-0 w-2" />
               </div>
             </div>
+          ) : (
+            <EmptyListCard compact variant="continue_watching" />
           )}
 
-          {/* My List Section (in 2:3, no color border, NO cross button on card, See All > button) */}
-          {watchlistShows.length > 0 && (
-            <div className="space-y-2.5 pt-1">
+          {/* My List Section (Normal 2:3 feed style, or EmptyListCard when empty) */}
+          {watchlistShows.length > 0 ? (
+            <div className="space-y-1.5 pt-1">
               <div className="flex items-center justify-between px-1">
                 <h4 className="text-sm font-bold text-white tracking-tight">
                   My List
                 </h4>
-                {/* See All Element as requested */}
                 <button
                   onClick={() => setSeeAllView('my-list')}
                   className="text-xs font-semibold text-zinc-300 hover:text-white flex items-center gap-1 cursor-pointer transition-colors"
@@ -748,7 +786,7 @@ export const MobileProfileModal: React.FC<MobileProfileModalProps> = ({
                   <ChevronRight className="w-3.5 h-3.5 stroke-[2.5]" />
                 </button>
               </div>
-              <div className="flex items-center gap-2 overflow-x-auto no-scrollbar scroll-smooth py-1 -mx-3 px-3">
+              <div className="flex items-center gap-2 overflow-x-auto no-scrollbar py-1 -mx-3 px-3">
                 {watchlistShows.map((show) => (
                   <div
                     key={`wl-${show.id}`}
@@ -756,22 +794,55 @@ export const MobileProfileModal: React.FC<MobileProfileModalProps> = ({
                       onClose();
                       onOpenDetails(show);
                     }}
-                    className="relative shrink-0 w-[102px] sm:w-[118px] aspect-[2/3] rounded-xl overflow-hidden bg-[#181920] border-0 cursor-pointer shadow-md active:scale-98 transition-transform"
+                    className="relative shrink-0 w-[calc((100vw-24px)/3.22)] sm:w-[140px] aspect-[2/3] rounded-[6px] overflow-hidden bg-[#14151b] border-0 cursor-pointer shadow-md active:scale-98 transition-transform"
                   >
                     <img
-                      src={show.posterVerticalUrl || show.posterLandscapeUrl}
+                      src={show.posterVerticalUrl || show.posterUrl || show.posterLandscapeUrl}
                       alt={show.title}
                       className="w-full h-full object-cover"
                     />
-                    {/* Title text overlay omitted on card as requested */}
                   </div>
                 ))}
                 <div className="shrink-0 w-2" />
               </div>
             </div>
+          ) : (
+            <EmptyListCard compact variant="my_list" />
           )}
 
-          {/* Menu Buttons: App Settings, Account, Help, Sign Out matching exact UI in screenshot */}
+          {/* Series & Films You've Liked Section */}
+          {likedShows.length > 0 ? (
+            <div className="space-y-1.5 pt-1">
+              <div className="flex items-center justify-between px-1">
+                <h4 className="text-sm font-bold text-white tracking-tight">
+                  Series & Films You've Liked
+                </h4>
+              </div>
+              <div className="flex items-center gap-2 overflow-x-auto no-scrollbar py-1 -mx-3 px-3">
+                {likedShows.map((show) => (
+                  <div
+                    key={`liked-${show.id}`}
+                    onClick={() => {
+                      onClose();
+                      onOpenDetails(show);
+                    }}
+                    className="relative shrink-0 w-[calc((100vw-24px)/3.22)] sm:w-[140px] aspect-[2/3] rounded-[6px] overflow-hidden bg-[#14151b] border-0 cursor-pointer shadow-md active:scale-98 transition-transform"
+                  >
+                    <img
+                      src={show.posterVerticalUrl || show.posterUrl || show.posterLandscapeUrl}
+                      alt={show.title}
+                      className="w-full h-full object-cover"
+                    />
+                  </div>
+                ))}
+                <div className="shrink-0 w-2" />
+              </div>
+            </div>
+          ) : (
+            <EmptyListCard compact variant="liked" />
+          )}
+
+          {/* Menu Buttons */}
           <div className="space-y-2.5 pt-2">
             {onOpenAppSettings && (
               <button
@@ -779,7 +850,7 @@ export const MobileProfileModal: React.FC<MobileProfileModalProps> = ({
                   onClose();
                   onOpenAppSettings();
                 }}
-                className="w-full flex items-center justify-between p-4 rounded-2xl bg-[#1d1f24] hover:bg-[#252830] text-white cursor-pointer transition-colors border border-white/[0.04]"
+                className="w-full flex items-center justify-between p-4 rounded-2xl bg-[#141416] hover:bg-[#1c1c20] text-white cursor-pointer transition-colors border border-white/[0.04]"
               >
                 <div className="flex items-center gap-3.5">
                   <Settings className="w-5 h-5 text-zinc-300" />
@@ -789,13 +860,13 @@ export const MobileProfileModal: React.FC<MobileProfileModalProps> = ({
               </button>
             )}
 
-            {/* Account Button: opens edit profile popout as requested */}
+            {/* Account Button: opens edit profile popout */}
             <button
               onClick={() => {
                 setEditProfileView('fields');
                 setIsEditPopoutOpen(true);
               }}
-              className="w-full flex items-center justify-between p-4 rounded-2xl bg-[#1d1f24] hover:bg-[#252830] text-white cursor-pointer transition-colors border border-white/[0.04]"
+              className="w-full flex items-center justify-between p-4 rounded-2xl bg-[#141416] hover:bg-[#1c1c20] text-white cursor-pointer transition-colors border border-white/[0.04]"
             >
               <div className="flex items-center gap-3.5">
                 <User className="w-5 h-5 text-zinc-300" />
@@ -804,7 +875,7 @@ export const MobileProfileModal: React.FC<MobileProfileModalProps> = ({
               <ChevronRight className="w-4 h-4 text-zinc-400" />
             </button>
 
-            {/* Request Content Button: replaced Help button and icon with Request Content */}
+            {/* Request Content Button */}
             <button
               onClick={() => {
                 if (onRequestContent) {
@@ -814,7 +885,7 @@ export const MobileProfileModal: React.FC<MobileProfileModalProps> = ({
                   setIsAboutViewOpen(true);
                 }
               }}
-              className="w-full flex items-center justify-between p-4 rounded-2xl bg-[#1d1f24] hover:bg-[#252830] text-white cursor-pointer transition-colors border border-white/[0.04]"
+              className="w-full flex items-center justify-between p-4 rounded-2xl bg-[#141416] hover:bg-[#1c1c20] text-white cursor-pointer transition-colors border border-white/[0.04]"
             >
               <div className="flex items-center gap-3.5">
                 <MessageSquarePlus className="w-5 h-5 text-zinc-300" />
@@ -823,13 +894,33 @@ export const MobileProfileModal: React.FC<MobileProfileModalProps> = ({
               <ChevronRight className="w-4 h-4 text-zinc-400" />
             </button>
 
+            {!isLoggedIn && (
+              <button
+                onClick={() => {
+                  onClose();
+                  if (onOpenCreateAccount) {
+                    onOpenCreateAccount();
+                  } else {
+                    onToggleAuth?.();
+                  }
+                }}
+                className="w-full flex items-center justify-between p-4 rounded-2xl bg-[#18181c] hover:bg-[#222228] text-white cursor-pointer transition-colors border border-white/10"
+              >
+                <div className="flex items-center gap-3.5">
+                  <UserPlus className="w-5 h-5 text-white" />
+                  <span className="text-sm font-semibold text-white">Create Account</span>
+                </div>
+                <ChevronRight className="w-4 h-4 text-zinc-400" />
+              </button>
+            )}
+
             {onToggleAuth && (
               <button
                 onClick={() => {
                   onClose();
                   onToggleAuth();
                 }}
-                className="w-full flex items-center justify-between p-4 rounded-2xl bg-[#1d1f24] hover:bg-[#252830] text-white cursor-pointer transition-colors border border-white/[0.04]"
+                className="w-full flex items-center justify-between p-4 rounded-2xl bg-[#141416] hover:bg-[#1c1c20] text-white cursor-pointer transition-colors border border-white/[0.04]"
               >
                 <div className="flex items-center gap-3.5">
                   <LogOut className="w-5 h-5 text-zinc-300" />
@@ -867,18 +958,18 @@ export const MobileProfileModal: React.FC<MobileProfileModalProps> = ({
               <div className="w-10 h-1 bg-zinc-500 hover:bg-zinc-400 rounded-full shrink-0" />
             </div>
 
-            {/* Header: Title + Controls */}
+            {/* Header: Title + Circular Close X */}
             <div className="flex items-center justify-between pb-3 shrink-0 border-b border-white/[0.08]">
               {editProfileView === 'choose-avatar' ? (
                 <div className="flex items-center gap-2">
                   <button
                     onClick={() => setEditProfileView('fields')}
-                    className="w-8 h-8 rounded-full bg-[#2c2c2c] hover:bg-[#383838] text-zinc-300 hover:text-white flex items-center justify-center transition-colors cursor-pointer"
+                    className="p-1 -ml-1 text-white hover:text-white/80 flex items-center justify-center transition-transform active:scale-90 cursor-pointer"
                     aria-label="Back to fields"
                   >
-                    <ArrowLeft className="w-4 h-4" />
+                    <ChevronLeft className="w-6 h-6 stroke-[2.2]" />
                   </button>
-                  <h3 className="text-lg font-bold text-white tracking-tight">Choose Profile Icon</h3>
+                  <h3 className="text-xl font-bold text-white tracking-tight">Choose Profile Icon</h3>
                 </div>
               ) : (
                 <h3 className="text-xl font-bold text-white tracking-tight">Edit Profile</h3>
@@ -892,14 +983,14 @@ export const MobileProfileModal: React.FC<MobileProfileModalProps> = ({
               </button>
             </div>
 
-            {/* View A: Fields editor styled like desktop version with icons and card groupings */}
+            {/* View A: Spacious single-column scrollable Edit Profile form */}
             {editProfileView === 'fields' ? (
-              <div className="overflow-y-auto custom-scrollbar -mx-2 px-2 py-4 space-y-4">
-                {/* Section 1: Profile Avatar with Pencil badge + Profile Name Input */}
-                <div className="flex items-start gap-3.5">
+              <div className="overflow-y-auto custom-scrollbar -mx-2 px-2 py-4 space-y-5">
+                {/* Centered Clickable Avatar with Pencil Overlay */}
+                <div className="flex flex-col items-center gap-2 pt-1">
                   <div
                     onClick={() => setEditProfileView('choose-avatar')}
-                    className="relative w-18 h-18 rounded-xl overflow-hidden bg-zinc-800 shrink-0 shadow cursor-pointer group border border-white/10"
+                    className="relative w-24 h-24 rounded-2xl overflow-hidden bg-zinc-800 shrink-0 shadow-lg cursor-pointer group border border-white/15"
                     title="Change profile picture"
                   >
                     <img
@@ -909,137 +1000,251 @@ export const MobileProfileModal: React.FC<MobileProfileModalProps> = ({
                       className="w-full h-full object-cover group-hover:scale-105 transition-transform"
                     />
                     <div className="absolute inset-0 bg-black/40 flex items-center justify-center group-hover:bg-black/60 transition-colors">
-                      <div className="w-7 h-7 rounded-full bg-black/70 border border-white/60 flex items-center justify-center shadow-md">
-                        <Pencil className="w-3.5 h-3.5 text-white stroke-[2.5]" />
+                      <div className="w-8 h-8 rounded-full bg-black/75 border border-white/60 flex items-center justify-center shadow">
+                        <Pencil className="w-4 h-4 text-white stroke-[2.5]" />
                       </div>
                     </div>
                   </div>
-
-                  {/* Profile Name Box */}
-                  <div className="flex-1">
-                    <div className="border border-white/15 focus-within:border-white rounded-xl px-3.5 py-2.5 bg-[#202020] transition-colors">
-                      <label className="text-[10px] text-zinc-400 font-medium block leading-tight mb-1">
-                        Profile name
-                      </label>
-                      <input
-                        type="text"
-                        value={tempUserName}
-                        onChange={(e) => setTempUserName(e.target.value)}
-                        className="w-full text-sm font-medium text-white focus:outline-none bg-transparent"
-                        placeholder="Enter profile name"
-                      />
-                    </div>
-                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setEditProfileView('choose-avatar')}
+                    className="text-xs font-semibold text-zinc-300 hover:text-white cursor-pointer"
+                  >
+                    Tap to change icon
+                  </button>
                 </div>
 
-                {/* Section 2: Profile Handel */}
-                <div className="space-y-1.5 pt-1">
-                  <h4 className="text-sm font-bold text-white tracking-tight">Profile Handel</h4>
-                  <p className="text-[11px] text-zinc-400 leading-relaxed">
-                    Your handle is a unique name that&apos;ll be used to identify your account across all features.
-                  </p>
-                  <div className="border border-white/15 focus-within:border-white rounded-xl px-3.5 py-2 bg-[#202020] flex items-center gap-2.5 transition-colors">
+                {/* Stacked Full-Width Profile Name & Handle */}
+                <div className="space-y-3">
+                  <div className="border border-white/15 focus-within:border-white rounded-xl px-3.5 py-2.5 bg-[#202020] transition-colors">
+                    <label className="text-[11px] text-zinc-400 font-medium block leading-tight mb-1">
+                      Profile name
+                    </label>
+                    <input
+                      type="text"
+                      value={tempUserName}
+                      onChange={(e) => setTempUserName(e.target.value)}
+                      className="w-full text-sm font-medium text-white focus:outline-none bg-transparent"
+                      placeholder="Enter profile name"
+                    />
+                  </div>
+
+                  <div className="border border-white/15 focus-within:border-white rounded-xl px-3.5 py-2.5 bg-[#202020] flex items-center gap-2.5 transition-colors">
                     <span className="text-base font-black text-zinc-400 shrink-0 select-none">@</span>
                     <div className="flex-1 min-w-0">
-                      <label className="text-[9px] text-zinc-400 font-medium block leading-none mb-0.5">
-                        Profile Handel
+                      <label className="text-[11px] text-zinc-400 font-medium block leading-tight mb-0.5">
+                        Profile handle
                       </label>
                       <input
                         type="text"
                         value={tempUserHandle.replace(/^@/, '')}
                         onChange={(e) => setTempUserHandle(e.target.value.replace(/^@/, ''))}
-                        className="w-full text-xs sm:text-sm font-medium text-white focus:outline-none bg-transparent"
+                        className="w-full text-sm font-medium text-white focus:outline-none bg-transparent"
                         placeholder="username"
                       />
                     </div>
                   </div>
                 </div>
 
-                <div className="border-b border-white/10 pt-1" />
-
-                {/* Section 3: Contact info with desktop style icons */}
-                <div className="space-y-2">
-                  <h4 className="text-sm font-bold text-white tracking-tight">Contact info</h4>
-
-                  <div className="border border-white/10 rounded-xl overflow-hidden bg-[#202020] divide-y divide-white/10">
-                    {/* 1. Email */}
-                    <div className="p-3">
-                      <div className="flex items-center gap-3">
-                        <Mail className="w-4 h-4 text-zinc-400 shrink-0" />
-                        <div className="flex-1 min-w-0">
-                          <p className="text-xs font-semibold text-white">Email</p>
-                          <input
-                            type="email"
-                            value={tempUserEmail}
-                            onChange={(e) => setTempUserEmail(e.target.value)}
-                            className="text-[11px] text-zinc-400 bg-transparent focus:text-white focus:outline-none w-full mt-0.5"
-                            placeholder="abc@example.com"
-                          />
-                        </div>
+                {/* Contact & Security Stacked Section */}
+                <div className="space-y-2.5">
+                  <p className="text-xs font-bold text-zinc-400 uppercase tracking-wider px-0.5">
+                    Contact & Security
+                  </p>
+                  <div className="rounded-xl bg-[#202020] border border-white/10 divide-y divide-white/[0.07]">
+                    <div className="px-3.5 py-3 flex items-center gap-3">
+                      <Mail className="w-4 h-4 text-zinc-400 shrink-0" />
+                      <div className="flex-1 min-w-0">
+                        <label className="text-[11px] text-zinc-400 font-medium block leading-tight">Email</label>
+                        <input
+                          type="email"
+                          value={tempUserEmail}
+                          onChange={(e) => setTempUserEmail(e.target.value)}
+                          className="text-sm text-white bg-transparent focus:outline-none w-full mt-0.5"
+                          placeholder="your.email@example.com"
+                        />
                       </div>
                     </div>
 
-                    {/* 2. WhatsApp / Phone */}
-                    <div className="p-3">
-                      <div className="flex items-center gap-3">
-                        <Phone className="w-4 h-4 text-zinc-400 shrink-0" />
-                        <div className="flex-1 min-w-0">
-                          <p className="text-xs font-semibold text-white">WhatsApp</p>
-                          <input
-                            type="tel"
-                            value={tempUserPhone}
-                            onChange={(e) => setTempUserPhone(e.target.value)}
-                            className="text-[11px] text-zinc-400 bg-transparent focus:text-white focus:outline-none w-full mt-0.5"
-                            placeholder="+1 (555) 382-9014"
-                          />
-                        </div>
+                    <div className="px-3.5 py-3 flex items-center gap-3">
+                      <Phone className="w-4 h-4 text-zinc-400 shrink-0" />
+                      <div className="flex-1 min-w-0">
+                        <label className="text-[11px] text-zinc-400 font-medium block leading-tight">WhatsApp</label>
+                        <input
+                          type="tel"
+                          value={tempUserPhone}
+                          onChange={(e) => setTempUserPhone(e.target.value)}
+                          className="text-sm text-white bg-transparent focus:outline-none w-full mt-0.5"
+                          placeholder="+1 (555) 000-0000"
+                        />
                       </div>
                     </div>
 
-                    {/* 3. Account Password */}
-                    <div className="p-3">
-                      <div className="flex items-center gap-3">
-                        <Lock className="w-4 h-4 text-zinc-400 shrink-0" />
-                        <div className="flex-1 min-w-0">
-                          <p className="text-xs font-semibold text-white">Account Password</p>
-                          <div className="flex items-center gap-2 mt-0.5">
-                            <input
-                              type={showPassword ? 'text' : 'password'}
-                              value={tempUserPassword}
-                              onChange={(e) => setTempUserPassword(e.target.value)}
-                              className="text-[11px] text-zinc-400 bg-transparent focus:text-white focus:outline-none w-full"
-                              placeholder="••••••••••••"
-                            />
-                            <button
-                              type="button"
-                              onClick={() => setShowPassword(!showPassword)}
-                              className="text-zinc-500 hover:text-white transition-colors cursor-pointer shrink-0"
-                              aria-label={showPassword ? 'Hide' : 'Show'}
-                            >
-                              {showPassword ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
-                            </button>
-                          </div>
+                    <div className="px-3.5 py-3 flex items-center gap-3">
+                      <Lock className="w-4 h-4 text-zinc-400 shrink-0" />
+                      <div className="flex-1 min-w-0">
+                        <label className="text-[11px] text-zinc-400 font-medium block leading-tight">Account Password</label>
+                        <div className="flex items-center gap-2 mt-0.5">
+                          <input
+                            type={showPassword ? 'text' : 'password'}
+                            value={tempUserPassword}
+                            onChange={(e) => setTempUserPassword(e.target.value)}
+                            className="text-sm text-white bg-transparent focus:outline-none w-full min-w-0"
+                            placeholder="New password"
+                          />
+                          <button
+                            type="button"
+                            onClick={() => setShowPassword(!showPassword)}
+                            className="text-zinc-400 hover:text-white transition-colors cursor-pointer shrink-0"
+                            aria-label={showPassword ? 'Hide' : 'Show'}
+                          >
+                            {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                          </button>
                         </div>
                       </div>
                     </div>
                   </div>
                 </div>
 
-                {/* Save & Cancel Buttons: rounded pill matching Play/Resume buttons */}
-                <div className="flex items-center gap-3 pt-2">
-                  <button
-                    type="button"
-                    onClick={() => setIsEditPopoutOpen(false)}
-                    className="flex-1 py-2.5 px-6 rounded-full bg-white/20 hover:bg-white/30 text-white font-bold text-sm shadow transition-colors cursor-pointer text-center"
-                  >
-                    Cancel
-                  </button>
+                {/* Profile Lock 4-Digit PIN Card */}
+                <div className="rounded-xl bg-[#202020] border border-white/10 p-3.5 space-y-3">
+                  <div className="flex items-center justify-between gap-3">
+                    <div className="flex items-center gap-3 min-w-0">
+                      <div className="w-9 h-9 rounded-full bg-white/10 flex items-center justify-center shrink-0">
+                        <Shield className="w-4 h-4 text-red-500" />
+                      </div>
+                      <div className="min-w-0">
+                        <p className="text-sm font-semibold text-white">Profile Lock</p>
+                        <p className="text-xs text-zinc-400 mt-0.5">
+                          {isProfileLockEnabled ? '4-digit PIN is active' : 'Require a 4-digit PIN on startup'}
+                        </p>
+                      </div>
+                    </div>
+
+                    <button
+                      type="button"
+                      onClick={() => {
+                        if (isProfileLockEnabled) {
+                          setDisablePinInput('');
+                          setDisablePinError('');
+                          setIsPinDisablePromptOpen(true);
+                        } else {
+                          setIsPinSetupModalOpen(true);
+                        }
+                      }}
+                      className={`relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none ${
+                        isProfileLockEnabled ? 'bg-red-600' : 'bg-zinc-700'
+                      }`}
+                      role="switch"
+                      aria-checked={isProfileLockEnabled}
+                      aria-label="Toggle Profile Lock PIN"
+                    >
+                      <span
+                        aria-hidden="true"
+                        className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow-lg ring-0 transition duration-200 ease-in-out ${
+                          isProfileLockEnabled ? 'translate-x-5' : 'translate-x-0'
+                        }`}
+                      />
+                    </button>
+                  </div>
+
+                  {isProfileLockEnabled && (
+                    <div className="pt-2.5 border-t border-white/10 flex items-center justify-between">
+                      <span className="text-xs text-emerald-400 font-semibold flex items-center gap-1.5">
+                        <Check className="w-3.5 h-3.5 stroke-[3]" />
+                        <span>PIN Protection Enabled</span>
+                      </span>
+                      <button
+                        type="button"
+                        onClick={() => setIsPinSetupModalOpen(true)}
+                        className="text-xs text-zinc-300 hover:text-white font-semibold underline underline-offset-2 cursor-pointer"
+                      >
+                        Change PIN
+                      </button>
+                    </div>
+                  )}
+                </div>
+
+                {/* Mobile Native Fingerprint Unlock Option */}
+                <div className="rounded-xl bg-[#202020] border border-white/10 p-3.5 space-y-2.5">
+                  <div className="flex items-center justify-between gap-3">
+                    <div className="flex items-center gap-3 min-w-0">
+                      <div className="w-9 h-9 rounded-full bg-white/10 flex items-center justify-center shrink-0">
+                        <Fingerprint className="w-4.5 h-4.5 text-[#ff2e55]" />
+                      </div>
+                      <div className="min-w-0">
+                        <p className="text-sm font-semibold text-white">Fingerprint Unlock</p>
+                        <p className="text-xs text-zinc-400 mt-0.5">
+                          {isFingerprintEnabled
+                            ? 'Tap fingerprint on PIN screen to unlock'
+                            : 'Unlock using native mobile fingerprint'}
+                        </p>
+                      </div>
+                    </div>
+
+                    <button
+                      type="button"
+                      disabled={isBiometricSetupBusy}
+                      onClick={async () => {
+                        if (isFingerprintEnabled) {
+                          setFingerprintUnlockEnabled(false);
+                          setIsFingerprintEnabled(false);
+                          setPinToast('Fingerprint unlock turned off');
+                          setTimeout(() => setPinToast(null), 3000);
+                        } else {
+                          setIsBiometricSetupBusy(true);
+                          try {
+                            const res = await registerNativeFingerprint(tempUserName || userName || 'Guest');
+                            if (res.ok) {
+                              setIsFingerprintEnabled(true);
+                              setPinToast(res.message || 'Fingerprint unlock enabled');
+                            } else {
+                              setPinToast(res.message || 'Fingerprint setup cancelled');
+                            }
+                            setTimeout(() => setPinToast(null), 3000);
+                          } finally {
+                            setIsBiometricSetupBusy(false);
+                          }
+                        }
+                      }}
+                      className={`relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none disabled:opacity-60 ${
+                        isFingerprintEnabled ? 'bg-red-600' : 'bg-zinc-700'
+                      }`}
+                      role="switch"
+                      aria-checked={isFingerprintEnabled}
+                      aria-label="Toggle Fingerprint Unlock"
+                    >
+                      <span
+                        aria-hidden="true"
+                        className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow-lg ring-0 transition duration-200 ease-in-out ${
+                          isFingerprintEnabled ? 'translate-x-5' : 'translate-x-0'
+                        }`}
+                      />
+                    </button>
+                  </div>
+
+                  {isFingerprintEnabled && !isProfileLockEnabled && (
+                    <p className="text-[11px] text-amber-400/90 pt-1">
+                      Enable Profile Lock (4-Digit PIN) above to prompt on startup.
+                    </p>
+                  )}
+                </div>
+
+                {/* Bottom Action Buttons */}
+                <div className="pt-1 space-y-2.5 pb-2">
                   <button
                     type="button"
                     onClick={handleSaveProfileEdit}
-                    className="flex-1 py-2.5 px-6 rounded-full bg-white hover:bg-zinc-200 text-black font-bold text-sm shadow transition-colors cursor-pointer text-center"
+                    className="w-full py-3 px-6 rounded-full bg-white hover:bg-zinc-200 text-black font-bold text-sm shadow transition-colors cursor-pointer text-center active:scale-98"
                   >
-                    Save
+                    Save Changes
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setIsEditPopoutOpen(false)}
+                    className="w-full py-2.5 px-6 rounded-full border border-white/20 hover:border-white text-zinc-300 hover:text-white font-bold text-sm transition-colors cursor-pointer text-center"
+                  >
+                    Cancel
                   </button>
                 </div>
               </div>
@@ -1115,6 +1320,89 @@ export const MobileProfileModal: React.FC<MobileProfileModalProps> = ({
                 </div>
               </div>
             )}
+          </div>
+        </div>
+      )}
+
+      {/* PIN Setup / Change Modal */}
+      {isPinSetupModalOpen && (
+        <ProfileLockScreen
+          userAvatar={selectedAvatarUrl || userAvatar}
+          userName={userName || 'Guest Profile'}
+          isSettingUp={true}
+          onUnlockSuccess={() => {}}
+          onPinConfigured={() => {
+            setIsProfileLockEnabled(true);
+            setIsPinSetupModalOpen(false);
+            setPinToast('Profile lock enabled with 4-digit PIN');
+            setTimeout(() => setPinToast(null), 3000);
+          }}
+          onCancelSetup={() => setIsPinSetupModalOpen(false)}
+        />
+      )}
+
+      {/* Disable PIN Prompt Modal */}
+      {isPinDisablePromptOpen && (
+        <div className="fixed inset-0 z-[150] bg-black/85 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="w-full max-w-sm bg-[#161618] border border-zinc-700 rounded-2xl p-5 shadow-2xl space-y-4">
+            <div className="flex items-center gap-2 text-red-500">
+              <Lock className="w-5 h-5 shrink-0" />
+              <h4 className="text-sm font-bold text-white">Disable Profile Lock</h4>
+            </div>
+            <p className="text-xs text-zinc-300 leading-relaxed">
+              Enter your current 4-digit PIN to turn off profile lock.
+            </p>
+            <div>
+              <input
+                type="password"
+                maxLength={4}
+                inputMode="numeric"
+                value={disablePinInput}
+                onChange={(e) => {
+                  const val = e.target.value.replace(/\D/g, '').slice(0, 4);
+                  setDisablePinInput(val);
+                  setDisablePinError('');
+                }}
+                placeholder="4-digit PIN"
+                className="w-full tracking-widest text-center text-lg font-mono bg-zinc-900 border border-zinc-700 focus:border-white text-white rounded-xl py-2 px-3 outline-none"
+              />
+              {disablePinError && (
+                <p className="text-xs text-red-400 font-semibold mt-1.5 flex items-center gap-1">
+                  <AlertCircle className="w-3.5 h-3.5 shrink-0" />
+                  <span>{disablePinError}</span>
+                </p>
+              )}
+            </div>
+            <div className="flex items-center justify-end gap-2.5 pt-1">
+              <button
+                type="button"
+                onClick={() => setIsPinDisablePromptOpen(false)}
+                className="px-4 py-2 rounded-xl bg-zinc-800 hover:bg-zinc-700 text-zinc-300 text-xs font-semibold cursor-pointer"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  const stored = localStorage.getItem('dizi_profile_lock_pin') || '';
+                  if (disablePinInput === stored) {
+                    try {
+                      localStorage.setItem('dizi_profile_lock_enabled', 'false');
+                      localStorage.removeItem('dizi_profile_lock_pin');
+                    } catch {}
+                    setIsProfileLockEnabled(false);
+                    setIsPinDisablePromptOpen(false);
+                    setPinToast('Profile lock disabled');
+                    setTimeout(() => setPinToast(null), 3000);
+                  } else {
+                    setDisablePinError('Incorrect PIN. Please try again.');
+                  }
+                }}
+                className="px-4 py-2 rounded-xl bg-red-600 hover:bg-red-500 text-white text-xs font-bold transition-colors cursor-pointer shadow"
+              >
+                Turn Off Lock
+              </button>
+            </div>
           </div>
         </div>
       )}

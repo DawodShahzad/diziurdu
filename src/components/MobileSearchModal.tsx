@@ -1,33 +1,46 @@
 import React, { useState, useMemo, useEffect, useRef } from 'react';
 import { Show } from '../types';
-import { Search, X, ChevronRight, Play, Film, Clock } from 'lucide-react';
+import { Search, ChevronLeft, ChevronRight, Play, Plus, Check, X } from 'lucide-react';
 import { MediaImage } from './MediaImage';
 
 interface MobileSearchModalProps {
   isOpen: boolean;
   onClose: () => void;
   shows: Show[];
+  watchlist?: string[];
+  onToggleWatchlist?: (showId: string) => void;
   onOpenDetails: (show: Show) => void;
   onPlayShow: (show: Show) => void;
+  initialQuery?: string;
+  onQueryChange?: (q: string) => void;
 }
 
 export const MobileSearchModal: React.FC<MobileSearchModalProps> = ({
   isOpen,
   onClose,
   shows,
+  watchlist = [],
+  onToggleWatchlist,
   onOpenDetails,
-  onPlayShow
+  onPlayShow,
+  initialQuery = '',
+  onQueryChange
 }) => {
-  const [query, setQuery] = useState<string>('');
+  const [query, setQuery] = useState<string>(initialQuery);
+  const [committedExactQuery, setCommittedExactQuery] = useState<string>('');
   const inputRef = useRef<HTMLInputElement>(null);
-
   const scrollYRef = useRef<number>(0);
+
+  useEffect(() => {
+    if (isOpen && initialQuery && initialQuery !== query) {
+      setQuery(initialQuery);
+    }
+  }, [isOpen, initialQuery]);
 
   useEffect(() => {
     if (isOpen) {
       setTimeout(() => inputRef.current?.focus(), 150);
-      
-      // Store current scroll position and freeze body/html firmly in place
+
       scrollYRef.current = window.scrollY;
       const scrollY = window.scrollY;
       document.body.dataset.mobileSearchScrollY = String(scrollY);
@@ -39,10 +52,9 @@ export const MobileSearchModal: React.FC<MobileSearchModalProps> = ({
       document.body.style.overflow = 'hidden';
       document.documentElement.style.overflow = 'hidden';
     } else {
-      // Restore previous scroll position without any jump or flicker
       const stored = document.body.dataset.mobileSearchScrollY;
       const targetY = stored !== undefined && stored !== '' ? parseInt(stored, 10) : scrollYRef.current;
-      
+
       document.body.style.position = '';
       document.body.style.top = '';
       document.body.style.left = '';
@@ -51,11 +63,12 @@ export const MobileSearchModal: React.FC<MobileSearchModalProps> = ({
       document.body.style.overflow = '';
       document.documentElement.style.overflow = '';
       delete document.body.dataset.mobileSearchScrollY;
-      
+
       if (typeof targetY === 'number' && !isNaN(targetY)) {
         window.scrollTo(0, targetY);
       }
       setQuery('');
+      setCommittedExactQuery('');
     }
 
     return () => {
@@ -75,12 +88,59 @@ export const MobileSearchModal: React.FC<MobileSearchModalProps> = ({
     };
   }, [isOpen]);
 
-  // Real-time search filtering without clicking enter: exact or closest results
-  const searchResults = useMemo(() => {
-    const q = query.trim().toLowerCase();
-    if (!q) return [];
+  const updateQuery = (next: string, committedExact = '') => {
+    setQuery(next);
+    setCommittedExactQuery(committedExact);
+    onQueryChange?.(next);
+  };
 
-    // Exact and prefix matches first
+  // Build ordered prediction candidates (shows prioritized by popularity/points, then genres/actors)
+  const predictionCandidates = useMemo(() => {
+    const sorted = [...shows].sort((a, b) => (b.points || 0) - (a.points || 0));
+    const terms: string[] = [];
+    const seen = new Set<string>();
+    const add = (val?: string) => {
+      if (!val) return;
+      const clean = val.trim();
+      if (!clean || seen.has(clean.toLowerCase())) return;
+      seen.add(clean.toLowerCase());
+      terms.push(clean);
+    };
+    sorted.forEach((s) => {
+      add(s.title);
+      add(s.turkishTitle);
+      s.supportingTitles?.forEach(add);
+    });
+    sorted.forEach((s) => {
+      s.genres?.forEach(add);
+      s.categories?.forEach(add);
+      s.cast?.slice(0, 2).forEach((c) => add(c.name));
+    });
+    return terms;
+  }, [shows]);
+
+  // Inline dull predictive autocomplete
+  const { fullPrediction, ghostSuffix } = useMemo(() => {
+    const raw = query;
+    if (!raw.trim()) return { fullPrediction: '', ghostSuffix: '' };
+    const lowerRaw = raw.toLowerCase();
+    const match = predictionCandidates.find(
+      (term) => term.toLowerCase().startsWith(lowerRaw) && term.length > raw.length
+    );
+    if (!match) return { fullPrediction: '', ghostSuffix: '' };
+    return {
+      fullPrediction: match,
+      ghostSuffix: match.slice(raw.length)
+    };
+  }, [query, predictionCandidates]);
+
+  // Real-time matching results + exact title spotlight detection
+  const { exactSpotlightShow, searchResults, relatedToSpotlight } = useMemo(() => {
+    const q = query.trim().toLowerCase();
+    if (!q) {
+      return { exactSpotlightShow: null as Show | null, searchResults: [] as Show[], relatedToSpotlight: [] as Show[] };
+    }
+
     const matches = shows.filter((s) => {
       const titleMatch = s.title.toLowerCase().includes(q);
       const turkishTitleMatch = Boolean(s.turkishTitle && s.turkishTitle.toLowerCase().includes(q));
@@ -95,8 +155,11 @@ export const MobileSearchModal: React.FC<MobileSearchModalProps> = ({
       return titleMatch || turkishTitleMatch || castMatch || genreMatch || categoryMatch || supportingMatch;
     });
 
-    // Score: exact title prefix gets highest score
     matches.sort((a, b) => {
+      const aExact = a.title.toLowerCase() === q || a.turkishTitle?.toLowerCase() === q;
+      const bExact = b.title.toLowerCase() === q || b.turkishTitle?.toLowerCase() === q;
+      if (aExact && !bExact) return -1;
+      if (!aExact && bExact) return 1;
       const aStarts = a.title.toLowerCase().startsWith(q);
       const bStarts = b.title.toLowerCase().startsWith(q);
       if (aStarts && !bStarts) return -1;
@@ -104,74 +167,135 @@ export const MobileSearchModal: React.FC<MobileSearchModalProps> = ({
       return (b.points || 0) - (a.points || 0);
     });
 
-    return matches.slice(0, 10);
-  }, [query, shows]);
+    const exactMatch = shows.find(
+      (s) =>
+        s.title.toLowerCase() === q ||
+        (s.turkishTitle && s.turkishTitle.toLowerCase() === q) ||
+        (s.supportingTitles && s.supportingTitles.some((st) => st.toLowerCase() === q))
+    ) || null;
 
-  // Quick keyword suggestions based on current query or top popular titles
-  const keywordSuggestions = useMemo(() => {
-    const q = query.trim().toLowerCase();
-    if (!q) {
-      return ['Kuruluş: Osman', 'Barbaroslar', 'Diriliş: Ertuğrul', 'Aile', 'Yargı', 'Teşkilat'];
+    const spotlight = exactMatch;
+
+    // Related titles for More Like This (9 rows x 3 cards = 27 max) when spotlight is active
+    let relatedList: Show[] = [];
+    if (spotlight) {
+      const spotGenres = new Set(spotlight.genres.map((g) => g.toLowerCase()));
+      const spotCast = new Set(spotlight.cast.map((c) => c.name.toLowerCase()));
+      relatedList = shows
+        .filter((s) => s.id !== spotlight.id)
+        .map((s) => {
+          let score = 0;
+          s.genres.forEach((g) => {
+            if (spotGenres.has(g.toLowerCase())) score += 3;
+          });
+          s.cast.forEach((c) => {
+            if (spotCast.has(c.name.toLowerCase())) score += 4;
+          });
+          if (s.type === spotlight.type) score += 1;
+          score += (s.points || 0) * 0.05;
+          return { s, score };
+        })
+        .sort((a, b) => b.score - a.score)
+        .map((x) => x.s)
+        .slice(0, 27);
     }
-    const set = new Set<string>();
-    searchResults.forEach((s) => {
-      set.add(s.title);
-      if (s.turkishTitle) set.add(s.turkishTitle);
-      s.cast.slice(0, 1).forEach((c) => set.add(c.name));
-    });
-    return Array.from(set).slice(0, 5);
-  }, [query, searchResults]);
+
+    return {
+      exactSpotlightShow: spotlight,
+      searchResults: matches.slice(0, 30), // max 10 rows of 3 cards = 30
+      relatedToSpotlight: relatedList
+    };
+  }, [query, committedExactQuery, shows]);
+
+  // Popular suggestions when query is empty
+  const keywordSuggestions = useMemo(() => {
+    return ['Kuruluş: Osman', 'Barbaroslar', 'Diriliş: Ertuğrul', 'Aile', 'Yargı', 'Teşkilat'];
+  }, []);
 
   if (!isOpen) return null;
 
   return (
     <div
-      className="fixed inset-0 z-50 bg-[#0d0e12] flex flex-col animate-in fade-in duration-200 overscroll-contain"
+      className="fixed inset-0 z-50 bg-black flex flex-col animate-in fade-in duration-200 overscroll-contain"
       onTouchMove={(e) => {
-        // Stop touchmove from bubbling to window/body background
         e.stopPropagation();
       }}
     >
-      {/* Top Search Bar (Amazon Prime / Netflix hybrid mobile search style) */}
-      <div className="px-4 pt-4 pb-3 border-b border-white/10 bg-[#121319]/95 backdrop-blur-md sticky top-0 z-10 flex items-center gap-3 touch-none">
-        {/* Search Input Box */}
-        <div className="flex-1 relative flex items-center bg-[#1c1d25] border border-white/20 rounded-xl px-3.5 py-2.5 shadow-inner">
-          <Search className="w-4.5 h-4.5 text-zinc-400 mr-2.5 shrink-0" />
-          <input
-            ref={inputRef}
-            type="text"
-            value={query}
-            onChange={(e) => setQuery(e.target.value)}
-            placeholder="Search shows, movies, actors..."
-            className="w-full bg-transparent text-white placeholder-zinc-400 text-sm outline-none font-medium"
-          />
+      {/* Top Search Bar (matching reference image_2dd20e86.png) */}
+      <div className="px-3.5 pt-3.5 pb-3 bg-black sticky top-0 z-10 flex items-center gap-2.5 touch-none">
+        {/* Back button */}
+        <button
+          onClick={onClose}
+          className="p-1 -ml-1 text-white hover:text-white/80 active:scale-90 transition-transform cursor-pointer shrink-0"
+          aria-label="Back"
+        >
+          <ChevronLeft className="w-7 h-7 stroke-[2.2]" />
+        </button>
+
+        {/* Flat rounded-rectangle Search Input Box */}
+        <div className="flex-1 relative flex items-center bg-[#333336] rounded-[6px] px-3 py-2.5">
+          <Search className="w-5 h-5 text-zinc-400 mr-2.5 shrink-0 stroke-[2]" />
+          <div className="relative flex-1 flex items-center overflow-hidden">
+            {ghostSuffix && (
+              <div
+                onClick={() => {
+                  updateQuery(fullPrediction, fullPrediction);
+                  inputRef.current?.blur();
+                }}
+                className="absolute inset-0 flex items-center text-[15px] font-normal whitespace-pre overflow-hidden z-20 pointer-events-none"
+              >
+                <span className="invisible">{query}</span>
+                <span
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    updateQuery(fullPrediction, fullPrediction);
+                    inputRef.current?.blur();
+                  }}
+                  className="text-zinc-400/70 pointer-events-auto cursor-pointer pr-6"
+                >
+                  {ghostSuffix}
+                </span>
+              </div>
+            )}
+            <input
+              ref={inputRef}
+              type="text"
+              value={query}
+              onChange={(e) => updateQuery(e.target.value, '')}
+              onKeyDown={(e) => {
+                if ((e.key === 'Enter' || e.key === 'Tab') && fullPrediction) {
+                  e.preventDefault();
+                  updateQuery(fullPrediction, fullPrediction);
+                  inputRef.current?.blur();
+                } else if (e.key === 'Enter' && query.trim()) {
+                  e.preventDefault();
+                  setCommittedExactQuery(query.trim());
+                  inputRef.current?.blur();
+                }
+              }}
+              placeholder="Search shows, movies..."
+              className="relative z-10 w-full bg-transparent text-white placeholder-zinc-400 text-[15px] outline-none font-normal"
+            />
+          </div>
           {query.trim() && (
             <button
               onClick={() => {
-                setQuery('');
+                updateQuery('', '');
                 inputRef.current?.focus();
               }}
-              className="text-xs font-semibold text-zinc-400 hover:text-white px-2 py-0.5 rounded cursor-pointer transition-colors"
+              className="relative z-30 p-1 text-zinc-400 hover:text-white cursor-pointer transition-colors shrink-0 active:scale-90"
+              aria-label="Clear search"
             >
-              Clear
+              <X className="w-4 h-4 stroke-[2.2]" />
             </button>
           )}
         </div>
-
-        {/* Cancel / Close button */}
-        <button
-          onClick={onClose}
-          className="text-sm font-medium text-zinc-300 hover:text-white px-1 py-1 cursor-pointer transition-colors"
-        >
-          Cancel
-        </button>
       </div>
 
       {/* Results / Suggestions Container */}
-      <div className="flex-1 overflow-y-auto custom-scrollbar px-4 py-4 pb-36 space-y-4 overscroll-contain touch-pan-y">
+      <div className="flex-1 overflow-y-auto custom-scrollbar pb-36 overscroll-contain touch-pan-y bg-black">
         {query.trim() === '' ? (
-          /* Empty Search Initial Screen: Popular Searches */
-          <div>
+          <div className="px-4 py-4 space-y-4">
             <h4 className="text-xs uppercase tracking-wider text-zinc-400 font-semibold mb-3">
               Popular Searches
             </h4>
@@ -179,7 +303,7 @@ export const MobileSearchModal: React.FC<MobileSearchModalProps> = ({
               {keywordSuggestions.map((kw) => (
                 <button
                   key={kw}
-                  onClick={() => setQuery(kw)}
+                  onClick={() => updateQuery(kw, kw)}
                   className="px-3.5 py-1.5 rounded-full bg-white/10 hover:bg-white/20 text-xs text-white/90 font-medium transition-colors cursor-pointer"
                 >
                   {kw}
@@ -187,7 +311,6 @@ export const MobileSearchModal: React.FC<MobileSearchModalProps> = ({
               ))}
             </div>
 
-            {/* Quick Suggestions Cards */}
             <h4 className="text-xs uppercase tracking-wider text-zinc-400 font-semibold mt-6 mb-3">
               Recommended For You
             </h4>
@@ -201,7 +324,7 @@ export const MobileSearchModal: React.FC<MobileSearchModalProps> = ({
                   }}
                   className="flex items-center gap-3 p-2 rounded-xl bg-white/[0.04] hover:bg-white/[0.08] cursor-pointer transition-all active:scale-[0.99]"
                 >
-                  <div className="w-24 h-14 rounded-md overflow-hidden shrink-0 bg-zinc-800">
+                  <div className="w-24 h-14 rounded-md overflow-hidden shrink-0 bg-zinc-900">
                     <MediaImage
                       src={show.posterLandscapeUrl || show.backdropUrl}
                       fallbackTitle={show.title}
@@ -221,84 +344,134 @@ export const MobileSearchModal: React.FC<MobileSearchModalProps> = ({
               ))}
             </div>
           </div>
-        ) : searchResults.length > 0 ? (
-          /* Real-time search results list as in image_3b7d796c.png */
-          <div className="space-y-3">
-            {searchResults.slice(0, 10).map((show) => (
+        ) : exactSpotlightShow ? (
+          /* EXACT TITLE SPOTLIGHT MODE: Recommendation card at top + 9 rows of 3 (27 cards) below */
+          <div className="pt-3 space-y-5">
+            {/* Mobile Recommendation Spotlight Card */}
+            <div className="px-2.5 sm:px-4">
               <div
-                key={show.id}
+                data-show-id={exactSpotlightShow.id}
                 onClick={() => {
                   onClose();
-                  onOpenDetails(show);
+                  onOpenDetails(exactSpotlightShow);
                 }}
-                className="flex items-center gap-3.5 p-2 rounded-xl bg-white/[0.03] hover:bg-white/[0.08] active:bg-white/[0.12] cursor-pointer transition-all"
+                className="relative aspect-video w-full rounded-xl overflow-hidden bg-[#111] shadow-2xl cursor-pointer group"
               >
-                {/* 16:9 Thumbnail with subtle badge */}
-                <div className="relative w-24 sm:w-28 h-14 sm:h-16 rounded-md overflow-hidden bg-zinc-800 shrink-0">
-                  <MediaImage
-                    src={show.posterLandscapeUrl || show.backdropUrl}
-                    fallbackTitle={show.title}
-                    fallbackClassName="w-full h-full bg-[#181818] flex items-center justify-center p-1.5 text-center select-none"
-                    fallbackTextClassName="text-white/95 font-semibold text-[11px] leading-tight line-clamp-2 break-words font-sans"
-                    className="w-full h-full object-cover"
-                  />
-                </div>
-
-                {/* Show Info */}
-                <div className="flex-1 min-w-0">
-                  <div className="flex items-center gap-2">
-                    <span className="text-sm sm:text-base font-bold text-white truncate">
-                      {show.title}
-                    </span>
-                  </div>
-                  <div className="flex items-center gap-2 text-xs text-zinc-400 mt-0.5">
-                    <span>{show.releaseYear.split('-')[0]}</span>
-                    {show.durationOrSeasons && (
-                      <>
-                        <span>•</span>
-                        <span>{show.durationOrSeasons}</span>
-                      </>
+                <MediaImage
+                  src={exactSpotlightShow.mobileSpecialSingleFeedUrl || exactSpotlightShow.backdropUrl2 || exactSpotlightShow.backdropUrl || exactSpotlightShow.posterLandscapeUrl}
+                  fallbackTitle={exactSpotlightShow.title}
+                  fallbackClassName="absolute inset-0 w-full h-full bg-[#111] flex items-center justify-center p-4 text-center select-none"
+                  className="absolute inset-0 w-full h-full object-cover"
+                />
+                <div className="absolute inset-0 bg-gradient-to-t from-black/95 via-black/35 to-transparent pointer-events-none" />
+                <div className="absolute bottom-3 left-3.5 right-3.5 z-10 flex items-end justify-between gap-3">
+                  <div className="min-w-0 flex-1">
+                    {exactSpotlightShow.titleLogoUrl ? (
+                      <img
+                        src={exactSpotlightShow.titleLogoUrl}
+                        alt={exactSpotlightShow.title}
+                        referrerPolicy="no-referrer"
+                        className="max-h-10 max-w-[180px] w-auto h-auto object-contain object-left-bottom mb-1.5"
+                      />
+                    ) : (
+                      <h3 className="text-white font-extrabold text-base tracking-tight mb-1 truncate">
+                        {exactSpotlightShow.title}
+                      </h3>
                     )}
-                    <span className="px-1 py-0.2 border border-zinc-700 rounded text-[10px] text-zinc-400">
-                      {show.maturityRating}
-                    </span>
+                    <p className="text-[11px] text-zinc-300 font-medium truncate">
+                      {exactSpotlightShow.releaseYear.split('-')[0]} • {exactSpotlightShow.maturityRating} • {exactSpotlightShow.genres[0] || 'Drama'}
+                    </p>
+                  </div>
+
+                  <div className="flex items-center gap-2 shrink-0">
+                    {onToggleWatchlist && (
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          onToggleWatchlist(exactSpotlightShow.id);
+                        }}
+                        className="w-9 h-9 rounded-full bg-black/65 border border-white/25 text-white flex items-center justify-center cursor-pointer active:scale-90 transition-transform"
+                        aria-label="Toggle My List"
+                      >
+                        {watchlist.includes(exactSpotlightShow.id) ? (
+                          <Check className="w-4 h-4 text-emerald-400" />
+                        ) : (
+                          <Plus className="w-4 h-4 text-white" />
+                        )}
+                      </button>
+                    )}
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        onClose();
+                        onPlayShow(exactSpotlightShow);
+                      }}
+                      className="px-4 py-2 rounded-full bg-white text-black font-bold text-xs flex items-center gap-1.5 shadow-lg cursor-pointer active:scale-95 transition-transform"
+                      aria-label={`Play ${exactSpotlightShow.title}`}
+                    >
+                      <Play className="w-3.5 h-3.5 fill-black" />
+                      <span>Play</span>
+                    </button>
                   </div>
                 </div>
-
-                {/* Quick Play Button */}
-                <button
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    onClose();
-                    onPlayShow(show);
-                  }}
-                  className="w-8 h-8 rounded-full bg-white/10 hover:bg-white/20 text-white flex items-center justify-center shrink-0 cursor-pointer"
-                  aria-label={`Play ${show.title}`}
-                >
-                  <Play className="w-3.5 h-3.5 fill-white" />
-                </button>
               </div>
-            ))}
+            </div>
 
-            {/* Keyword Suggestions under real-time results as in image_3b7d796c.png */}
-            {keywordSuggestions.length > 0 && (
-              <div className="pt-4 border-t border-white/10 mt-6 space-y-2">
-                {keywordSuggestions.map((kw) => (
-                  <button
-                    key={kw}
-                    onClick={() => setQuery(kw)}
-                    className="w-full text-left py-2 px-2 text-sm text-zinc-300 hover:text-white flex items-center justify-between cursor-pointer"
-                  >
-                    <span>{kw}</span>
-                    <Search className="w-3.5 h-3.5 text-zinc-500" />
-                  </button>
-                ))}
+            {/* 9 rows of 3 (27 cards) matching Mobile More Like This */}
+            {relatedToSpotlight.length > 0 && (
+              <div className="px-2.5 sm:px-4">
+                <h3 className="text-sm font-bold text-white tracking-tight mb-2.5">
+                  More Like This
+                </h3>
+                <div className="grid grid-cols-3 gap-2 sm:gap-2.5">
+                  {relatedToSpotlight.slice(0, 27).map((relShow) => (
+                    <div
+                      key={relShow.id}
+                      data-show-id={relShow.id}
+                      onClick={() => {
+                        onClose();
+                        onOpenDetails(relShow);
+                      }}
+                      className="aspect-[2/3] rounded-md overflow-hidden bg-black shadow cursor-pointer group active:scale-95 transition-transform"
+                    >
+                      <MediaImage
+                        src={relShow.posterVerticalUrl || relShow.posterUrl || relShow.posterLandscapeUrl}
+                        fallbackTitle={relShow.title}
+                        fallbackClassName="w-full h-full bg-[#111] flex items-center justify-center p-2.5 text-center select-none"
+                        className="w-full h-full object-cover group-hover:scale-105 transition-transform"
+                      />
+                    </div>
+                  ))}
+                </div>
               </div>
             )}
           </div>
+        ) : searchResults.length > 0 ? (
+          /* TYPING RESULTS: 3 columns of 2:3 cards matching Mobile More Like This, max 10 rows (30 cards) */
+          <div className="px-2.5 sm:px-4 pt-3">
+            <div className="grid grid-cols-3 gap-2 sm:gap-2.5">
+              {searchResults.slice(0, 30).map((show) => (
+                <div
+                  key={show.id}
+                  data-show-id={show.id}
+                  onClick={() => {
+                    onClose();
+                    onOpenDetails(show);
+                  }}
+                  className="aspect-[2/3] rounded-md overflow-hidden bg-black shadow cursor-pointer group active:scale-95 transition-transform"
+                >
+                  <MediaImage
+                    src={show.posterVerticalUrl || show.posterUrl || show.posterLandscapeUrl}
+                    fallbackTitle={show.title}
+                    fallbackClassName="w-full h-full bg-[#111] flex items-center justify-center p-2.5 text-center select-none"
+                    className="w-full h-full object-cover group-hover:scale-105 transition-transform"
+                  />
+                </div>
+              ))}
+            </div>
+          </div>
         ) : (
-          /* No results state */
-          <div className="py-12 text-center text-zinc-400">
+          <div className="py-12 px-4 text-center text-zinc-400">
             <p className="text-base font-medium text-white">No results found for &quot;{query}&quot;</p>
             <p className="text-xs text-zinc-500 mt-1">
               Try searching with a different actor, genre, or Turkish title.

@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { Show } from '../types';
+import { Show, DetailsOriginMeta } from '../types';
 import { Play, Volume2, VolumeX, RotateCcw, Plus, Check, Info } from 'lucide-react';
 import { ShowTitleLogo } from './ShowTitleLogo';
 import { getActiveArtwork } from '../utils/artworkRotator';
@@ -11,7 +11,7 @@ interface HeroRecommendationProps {
   allShows?: Show[];
   isInWatchlist: boolean;
   onToggleWatchlist: (showId: string) => void;
-  onOpenDetails: (show: Show) => void;
+  onOpenDetails: (show: Show, originMeta?: DetailsOriginMeta) => void;
   onPlay: (show: Show) => void;
   onSelectHeroShow?: (show: Show) => void;
   isPausedByFeedHover?: boolean;
@@ -456,13 +456,13 @@ export const HeroRecommendation: React.FC<HeroRecommendationProps> = ({
         (Disabled when isPosterNoPreviewMobile is selected: no ambiance)
       */}
       {!isPosterNoPreviewMobile && (
-        <div className="absolute -top-4 md:-top-28 sm:-top-36 inset-x-0 -bottom-8 pointer-events-none z-0 flex items-center justify-center overflow-visible">
-          {/* Soft diffused wide aura that extends smoothly */}
+        <div className="absolute -top-40 sm:-top-44 md:-top-32 inset-x-0 -bottom-8 pointer-events-none z-0 flex items-center justify-center overflow-visible">
+          {/* Soft diffused wide aura extending smoothly to the top edge of viewport */}
           <div
-            className="w-full max-w-[1680px] h-[115%] rounded-full blur-[120px] md:blur-[180px] transition-colors duration-1000 ease-out"
+            className="w-full max-w-[1680px] h-[125%] rounded-full blur-[120px] md:blur-[180px] transition-colors duration-1000 ease-out"
             style={{
-              background: `radial-gradient(ellipse 80% 70% at 50% 40%, ${ambientColor} 0%, ${ambientColor}65 35%, ${ambientColor}20 65%, transparent 100%)`,
-              opacity: 0.72
+              background: `radial-gradient(ellipse 85% 75% at 50% 35%, ${ambientColor} 0%, ${ambientColor}70 38%, ${ambientColor}25 68%, transparent 100%)`,
+              opacity: 0.78
             }}
           />
         </div>
@@ -484,20 +484,26 @@ export const HeroRecommendation: React.FC<HeroRecommendationProps> = ({
           /* ========================================================================= */
           <div
             ref={cardRef}
-            onClick={() => onOpenDetails(show)}
-            className="relative w-full max-w-none sm:max-w-[480px] mx-auto aspect-[9/14] sm:aspect-[2/3] rounded-none sm:rounded-2xl overflow-hidden bg-[#121319] border-0 select-none shadow-[0_25px_60px_-15px_rgba(0,0,0,0.95)] cursor-pointer"
+            onClick={() => onOpenDetails(show, { sourceFeedType: 'other' })}
+            className="relative w-full max-w-none sm:max-w-[480px] mx-auto aspect-[9/14] sm:aspect-[2/3] rounded-none sm:rounded-2xl overflow-hidden bg-black md:bg-[#121319] border-0 select-none shadow-[0_25px_60px_-15px_rgba(0,0,0,0.95)] cursor-pointer"
           >
             {/* Base Vertical Poster Image - Style 1 (Full-Bleed No-Preview Hero) */}
             <MediaImage
               src={show.mobileNoPreviewPosterHeroUrl || show.posterVerticalUrl || show.posterUrl || show.posterLandscapeUrl || backdropSrc}
               fallbackTitle={show.title}
-              fallbackClassName="absolute inset-0 w-full h-full bg-[#121319] flex items-center justify-center p-6 text-center select-none"
+              fallbackClassName="absolute inset-0 w-full h-full bg-black md:bg-[#121319] flex items-center justify-center p-6 text-center select-none"
               fallbackTextClassName="text-white/85 font-bold text-xl font-sans"
               className="absolute inset-0 w-full h-full object-cover object-top"
             />
 
-            {/* Seamless Top Vignette for fixed hamburger bar */}
-            <div className="absolute inset-x-0 top-0 h-28 bg-gradient-to-b from-black/85 via-black/35 to-transparent pointer-events-none z-10" />
+            {/* Soft, diffused top glare for icon legibility without concentrating darkness at top */}
+            <div
+              className="absolute inset-x-0 top-0 h-44 sm:h-48 pointer-events-none z-10"
+              style={{
+                background:
+                  'linear-gradient(to bottom, rgba(0,0,0,0.36) 0%, rgba(0,0,0,0.24) 28%, rgba(0,0,0,0.12) 58%, rgba(0,0,0,0.04) 82%, transparent 100%)'
+              }}
+            />
 
             {/* Seamless Bottom Vignette Gradient */}
             <div className="absolute inset-0 bg-gradient-to-t from-black via-black/55 to-transparent pointer-events-none" />
@@ -575,8 +581,8 @@ export const HeroRecommendation: React.FC<HeroRecommendationProps> = ({
           /* ========================================================================= */
           <div
             ref={cardRef}
-            onClick={() => onOpenDetails(show)}
-            className="relative w-full max-w-[480px] mx-auto aspect-[2/3] rounded-[14px] sm:rounded-[18px] overflow-hidden bg-[#121319] border-0 transition-shadow duration-1000 select-none shadow-[0_25px_60px_-15px_rgba(0,0,0,0.95)] cursor-pointer"
+            onClick={() => onOpenDetails(show, { sourceFeedType: 'other' })}
+            className="relative w-full max-w-[480px] mx-auto aspect-[2/3] rounded-[14px] sm:rounded-[18px] overflow-hidden bg-black md:bg-[#121319] border-0 transition-shadow duration-1000 select-none shadow-[0_25px_60px_-15px_rgba(0,0,0,0.95)] cursor-pointer"
             style={{
               boxShadow: `0 30px 80px -15px rgba(0,0,0,0.98), 0 10px 40px rgba(0,0,0,0.85), 0 0 50px ${ambientColor}55`
             }}
@@ -588,7 +594,7 @@ export const HeroRecommendation: React.FC<HeroRecommendationProps> = ({
             <MediaImage
               src={show.mobileNoPreviewCard2x3Url || show.mobileRecommendation9x16BackdropUrl || show.posterVerticalUrl || show.posterLandscapeUrl || backdropSrc}
               fallbackTitle={show.title}
-              fallbackClassName="absolute inset-0 w-full h-full bg-[#121319] flex items-center justify-center p-6 text-center select-none"
+              fallbackClassName="absolute inset-0 w-full h-full bg-black md:bg-[#121319] flex items-center justify-center p-6 text-center select-none"
               fallbackTextClassName="text-white/85 font-bold text-xl font-sans"
               className="absolute inset-0 w-full h-full object-cover object-center"
             />
@@ -705,12 +711,12 @@ export const HeroRecommendation: React.FC<HeroRecommendationProps> = ({
             ref={cardRef}
             onClick={() => {
               if (isLandscapeMobile || (typeof window !== 'undefined' && window.innerWidth <= 768)) {
-                onOpenDetails(show);
+                onOpenDetails(show, { sourceFeedType: 'other' });
               }
             }}
             className={`relative w-full ${
               isLandscapeMobile ? 'aspect-[16/9] max-w-full' : 'aspect-[2.22/1]'
-            } rounded-[14px] sm:rounded-[18px] md:rounded-[22px] overflow-hidden bg-[#121319] border-0 transition-shadow duration-1000 shadow-[0_30px_90px_-15px_rgba(0,0,0,0.98)] cursor-pointer sm:cursor-default`}
+            } rounded-[14px] sm:rounded-[18px] md:rounded-[22px] overflow-hidden bg-black md:bg-[#121319] border-0 transition-shadow duration-1000 shadow-[0_30px_90px_-15px_rgba(0,0,0,0.98)] cursor-pointer sm:cursor-default`}
             style={{
               boxShadow: `0 35px 95px -15px rgba(0,0,0,0.98), 0 15px 45px rgba(0,0,0,0.8), 0 0 60px ${ambientColor}65, 0 0 110px ${ambientColor}25`
             }}
@@ -718,14 +724,14 @@ export const HeroRecommendation: React.FC<HeroRecommendationProps> = ({
             {/* Subtle inner overlay border with grey color, reduced to 2.5px width and 9% opacity */}
             <div className="absolute inset-0 rounded-[inherit] pointer-events-none z-30 border-[2.5px] border-zinc-400/[0.09]" />
             {/* Media: Cinematic Backdrop Image + Optional Video Preview Overlay (zero black screen) */}
-            <div className="absolute inset-0 z-0 bg-[#0d0e12]">
+            <div className="absolute inset-0 z-0 bg-black md:bg-[#0d0e12]">
               {/* Primary Base Layer: Backdrop Image (Always visible underneath - stays visible if video loading or error) */}
               <MediaImage
                 imageRef={imgRef}
                 src={backdropSrc}
                 fallbackTitle={show.title}
                 hideFallback={isVideoPlaying}
-                fallbackClassName="absolute inset-0 w-full h-full bg-[#0d0e12] flex items-center justify-center p-6 text-center select-none"
+                fallbackClassName="absolute inset-0 w-full h-full bg-black md:bg-[#0d0e12] flex items-center justify-center p-6 text-center select-none"
                 fallbackTextClassName="text-white/80 font-bold text-2xl font-sans"
                 loading="eager"
                 decoding="async"
@@ -909,7 +915,7 @@ export const HeroRecommendation: React.FC<HeroRecommendationProps> = ({
                   <button
                     onClick={(e) => {
                       e.stopPropagation();
-                      onOpenDetails(show);
+                      onOpenDetails(show, { sourceFeedType: 'other' });
                     }}
                     className="px-5 sm:px-6 xl:px-6.5 py-2 sm:py-2.5 xl:py-3 rounded-full bg-white/20 hover:bg-white/30 backdrop-blur-none focus-visible:ring-2 focus-visible:ring-red-500 focus-visible:outline-none text-white font-semibold text-[14px] sm:text-[16px] xl:text-[17px] flex items-center justify-center transition-colors cursor-pointer shadow-md tracking-wide"
                     aria-label={`More info about ${show.title}`}

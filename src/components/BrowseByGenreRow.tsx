@@ -102,9 +102,12 @@ export const BrowseByGenreRow: React.FC<BrowseByGenreRowProps> = ({
   onSelectGenre,
   className = ''
 }) => {
+  const rowSectionRef = useRef<HTMLElement>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
   const [canScrollLeft, setCanScrollLeft] = useState(false);
   const [canScrollRight, setCanScrollRight] = useState(true);
+  const [isRowInView, setIsRowInView] = useState(false);
+  const [loadedCardIndices, setLoadedCardIndices] = useState<Set<number>>(() => new Set([0, 1, 2, 3, 4, 5]));
 
   // Use admin-managed genre cards if configured, otherwise fallback to default genres + category artwork
   const displayGenres = React.useMemo(() => {
@@ -149,6 +152,52 @@ export const BrowseByGenreRow: React.FC<BrowseByGenreRowProps> = ({
     return list;
   }, [categories, managedGenres]);
 
+  useEffect(() => {
+    const el = rowSectionRef.current;
+    if (!el || isRowInView) return;
+    const obs = new IntersectionObserver(
+      (entries) => {
+        if (entries.some((e) => e.isIntersecting)) {
+          setIsRowInView(true);
+          obs.disconnect();
+        }
+      },
+      { rootMargin: '120px 0px', threshold: 0.01 }
+    );
+    obs.observe(el);
+    return () => obs.disconnect();
+  }, [isRowInView]);
+
+  useEffect(() => {
+    if (!isRowInView) return;
+    const container = scrollRef.current;
+    if (!container) return;
+    const obs = new IntersectionObserver(
+      (entries) => {
+        setLoadedCardIndices((prev) => {
+          let changed = false;
+          const next = new Set(prev);
+          entries.forEach((entry) => {
+            if (entry.isIntersecting) {
+              const raw = (entry.target as HTMLElement).dataset.genreIdx;
+              if (raw !== undefined) {
+                const idx = Number(raw);
+                if (!next.has(idx)) {
+                  next.add(idx);
+                  changed = true;
+                }
+              }
+            }
+          });
+          return changed ? next : prev;
+        });
+      },
+      { root: container, rootMargin: '0px 80px 0px 80px', threshold: 0.01 }
+    );
+    container.querySelectorAll('[data-genre-idx]').forEach((n) => obs.observe(n));
+    return () => obs.disconnect();
+  }, [isRowInView, displayGenres.length]);
+
   const checkScroll = () => {
     if (!scrollRef.current) return;
     const { scrollLeft, scrollWidth, clientWidth } = scrollRef.current;
@@ -158,16 +207,33 @@ export const BrowseByGenreRow: React.FC<BrowseByGenreRowProps> = ({
 
   useEffect(() => {
     checkScroll();
+    const rafId = requestAnimationFrame(checkScroll);
     const el = scrollRef.current;
-    if (el) {
-      el.addEventListener('scroll', checkScroll, { passive: true });
-      window.addEventListener('resize', checkScroll);
-    }
+    if (!el) return () => cancelAnimationFrame(rafId);
+
+    const handleWheel = (e: WheelEvent) => {
+      const firstCard = el.querySelector('[data-genre-idx]') as HTMLElement | null;
+      if (!firstCard) return;
+      const cardRect = firstCard.getBoundingClientRect();
+      const y = e.clientY;
+      if (y < cardRect.top || y > cardRect.bottom) {
+        e.preventDefault();
+        if (Math.abs(e.deltaY) > 0) {
+          window.scrollBy({ top: e.deltaY, left: 0, behavior: 'auto' });
+        }
+      }
+    };
+
+    el.addEventListener('scroll', checkScroll, { passive: true });
+    el.addEventListener('wheel', handleWheel, { passive: false });
+    window.addEventListener('resize', checkScroll);
     return () => {
-      if (el) el.removeEventListener('scroll', checkScroll);
+      cancelAnimationFrame(rafId);
+      el.removeEventListener('scroll', checkScroll);
+      el.removeEventListener('wheel', handleWheel);
       window.removeEventListener('resize', checkScroll);
     };
-  }, [displayGenres]);
+  }, [displayGenres, isRowInView]);
 
   const handleScroll = (direction: 'left' | 'right') => {
     if (!scrollRef.current) return;
@@ -179,21 +245,36 @@ export const BrowseByGenreRow: React.FC<BrowseByGenreRowProps> = ({
   };
 
   return (
-    <section className={`relative w-full my-4 sm:my-6 select-none group/row ${className}`}>
-      {/* Section Title matching image_616b6384.png */}
-      <div className="px-4 md:px-8 xl:px-12 mb-2.5 sm:mb-3">
-        <h2 className="text-white font-extrabold text-base sm:text-lg md:text-xl tracking-tight">
-          Browse by Genre
-        </h2>
+    <section ref={rowSectionRef} className={`relative w-full my-2 sm:my-3 select-none group/row ${className}`}>
+      {/* Section Title matching feed header spacing */}
+      <div className="px-4 md:px-8 xl:px-12 mb-1 sm:mb-1.5">
+        {!isRowInView ? (
+          <div className="w-40 h-5 sm:h-6 rounded skeleton-wave" />
+        ) : (
+          <h2 className="text-white/95 font-semibold text-[15px] sm:text-base md:text-[17px] tracking-tight">
+            Browse by Genre
+          </h2>
+        )}
       </div>
 
-      {/* Row Container with arrows */}
+      {!isRowInView ? (
+        <div className="flex items-center gap-2.5 sm:gap-3.5 md:gap-4 overflow-hidden px-4 md:px-8 xl:px-12 py-1">
+          {Array.from({ length: 6 }).map((_, i) => (
+            <div
+              key={`genre-skel-${i}`}
+              className="aspect-square w-[calc((100vw-2.5rem)/2.38)] sm:w-[calc((100vw-4rem)/3.8)] md:w-[calc((100vw-6rem)/5.5)] lg:w-[calc((100vw-7rem)/6.4)] max-w-[220px] shrink-0 rounded-2xl skeleton-wave"
+              style={{ animationDelay: `${i * 150}ms` }}
+            />
+          ))}
+        </div>
+      ) : (
+      /* Row Container with arrows */
       <div className="relative w-full">
         {/* Left Arrow Button */}
         {canScrollLeft && (
           <button
             onClick={() => handleScroll('left')}
-            className="hidden md:flex group/nav absolute left-0 top-0 bottom-0 z-30 w-12 sm:w-14 rounded-r-xl rounded-l-none bg-black/60 text-white items-center justify-center cursor-pointer shadow-xl select-none"
+            className="hidden md:flex group/nav absolute left-0 top-1 bottom-1 z-30 w-11 sm:w-12 md:w-14 rounded-r-xl rounded-l-none bg-black/35 text-white items-center justify-center cursor-pointer shadow-xl select-none opacity-0 group-hover/row:opacity-100 transition-opacity duration-200"
             aria-label="Scroll left"
           >
             <ChevronLeft className="w-8 h-8 stroke-[2.5] group-active/nav:scale-75 transition-transform duration-100" />
@@ -205,18 +286,19 @@ export const BrowseByGenreRow: React.FC<BrowseByGenreRowProps> = ({
           ref={scrollRef}
           className="flex items-center gap-2.5 sm:gap-3.5 md:gap-4 overflow-x-auto no-scrollbar px-4 md:px-8 xl:px-12 py-1 scroll-smooth"
         >
-          {displayGenres.map((genre) => (
+          {displayGenres.map((genre, gIdx) => (
             <div
               key={genre.id}
+              data-genre-idx={gIdx}
               onClick={() => onSelectGenre(genre)}
-              className="relative aspect-square w-[calc((100vw-2.5rem)/2.38)] sm:w-[calc((100vw-4rem)/3.8)] md:w-[calc((100vw-6rem)/5.5)] lg:w-[calc((100vw-7rem)/6.4)] max-w-[220px] shrink-0 rounded-md sm:rounded-lg overflow-hidden bg-[#181818] cursor-pointer shadow-lg active:scale-95 group/card"
+              className="relative aspect-square w-[calc((100vw-2.5rem)/2.38)] sm:w-[calc((100vw-4rem)/3.8)] md:w-[calc((100vw-6rem)/5.5)] lg:w-[calc((100vw-7rem)/6.4)] max-w-[220px] shrink-0 rounded-2xl overflow-hidden bg-[#181818] cursor-pointer shadow-lg active:scale-95 group/card"
             >
               {/* Genre artwork image (no zoom-in effect) */}
               <MediaImage
                 src={genre.imageUrl}
                 fallbackTitle={genre.displayName}
                 hideFallback={true}
-                loading="lazy"
+                deferLoad={!loadedCardIndices.has(gIdx)}
                 className="w-full h-full object-cover"
               />
 
@@ -238,13 +320,14 @@ export const BrowseByGenreRow: React.FC<BrowseByGenreRowProps> = ({
         {canScrollRight && (
           <button
             onClick={() => handleScroll('right')}
-            className="hidden md:flex group/nav absolute right-0 top-0 bottom-0 z-30 w-12 sm:w-14 rounded-l-xl rounded-r-none bg-black/60 text-white items-center justify-center cursor-pointer shadow-xl select-none"
+            className="hidden md:flex group/nav absolute right-0 top-1 bottom-1 z-30 w-11 sm:w-12 md:w-14 rounded-l-xl rounded-r-none bg-black/35 text-white items-center justify-center cursor-pointer shadow-xl select-none opacity-0 group-hover/row:opacity-100 transition-opacity duration-200"
             aria-label="Scroll right"
           >
             <ChevronRight className="w-8 h-8 stroke-[2.5] group-active/nav:scale-75 transition-transform duration-100" />
           </button>
         )}
       </div>
+      )}
     </section>
   );
 };
