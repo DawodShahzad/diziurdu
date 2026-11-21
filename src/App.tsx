@@ -1,3 +1,4 @@
+import './firebase';
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import fullBackupData from './full_backup.json';
 import { Show, FeedConfig, AdminSettings, CastMember, VideoSourceType, NotificationItem, Episode, TrailerItem, CategoryItem, ProfilePictureGroup, DetailsOriginMeta, AdDeviceLayout } from './types';
