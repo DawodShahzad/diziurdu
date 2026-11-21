@@ -1,5 +1,6 @@
 import React, { useRef } from 'react';
 import { Search } from 'lucide-react';
+import { useDeviceLayout } from '../utils/deviceLayout';
 
 export interface MobileBottomNavProps {
   activeTab: 'home' | 'trends' | 'search' | 'profile';
@@ -25,6 +26,9 @@ export const MobileBottomNav: React.FC<MobileBottomNavProps> = ({
   isHiddenBehindLock = false,
   hideProfileAvatar = false
 }) => {
+  const { isMobile } = useDeviceLayout();
+  if (!isMobile) return null;
+
   const isBottomFixed = navbarStyle === 'bottom_fixed';
   const isGlass = navbarTheme === 'glass';
 
@@ -64,7 +68,7 @@ export const MobileBottomNav: React.FC<MobileBottomNavProps> = ({
               }
             : undefined
         }
-        className={`md:hidden fixed bottom-0 left-0 right-0 z-[120] w-full transition-opacity duration-500 ${
+        className={`fixed bottom-0 left-0 right-0 z-[120] w-full transition-opacity duration-500 ${
           isHiddenBehindLock ? 'opacity-0 pointer-events-none' : 'opacity-100 pointer-events-auto'
         } ${
           isGlass
@@ -192,7 +196,7 @@ export const MobileBottomNav: React.FC<MobileBottomNavProps> = ({
 
   return (
     <div
-      className={`md:hidden fixed bottom-4 left-1/2 -translate-x-1/2 z-[120] transition-opacity duration-500 ${
+      className={`fixed bottom-4 left-1/2 -translate-x-1/2 z-[120] transition-opacity duration-500 ${
         isHiddenBehindLock ? 'opacity-0 pointer-events-none' : 'opacity-100 pointer-events-auto'
       }`}
     >

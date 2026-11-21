@@ -2,6 +2,7 @@ import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { ChevronLeft, ChevronRight } from 'lucide-react';
 import { Episode, Show, DetailsOriginMeta } from '../types';
 import { ShowCard } from './ShowCard';
+import { useDeviceLayout } from '../utils/deviceLayout';
 
 interface StartFromFirstEpisodeRowProps {
   shows: Show[];
@@ -28,6 +29,9 @@ const getFirstEpisode = (show: Show): Episode | null => {
   );
 };
 
+let hasStartEp1RowLoaded = false;
+const cachedStartEp1Indices = new Set<number>([0, 1, 2, 3, 4]);
+
 export const StartFromFirstEpisodeRow: React.FC<StartFromFirstEpisodeRowProps> = ({
   shows,
   selectedShowIds,
@@ -41,10 +45,12 @@ export const StartFromFirstEpisodeRow: React.FC<StartFromFirstEpisodeRowProps> =
 }) => {
   const rowRef = useRef<HTMLDivElement>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
+  const { isMobile } = useDeviceLayout();
   const [canScrollLeft, setCanScrollLeft] = useState(false);
   const [canScrollRight, setCanScrollRight] = useState(true);
-  const [isRowInViewport, setIsRowInViewport] = useState(!deferInitialLoad);
-  const [loadedIndices, setLoadedIndices] = useState<Set<number>>(() => new Set([0, 1, 2, 3, 4]));
+  const [navBox, setNavBox] = useState<{ top: number; height: number } | null>(null);
+  const [isRowInViewport, setIsRowInViewport] = useState(hasStartEp1RowLoaded || !deferInitialLoad);
+  const [loadedIndices, setLoadedIndices] = useState<Set<number>>(() => new Set(cachedStartEp1Indices));
 
   const items = useMemo(() => {
     const episodic = shows.filter((s) => {
@@ -71,14 +77,19 @@ export const StartFromFirstEpisodeRow: React.FC<StartFromFirstEpisodeRowProps> =
       .filter((item): item is { show: Show; episode: Episode } => Boolean(item));
   }, [shows, selectedShowIds]);
 
-  // Feed-by-feed vertical gating
+  // Feed-by-feed vertical gating (cached once loaded)
   useEffect(() => {
+    if (isRowInViewport) {
+      hasStartEp1RowLoaded = true;
+      return;
+    }
     const el = rowRef.current;
-    if (!el || isRowInViewport) return;
+    if (!el) return;
 
     const observer = new IntersectionObserver(
       (entries) => {
         if (entries.some((entry) => entry.isIntersecting)) {
+          hasStartEp1RowLoaded = true;
           setIsRowInViewport(true);
           observer.disconnect();
         }
@@ -107,6 +118,7 @@ export const StartFromFirstEpisodeRow: React.FC<StartFromFirstEpisodeRowProps> =
                 const idx = Number(rawIdx);
                 if (!next.has(idx)) {
                   next.add(idx);
+                  cachedStartEp1Indices.add(idx);
                   changed = true;
                 }
               }
@@ -123,11 +135,27 @@ export const StartFromFirstEpisodeRow: React.FC<StartFromFirstEpisodeRowProps> =
     return () => observer.disconnect();
   }, [isRowInViewport, items.length]);
 
+  const updateNavBox = () => {
+    const el = scrollRef.current;
+    const parentEl = el?.parentElement;
+    if (!el || !parentEl) return;
+    const thumbEl = (el.querySelector('[data-card-thumb="true"]') ||
+      el.querySelector('[data-show-card="true"]')) as HTMLElement | null;
+    if (!thumbEl) return;
+    const parentRect = parentEl.getBoundingClientRect();
+    const thumbRect = thumbEl.getBoundingClientRect();
+    const height = Math.round(thumbRect.height);
+    if (height > 0) {
+      setNavBox({ top: Math.round(thumbRect.top - parentRect.top), height });
+    }
+  };
+
   const checkScroll = () => {
     const el = scrollRef.current;
     if (!el) return;
     setCanScrollLeft(el.scrollLeft > 10);
     setCanScrollRight(el.scrollLeft + el.clientWidth < el.scrollWidth - 10);
+    updateNavBox();
   };
 
   useEffect(() => {
@@ -151,6 +179,8 @@ export const StartFromFirstEpisodeRow: React.FC<StartFromFirstEpisodeRowProps> =
 
     const ro = new ResizeObserver(checkScroll);
     ro.observe(el);
+    const firstThumb = (el.querySelector('[data-card-thumb="true"]') || el.querySelector('[data-show-card="true"]')) as HTMLElement | null;
+    if (firstThumb) ro.observe(firstThumb);
     el.addEventListener('scroll', checkScroll, { passive: true });
     el.addEventListener('wheel', handleWheel, { passive: false });
     window.addEventListener('resize', checkScroll);
@@ -170,13 +200,13 @@ export const StartFromFirstEpisodeRow: React.FC<StartFromFirstEpisodeRowProps> =
     el.scrollBy({ left: dir === 'left' ? -step : step, behavior: 'smooth' });
   };
 
-  if (items.length === 0) return null;
+  if (isMobile || items.length === 0) return null;
 
   return (
     <section
       ref={rowRef}
       data-feed-strip="true"
-      className="hidden md:block relative group/epstrip w-full select-none my-2 sm:my-3 z-0"
+      className="relative group/epstrip w-full select-none my-2 sm:my-3 z-0"
     >
       {/* Title tightly above row */}
       <div className="relative z-20 w-full pl-2.5 sm:pl-4 md:pl-8 xl:pl-12 pr-2.5 sm:pr-4 md:pr-8 xl:pr-12 mb-1 sm:mb-1.5">
@@ -217,9 +247,14 @@ export const StartFromFirstEpisodeRow: React.FC<StartFromFirstEpisodeRowProps> =
             <button
               onClick={() => handleScroll('left')}
               aria-label="Scroll left"
-              className="group/nav absolute left-0 top-1 h-[calc(((100vw-112px)/4.05)*0.5625)] max-h-[192px] z-30 w-11 sm:w-12 md:w-14 rounded-r-xl rounded-l-none bg-black/35 text-white flex items-center justify-center cursor-pointer border-0 opacity-0 group-hover/epstrip:opacity-100 transition-opacity duration-200"
+              style={{
+                top: navBox ? `${navBox.top}px` : '4px',
+                height: navBox ? `${navBox.height}px` : 'calc(100% - 8px)',
+                background: 'linear-gradient(to right, rgba(0, 0, 0, 0.72) 0%, rgba(0, 0, 0, 0.42) 45%, rgba(0, 0, 0, 0.14) 76%, rgba(0, 0, 0, 0) 100%)'
+              }}
+              className="group/nav absolute left-0 z-30 w-12 sm:w-14 md:w-16 rounded-none text-white flex items-center justify-start pl-1.5 sm:pl-2 cursor-pointer border-0 opacity-0 group-hover/epstrip:opacity-100 transition-opacity duration-200 select-none"
             >
-              <ChevronLeft className="w-8 h-8 stroke-[2.5] group-active/nav:scale-75 transition-transform duration-100" />
+              <ChevronLeft className="w-8 h-8 stroke-[2.5] drop-shadow-[0_2px_6px_rgba(0,0,0,0.7)] group-active/nav:scale-75 transition-transform duration-100" />
             </button>
           )}
 
@@ -227,9 +262,14 @@ export const StartFromFirstEpisodeRow: React.FC<StartFromFirstEpisodeRowProps> =
             <button
               onClick={() => handleScroll('right')}
               aria-label="Scroll right"
-              className="group/nav absolute right-0 top-1 h-[calc(((100vw-112px)/4.05)*0.5625)] max-h-[192px] z-30 w-11 sm:w-12 md:w-14 rounded-l-xl rounded-r-none bg-black/35 text-white flex items-center justify-center cursor-pointer border-0 opacity-0 group-hover/epstrip:opacity-100 transition-opacity duration-200"
+              style={{
+                top: navBox ? `${navBox.top}px` : '4px',
+                height: navBox ? `${navBox.height}px` : 'calc(100% - 8px)',
+                background: 'linear-gradient(to left, rgba(0, 0, 0, 0.72) 0%, rgba(0, 0, 0, 0.42) 45%, rgba(0, 0, 0, 0.14) 76%, rgba(0, 0, 0, 0) 100%)'
+              }}
+              className="group/nav absolute right-0 z-30 w-12 sm:w-14 md:w-16 rounded-none text-white flex items-center justify-end pr-1.5 sm:pr-2 cursor-pointer border-0 opacity-0 group-hover/epstrip:opacity-100 transition-opacity duration-200 select-none"
             >
-              <ChevronRight className="w-8 h-8 stroke-[2.5] group-active/nav:scale-75 transition-transform duration-100" />
+              <ChevronRight className="w-8 h-8 stroke-[2.5] drop-shadow-[0_2px_6px_rgba(0,0,0,0.7)] group-active/nav:scale-75 transition-transform duration-100" />
             </button>
           )}
 

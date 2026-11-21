@@ -1,5 +1,5 @@
 {
-  "exported_at": "2026-11-19T06:58:35.958Z",
+  "exported_at": "2026-11-08T18:12:10.828Z",
   "app": "Dizi Urdu",
   "version": "2.0",
   "shows": [
@@ -68,8 +68,8 @@
         "HDR10",
         "Dolby Atmos"
       ],
-      "points": 1224,
-      "all_time_score": 1224,
+      "points": 1222,
+      "all_time_score": 1222,
       "play_events": [
         {
           "timestamp": 1792521596657
@@ -136,12 +136,6 @@
         },
         {
           "timestamp": 1793007578496
-        },
-        {
-          "timestamp": 1795071186351
-        },
-        {
-          "timestamp": 1795071229875
         }
       ],
       "whereToWatchEnabled": true,
@@ -1383,8 +1377,8 @@
         "HDR10",
         "Dolby Atmos"
       ],
-      "points": 1444,
-      "all_time_score": 1444,
+      "points": 1439,
+      "all_time_score": 1439,
       "play_events": [
         {
           "timestamp": 1791980481783
@@ -1502,21 +1496,6 @@
         },
         {
           "timestamp": 1793007908027
-        },
-        {
-          "timestamp": 1795070475997
-        },
-        {
-          "timestamp": 1795070475999
-        },
-        {
-          "timestamp": 1795070480551
-        },
-        {
-          "timestamp": 1795070480552
-        },
-        {
-          "timestamp": 1795070504411
         }
       ],
       "whereToWatchEnabled": true,
@@ -2783,8 +2762,8 @@
         "HDR10",
         "Dolby Atmos"
       ],
-      "points": 2563,
-      "all_time_score": 2563,
+      "points": 2560,
+      "all_time_score": 2560,
       "play_events": [
         {
           "timestamp": 1791668509577
@@ -2965,15 +2944,6 @@
         },
         {
           "timestamp": 1793016965447
-        },
-        {
-          "timestamp": 1795023246162
-        },
-        {
-          "timestamp": 1795023246168
-        },
-        {
-          "timestamp": 1795023248998
         }
       ],
       "whereToWatchEnabled": true,
@@ -3982,7 +3952,7 @@
         "4K Ultra HD",
         "HDR10"
       ],
-      "points": 1565,
+      "points": 1561,
       "cast": [
         {
           "id": "cast-1078769",
@@ -4090,7 +4060,7 @@
       ],
       "titleLogoUrl": "https://res.cloudinary.com/hxk2tqpu/image/upload/v1791662974/Gemini_Generated_Image_eg10dfuoeg10uoeg10-removebg-preview.png",
       "verticalBackdropUrl": "https://occ-0-2219-2218.1.nflxso.net/dnm/api/v6/MgXQGyNr1xbI8tJSYiMWv5kXg5g/AAAABSDHc4yu4FIcBOKNKkO_zoZxmQhlDIPn2mW71fW4BLR-r8RcdR9Pn913FSC7CIpSmJv1DZ7yazx2GX1-fua5_fef7z4h9rZuiY5PEWVf6HV-USxAWOR6ybXzFw.jpg?r=4a6",
-      "all_time_score": 1565,
+      "all_time_score": 1561,
       "play_events": [
         {
           "timestamp": 1791648711859
@@ -4265,18 +4235,6 @@
         },
         {
           "timestamp": 1793017477877
-        },
-        {
-          "timestamp": 1795071232939
-        },
-        {
-          "timestamp": 1795071236930
-        },
-        {
-          "timestamp": 1795071236932
-        },
-        {
-          "timestamp": 1795071243364
         }
       ],
       "is_recommended": true,
@@ -6561,12 +6519,7 @@
       "embedBackdropUrl": "https://mir-s3-cdn-cf.behance.net/project_modules/1400/6416b722266513.5630f6fc1d0ab.jpg",
       "embedBackdropDarkness": 85,
       "embedBackdropBlur": 1,
-      "sourceWatermarkUrl": "",
-      "shareLinkPreviewImage191x100Url": "https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcSh0fFZ4UrX155sR_mX-wiNZpYwV4Aeg8TrHuBy3tRI_X7fAbgpO7EYWTjc&s=10",
-      "shareLinkPreviewImage1x1Url": "https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcSh0fFZ4UrX155sR_mX-wiNZpYwV4Aeg8TrHuBy3tRI_X7fAbgpO7EYWTjc&s=10",
-      "shareLinkPreviewImage4x3Url": "https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcSh0fFZ4UrX155sR_mX-wiNZpYwV4Aeg8TrHuBy3tRI_X7fAbgpO7EYWTjc&s=10",
-      "shareDescription": "hi",
-      "preferredSharePreviewAspect": "1.91:1"
+      "sourceWatermarkUrl": ""
     },
     {
       "id": "barbaroslar",
@@ -7281,10 +7234,8 @@
       "specialExploreText": "Explore All",
       "specialExploreAction": "showcase",
       "specialBgImageUrl": "https://wallpapers.com/images/hd/ertugrul-gazi-and-men-on-battlefield-3gcuzmc9p4qu0vkf.webp",
-      "specialBgDarkness": 68,
-      "showIds": [],
-      "isStretchableFeed": false,
-      "specialShowActionButton": false
+      "specialBgDarkness": 45,
+      "showIds": []
     },
     {
       "id": "feed-1792858142234",
@@ -7368,155 +7319,11 @@
       }
     ],
     "useCustomLogo": true,
-    "customLogoUrl": "https://res.cloudinary.com/hxk2tqpu/image/upload/v1793092247/Untitled_-_November_15_2025_at_12.sdf25.58-6.png",
+    "customLogoUrl": "https://res.cloudinary.com/hxk2tqpu/image/upload/v1792642595/new-Photoroom.png",
     "showTop10Badges": false,
-    "mobileNavbarStyle": "floating",
+    "mobileNavbarStyle": "bottom_fixed",
     "mobileNavbarShowLabels": false,
-    "mobileRecommendationStyle": "portrait",
-    "platformIconUrl": "https://res.cloudinary.com/hxk2tqpu/image/upload/v1795019888/Untitled_-_November_15_2025_at_12.sdsefdaf25.58-6.png",
-    "mobileNavbarTheme": "solid",
-    "mobileCategoriesStyle": "stacked_cards",
-    "top10RankStyle": "modern",
-    "modernTop10RankList": true,
-    "useFullSizeMoreInfoByDefault": true,
-    "useNoPreviewButtonsFor2x3Recommendation": true,
-    "mobileLikeButtonStyle": "emoji",
-    "desktopPopoutStyle": "immersive_fade",
-    "desktopNavbarStyle": "floating_glass",
-    "signupTileEnabled": true,
-    "signupTileLayouts": [
-      "desktop",
-      "tablet",
-      "mobile"
-    ],
-    "signupTileTitle": "Stream Your Favourite Urdu dubbed Turkish Dramas in one place",
-    "signupTileButtonText": "Sing Up to Watch Free",
-    "signupTileImageUrl": "",
-    "signupTileUseCustomLogo": true,
-    "signupTileCustomLogoUrl": "https://res.cloudinary.com/hxk2tqpu/image/upload/v1795019888/Untitled_-_November_15_2025_at_12.sdsefdaf25.58-6.png",
-    "alertPosterTitle": "Kuzgun is Released ",
-    "alertPosterSubtitle": "Watch the Drama now",
-    "alertPosterButtonText": "Play ",
-    "alertPosterImageUrl": "https://img.dizi.la/uploads/3698/43f7b909-8ead-4fb1-a61f-984b82584d8e.jpg",
-    "alertPosterButtonAction": "link",
-    "alertPosterButtonUrl": "/kuzgun",
-    "hideMobileDetailActionLabels": true,
-    "mobileAutoFullscreenLandscapeEmbed": true,
-    "hideFullSizeEpisodeTitles": true,
-    "managedGenres": [
-      {
-        "id": "action",
-        "name": "Action",
-        "displayName": "ACTION",
-        "imageUrl": "https://images.unsplash.com/photo-1518837695005-2083093ee35b?auto=format&fit=crop&w=600&q=80",
-        "keywords": [
-          "action",
-          "combat",
-          "warrior",
-          "battle",
-          "adventure"
-        ],
-        "enabled": true
-      },
-      {
-        "id": "comedy",
-        "name": "Comedy",
-        "displayName": "COMEDY",
-        "imageUrl": "https://images.unsplash.com/photo-1517457373958-b7bdd4587205?auto=format&fit=crop&w=600&q=80",
-        "keywords": [
-          "comedy",
-          "humor",
-          "sitcom",
-          "funny",
-          "romantic comedy"
-        ],
-        "enabled": true
-      },
-      {
-        "id": "crime",
-        "name": "Crime",
-        "displayName": "CRIME",
-        "imageUrl": "https://images.unsplash.com/photo-1509198397868-475647b2a1e5?auto=format&fit=crop&w=600&q=80",
-        "keywords": [
-          "crime",
-          "mafia",
-          "detective",
-          "underworld",
-          "police"
-        ],
-        "enabled": true
-      },
-      {
-        "id": "documentaries",
-        "name": "Documentaries",
-        "displayName": "DOCUMENTARIES",
-        "imageUrl": "https://images.unsplash.com/photo-1461360370896-922624d12aa1?auto=format&fit=crop&w=600&q=80",
-        "keywords": [
-          "documentary",
-          "history",
-          "biography",
-          "docuseries",
-          "true story"
-        ],
-        "enabled": true
-      },
-      {
-        "id": "drama",
-        "name": "Drama",
-        "displayName": "DRAMA",
-        "imageUrl": "https://images.unsplash.com/photo-1519501025264-65ba15a82390?auto=format&fit=crop&w=600&q=80",
-        "keywords": [
-          "drama",
-          "emotional",
-          "family saga",
-          "tragedy",
-          "relationships"
-        ],
-        "enabled": true
-      },
-      {
-        "id": "romance",
-        "name": "Romance",
-        "displayName": "ROMANCE",
-        "imageUrl": "https://images.unsplash.com/photo-1518199266791-5375a83190b7?auto=format&fit=crop&w=600&q=80",
-        "keywords": [
-          "romance",
-          "love",
-          "romantic",
-          "passion",
-          "romantic dramas"
-        ],
-        "enabled": true
-      },
-      {
-        "id": "historical",
-        "name": "Historical Epics",
-        "displayName": "HISTORICAL",
-        "imageUrl": "https://images.unsplash.com/photo-1461360370896-922624d12aa1?auto=format&fit=crop&w=600&q=80",
-        "keywords": [
-          "historical",
-          "ottoman",
-          "empire",
-          "ancient",
-          "historical epics"
-        ],
-        "enabled": true
-      },
-      {
-        "id": "thriller",
-        "name": "Thriller",
-        "displayName": "THRILLER",
-        "imageUrl": "https://images.unsplash.com/photo-1478760329108-5c3ed9d495a0?auto=format&fit=crop&w=600&q=80",
-        "keywords": [
-          "thriller",
-          "suspense",
-          "mystery",
-          "psychological",
-          "investigation"
-        ],
-        "enabled": true
-      }
-    ]
+    "mobileRecommendationStyle": "portrait"
   },
   "categoriesList": [
     {

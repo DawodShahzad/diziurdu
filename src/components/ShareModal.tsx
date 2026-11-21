@@ -3,6 +3,7 @@ import { Show } from '../types';
 import { X, Link2, Check, MessageCircle, Send, Mail, MoreHorizontal, ChevronLeft, ChevronRight } from 'lucide-react';
 import { MediaImage } from './MediaImage';
 import { resolveShowShareMeta, hexToRgbTuple } from '../utils/shareMeta';
+import { detectIsMobileDevice } from '../utils/deviceLayout';
 
 interface ShareModalProps {
   isOpen: boolean;
@@ -19,22 +20,25 @@ export const ShareModal: React.FC<ShareModalProps> = ({
 }) => {
   const [copied, setCopied] = useState(false);
   const [moreToast, setMoreToast] = useState(false);
-  const [isMobileView, setIsMobileView] = useState<boolean>(() =>
-    typeof window !== 'undefined' ? window.innerWidth < 768 : false
-  );
+  const [isMobileView, setIsMobileView] = useState<boolean>(() => detectIsMobileDevice());
   const desktopRowRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-    const onResize = () => setIsMobileView(window.innerWidth < 768);
+    const onResize = () => setIsMobileView(detectIsMobileDevice());
+    onResize();
     window.addEventListener('resize', onResize, { passive: true });
-    return () => window.removeEventListener('resize', onResize);
+    window.addEventListener('orientationchange', onResize, { passive: true });
+    return () => {
+      window.removeEventListener('resize', onResize);
+      window.removeEventListener('orientationchange', onResize);
+    };
   }, []);
 
   const currentOrigin = typeof window !== 'undefined' ? window.location.origin : 'http://localhost:3000';
   const currentHost = typeof window !== 'undefined' ? window.location.host : 'localhost:3000';
 
   const slug = show.slug || show.id;
-  const shareUrl = `${currentOrigin}/share/${slug}`;
+  const shareUrl = `${currentOrigin}/watch/${slug}`;
 
   const { shareTitle, shareDescription, linkPreviewImage, displayBackdrop, ambianceColor } =
     resolveShowShareMeta(show, platformName, isMobileView);
@@ -204,7 +208,9 @@ export const ShareModal: React.FC<ShareModalProps> = ({
 
   return (
     <div
-      className="fixed inset-0 z-[250] bg-black/75 backdrop-blur-sm flex items-end md:items-center justify-center md:p-4 animate-in fade-in duration-200"
+      className={`fixed inset-0 z-[250] bg-black/75 backdrop-blur-sm flex justify-center animate-in fade-in duration-200 ${
+        isMobileView ? 'items-end' : 'items-center p-4'
+      }`}
       onClick={onClose}
     >
       {/* Ambient Popout Card Wrapper */}
@@ -215,7 +221,11 @@ export const ShareModal: React.FC<ShareModalProps> = ({
           borderColor: `rgba(${ambR}, ${ambG}, ${ambB}, 0.34)`,
           boxShadow: `0 24px 70px rgba(0, 0, 0, 0.88), 0 0 60px rgba(${ambR}, ${ambG}, ${ambB}, 0.25)`
         }}
-        className="relative w-full md:max-w-[480px] rounded-t-3xl md:rounded-2xl border overflow-hidden select-none animate-in fade-in md:zoom-in-95 slide-in-from-bottom-4 md:slide-in-from-bottom-0 duration-200"
+        className={`relative w-full border overflow-hidden select-none animate-in fade-in duration-200 ${
+          isMobileView
+            ? 'max-w-[460px] rounded-t-3xl slide-in-from-bottom-4'
+            : 'max-w-[480px] rounded-2xl zoom-in-95'
+        }`}
       >
         {/* Soft Admin-Selected Ambiance Glow Behind Artwork & Top Area */}
         <div
@@ -294,7 +304,8 @@ export const ShareModal: React.FC<ShareModalProps> = ({
           </div>
 
           {/* DESKTOP LAYOUT: Copy Link + More Options moved to upper horizontal scrollable row with all social platforms */}
-          <div className="hidden md:block relative group/sharerow">
+          {!isMobileView ? (
+          <div className="relative group/sharerow">
             <button
               type="button"
               onClick={() => scrollDesktopRow('left')}
@@ -379,9 +390,9 @@ export const ShareModal: React.FC<ShareModalProps> = ({
               })}
             </div>
           </div>
-
-          {/* MOBILE LAYOUT: Horizontal scrollable social options row + Copy Link & More Options action bar below */}
-          <div className="md:hidden space-y-4">
+          ) : (
+          /* MOBILE LAYOUT: Horizontal scrollable social options row + Copy Link & More Options action bar below */
+          <div className="space-y-4">
             <div className="flex items-start gap-3.5 overflow-x-auto no-scrollbar py-1 px-0.5 scroll-smooth">
               {sharePlatforms.map((item) => {
                 const Icon = item.icon;
@@ -430,6 +441,7 @@ export const ShareModal: React.FC<ShareModalProps> = ({
               </button>
             </div>
           </div>
+          )}
         </div>
       </div>
     </div>

@@ -251,11 +251,17 @@ export const MobileProfileModal: React.FC<MobileProfileModalProps> = ({
 
   const [dragY, setDragY] = useState(0);
   const [isDragging, setIsDragging] = useState(false);
+  const [isRendered, setIsRendered] = useState<boolean>(isOpen);
+  const [slidePhase, setSlidePhase] = useState<'entering' | 'open' | 'exiting'>(
+    isOpen ? 'open' : 'exiting'
+  );
   const touchStartYRef = useRef<number | null>(null);
   const modalRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     if (isOpen) {
+      setIsRendered(true);
+      setSlidePhase('entering');
       document.body.style.overflow = 'hidden';
       setIsNotificationsViewOpen(false);
       setIsAboutViewOpen(false);
@@ -263,16 +269,34 @@ export const MobileProfileModal: React.FC<MobileProfileModalProps> = ({
       setDragY(0);
       setIsDragging(false);
       touchStartYRef.current = null;
-    } else {
-      document.body.style.overflow = '';
-      setDragY(0);
-      setIsDragging(false);
-      touchStartYRef.current = null;
+      let innerRaf = 0;
+      const outerRaf = requestAnimationFrame(() => {
+        innerRaf = requestAnimationFrame(() => {
+          setSlidePhase('open');
+        });
+      });
+      return () => {
+        cancelAnimationFrame(outerRaf);
+        cancelAnimationFrame(innerRaf);
+        document.body.style.overflow = '';
+      };
     }
-    return () => {
-      document.body.style.overflow = '';
-    };
-  }, [isOpen]);
+
+    document.body.style.overflow = '';
+    setDragY(0);
+    setIsDragging(false);
+    touchStartYRef.current = null;
+    if (isRendered) {
+      setSlidePhase('exiting');
+      const timer = window.setTimeout(() => {
+        setIsRendered(false);
+      }, 265);
+      return () => {
+        window.clearTimeout(timer);
+      };
+    }
+    return undefined;
+  }, [isOpen, isRendered]);
 
   const handleTouchStart = (e: React.TouchEvent) => {
     touchStartYRef.current = e.touches[0].clientY;
@@ -331,7 +355,7 @@ export const MobileProfileModal: React.FC<MobileProfileModalProps> = ({
     window.addEventListener('mouseup', onMouseUp);
   };
 
-  if (!isOpen) return null;
+  if (!isRendered) return null;
 
   const unreadNotifCount = notifications.filter((n) => n.unread).length;
 
@@ -357,10 +381,15 @@ export const MobileProfileModal: React.FC<MobileProfileModalProps> = ({
     <div
       ref={modalRef}
       style={{
-        transform: dragY > 0 ? `translateY(${dragY}px)` : undefined,
-        transition: isDragging ? 'none' : 'transform 0.25s cubic-bezier(0.16, 1, 0.3, 1)'
+        transform:
+          dragY > 0
+            ? `translate3d(0, ${dragY}px, 0)`
+            : slidePhase === 'open'
+            ? 'translate3d(0, 0, 0)'
+            : 'translate3d(100%, 0, 0)',
+        transition: isDragging ? 'none' : 'transform 260ms cubic-bezier(0.22, 1, 0.36, 1)'
       }}
-      className="fixed inset-0 z-50 bg-black flex flex-col justify-start overflow-hidden animate-in fade-in duration-200"
+      className="fixed inset-0 z-50 bg-black flex flex-col justify-start overflow-hidden will-change-transform"
     >
       {/* Floating PIN Toast */}
       {pinToast && (
@@ -370,7 +399,7 @@ export const MobileProfileModal: React.FC<MobileProfileModalProps> = ({
         </div>
       )}
 
-      {/* Floating Back Button: ONLY back button floating, NO black bar behind it */}
+      {/* Floating Back Button: Transparent & sticky to screen on scroll */}
       <button
         onClick={() => {
           if (seeAllView !== 'none') {
@@ -382,10 +411,10 @@ export const MobileProfileModal: React.FC<MobileProfileModalProps> = ({
             onClose();
           }
         }}
-        className="absolute top-3.5 left-3.5 z-40 p-1 text-white hover:text-white/80 flex items-center justify-center cursor-pointer transition-transform active:scale-90"
+        className="absolute top-3.5 left-3 z-40 h-9 w-9 bg-transparent text-white hover:text-white/80 flex items-center justify-center cursor-pointer transition-transform active:scale-90"
         aria-label="Back"
       >
-        <ChevronLeft className="w-7 h-7 stroke-[2.2]" />
+        <ChevronLeft className="w-7 h-7 stroke-[2.2] drop-shadow-[0_2px_6px_rgba(0,0,0,0.85)]" />
       </button>
 
       {/* Subview Title pill (floating centered badge only when in a subview) */}
@@ -640,49 +669,78 @@ export const MobileProfileModal: React.FC<MobileProfileModalProps> = ({
         </div>
       ) : (
         /* MAIN PROFILE SCREEN */
-        <div className="flex-1 overflow-y-auto custom-scrollbar px-4 pt-4 pb-24 space-y-4">
-          {/* Top Title: "Profile" text that naturally scrolls away and hides when scrolling down */}
-          <div className="pt-11 pb-0.5 px-1">
-            <h1 className="text-2xl font-extrabold text-white tracking-tight">Profile</h1>
+        <div className="flex-1 overflow-y-auto custom-scrollbar px-4 pt-3.5 pb-24 space-y-4">
+          {/* Top Title: Positioned directly next to transparent sticky Back button; scrolls naturally away on scroll */}
+          <div className="pl-9 h-9 flex items-center">
+            <h1 className="text-[22px] font-extrabold text-white tracking-tight leading-none">Profile</h1>
           </div>
 
-          {/* Main Profile Card */}
-          <div className="relative rounded-2xl bg-[#141416] border border-white/[0.06] p-4 shadow-xl flex items-center justify-between">
-            <div className="flex items-center gap-3.5 min-w-0">
-              {/* Profile Avatar on Left */}
-              <img
-                src={selectedAvatarUrl || userAvatar}
-                alt={userName || 'Guest'}
-                className="w-16 h-16 rounded-xl object-cover shadow-lg border-0 shrink-0"
-              />
+          {/* Main Profile Card when logged in, OR Login / Sign Up buttons when signed out */}
+          {isLoggedIn ? (
+            <div className="relative rounded-2xl bg-[#141416] border border-white/[0.06] p-4 shadow-xl flex items-center justify-between">
+              <div className="flex items-center gap-3.5 min-w-0">
+                {/* Profile Avatar on Left */}
+                <img
+                  src={selectedAvatarUrl || userAvatar}
+                  alt={userName || 'Guest'}
+                  className="w-16 h-16 rounded-xl object-cover shadow-lg border-0 shrink-0"
+                />
 
-              {/* Name & handle */}
-              <div className="min-w-0">
-                <h3 className="text-base sm:text-lg font-bold text-white tracking-tight truncate">
-                  {userName || 'Guest Profile'}
-                </h3>
-                {(tempUserHandle || userHandle) && (
-                  <div className="text-xs text-zinc-400 font-medium flex items-center gap-1 mt-0.5 truncate">
-                    <span className="truncate">
-                      @{(tempUserHandle || userHandle || '').replace(/^@/, '')}
-                    </span>
-                  </div>
-                )}
+                {/* Name & handle */}
+                <div className="min-w-0">
+                  <h3 className="text-base sm:text-lg font-bold text-white tracking-tight truncate">
+                    {userName || 'Guest Profile'}
+                  </h3>
+                  {(tempUserHandle || userHandle) && (
+                    <div className="text-xs text-zinc-400 font-medium flex items-center gap-1 mt-0.5 truncate">
+                      <span className="truncate">
+                        @{(tempUserHandle || userHandle || '').replace(/^@/, '')}
+                      </span>
+                    </div>
+                  )}
+                </div>
               </div>
-            </div>
 
-            {/* Edit Pencil Icon Button on Right: opens edit profile popout */}
-            <button
-              onClick={() => {
-                setEditProfileView('fields');
-                setIsEditPopoutOpen(true);
-              }}
-              className="p-2.5 text-zinc-300 hover:text-white hover:bg-white/10 rounded-full transition-colors cursor-pointer shrink-0"
-              aria-label="Edit Profile"
-            >
-              <Edit3 className="w-5 h-5" />
-            </button>
-          </div>
+              {/* Edit Pencil Icon Button on Right: opens edit profile popout */}
+              <button
+                onClick={() => {
+                  setEditProfileView('fields');
+                  setIsEditPopoutOpen(true);
+                }}
+                className="p-2.5 text-zinc-300 hover:text-white hover:bg-white/10 rounded-full transition-colors cursor-pointer shrink-0"
+                aria-label="Edit Profile"
+              >
+                <Edit3 className="w-5 h-5" />
+              </button>
+            </div>
+          ) : (
+            <div className="flex items-center gap-2.5 pt-1">
+              <button
+                type="button"
+                onClick={() => {
+                  onClose();
+                  onToggleAuth?.();
+                }}
+                className="flex-1 py-3 rounded-full bg-[#e50914] hover:bg-[#f41924] active:scale-[0.98] text-white font-bold text-sm transition-all cursor-pointer shadow-[0_8px_22px_rgba(229,9,20,0.35)]"
+              >
+                Login
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  onClose();
+                  if (onOpenCreateAccount) {
+                    onOpenCreateAccount();
+                  } else {
+                    onToggleAuth?.();
+                  }
+                }}
+                className="flex-1 py-3 rounded-full bg-white/[0.1] hover:bg-white/[0.16] active:scale-[0.98] text-white font-bold text-sm transition-all cursor-pointer"
+              >
+                Sign Up
+              </button>
+            </div>
+          )}
 
           {/* Keep Watching Section */}
           {continueWatchingShows.length > 0 ? (
@@ -860,20 +918,22 @@ export const MobileProfileModal: React.FC<MobileProfileModalProps> = ({
               </button>
             )}
 
-            {/* Account Button: opens edit profile popout */}
-            <button
-              onClick={() => {
-                setEditProfileView('fields');
-                setIsEditPopoutOpen(true);
-              }}
-              className="w-full flex items-center justify-between p-4 rounded-2xl bg-[#141416] hover:bg-[#1c1c20] text-white cursor-pointer transition-colors border border-white/[0.04]"
-            >
-              <div className="flex items-center gap-3.5">
-                <User className="w-5 h-5 text-zinc-300" />
-                <span className="text-sm font-semibold text-white">Account</span>
-              </div>
-              <ChevronRight className="w-4 h-4 text-zinc-400" />
-            </button>
+            {/* Account Button: hidden when signed out (cannot edit name/email/PIN without signing in) */}
+            {isLoggedIn && (
+              <button
+                onClick={() => {
+                  setEditProfileView('fields');
+                  setIsEditPopoutOpen(true);
+                }}
+                className="w-full flex items-center justify-between p-4 rounded-2xl bg-[#141416] hover:bg-[#1c1c20] text-white cursor-pointer transition-colors border border-white/[0.04]"
+              >
+                <div className="flex items-center gap-3.5">
+                  <User className="w-5 h-5 text-zinc-300" />
+                  <span className="text-sm font-semibold text-white">Account</span>
+                </div>
+                <ChevronRight className="w-4 h-4 text-zinc-400" />
+              </button>
+            )}
 
             {/* Request Content Button */}
             <button
@@ -894,27 +954,8 @@ export const MobileProfileModal: React.FC<MobileProfileModalProps> = ({
               <ChevronRight className="w-4 h-4 text-zinc-400" />
             </button>
 
-            {!isLoggedIn && (
-              <button
-                onClick={() => {
-                  onClose();
-                  if (onOpenCreateAccount) {
-                    onOpenCreateAccount();
-                  } else {
-                    onToggleAuth?.();
-                  }
-                }}
-                className="w-full flex items-center justify-between p-4 rounded-2xl bg-[#18181c] hover:bg-[#222228] text-white cursor-pointer transition-colors border border-white/10"
-              >
-                <div className="flex items-center gap-3.5">
-                  <UserPlus className="w-5 h-5 text-white" />
-                  <span className="text-sm font-semibold text-white">Create Account</span>
-                </div>
-                <ChevronRight className="w-4 h-4 text-zinc-400" />
-              </button>
-            )}
-
-            {onToggleAuth && (
+            {/* Sign Out button only when signed in (when signed out, Login & Sign Up are shown above) */}
+            {isLoggedIn && onToggleAuth && (
               <button
                 onClick={() => {
                   onClose();
@@ -924,7 +965,7 @@ export const MobileProfileModal: React.FC<MobileProfileModalProps> = ({
               >
                 <div className="flex items-center gap-3.5">
                   <LogOut className="w-5 h-5 text-zinc-300" />
-                  <span className="text-sm font-semibold text-white">{isLoggedIn ? 'Sign Out' : 'Sign In'}</span>
+                  <span className="text-sm font-semibold text-white">Sign Out</span>
                 </div>
                 <ChevronRight className="w-4 h-4 text-zinc-400" />
               </button>
@@ -933,8 +974,8 @@ export const MobileProfileModal: React.FC<MobileProfileModalProps> = ({
         </div>
       )}
 
-      {/* Edit Profile Popout Modal (Matching season selector popout background #181818, no blur, reduced opacity) */}
-      {isEditPopoutOpen && (
+      {/* Edit Profile Popout Modal (Only accessible when signed in) */}
+      {isLoggedIn && isEditPopoutOpen && (
         <div
           className="fixed inset-0 z-[120] bg-black/40 flex flex-col justify-end animate-in fade-in duration-200"
           onClick={() => setIsEditPopoutOpen(false)}

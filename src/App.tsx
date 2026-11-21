@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import fullBackupData from './full_backup.json';
-import { Show, FeedConfig, AdminSettings, CastMember, VideoSourceType, NotificationItem, Episode, TrailerItem, CategoryItem, ProfilePictureGroup, DetailsOriginMeta } from './types';
+import { Show, FeedConfig, AdminSettings, CastMember, VideoSourceType, NotificationItem, Episode, TrailerItem, CategoryItem, ProfilePictureGroup, DetailsOriginMeta, AdDeviceLayout } from './types';
 import { NotFound404Page } from './components/NotFound404Page';
 
 // Extract full database contents directly from full_backup.json
@@ -72,7 +72,7 @@ import { CategoriesView, CATEGORIES_DATA } from './components/CategoriesView';
 import { ShowCard } from './components/ShowCard';
 import { SpecialFeedPage } from './components/SpecialFeedPage';
 import { SpecialSingleFeed } from './components/SpecialSingleFeed';
-import { BrowseByGenreRow, GenreItem } from './components/BrowseByGenreRow';
+import { BrowseByGenreRow, GenreItem, DEFAULT_GENRES } from './components/BrowseByGenreRow';
 import { StartFromFirstEpisodeRow } from './components/StartFromFirstEpisodeRow';
 import { EmptyListCard } from './components/EmptyListCard';
 import { GlobalTooltip } from './components/GlobalTooltip';
@@ -87,11 +87,15 @@ import { ShareArrowIcon } from './components/ShareArrowIcon';
 import { ProfileLockScreen } from './components/ProfileLockScreen';
 import { LoginPage } from './components/LoginPage';
 import { SignupTileBanner } from './components/SignupTileBanner';
+import { AdTileBanner } from './components/AdTileBanner';
+import { SearchAdCard } from './components/SearchAdCard';
+import { NarrowAdBar } from './components/NarrowAdBar';
 import { AlertPosterModal } from './components/AlertPosterModal';
 import { Film, Tv, Sparkles, Filter, ChevronRight, ChevronLeft, Bookmark, X, Menu, Bell, Check, Plus } from 'lucide-react';
 import { WatchProgressItem, EpisodeProgressItem } from './utils/watchProgress';
 import { resolveShowShareMeta } from './utils/shareMeta';
 import { MediaImage } from './components/MediaImage';
+import { detectIsMobileDevice, detectIsTabletDevice } from './utils/deviceLayout';
 
 function getPinnedOrRotatingRecommendation(pool: Show[], storageKey: string, forceRotate = false): Show | null {
   if (!pool || pool.length === 0) return null;
@@ -224,16 +228,8 @@ export default function App() {
 
   const arrangementCycle = Math.floor(reloadCount / 3);
 
-  // 10-minute feed and row rotation clock
-  const [currentTimeSlot, setCurrentTimeSlot] = useState<number>(() => Date.now());
-
-  useEffect(() => {
-    const interval = setInterval(() => {
-      const now = Date.now();
-      setCurrentTimeSlot(now);
-    }, 10 * 60 * 1000);
-    return () => clearInterval(interval);
-  }, []);
+  // Session-frozen feed clock: refreshes ONLY when user reloads/reopens the page (never mid-session)
+  const [currentTimeSlot] = useState<number>(() => Date.now());
 
   useEffect(() => {
     localStorage.setItem('cineflix_notifications', JSON.stringify(notifications));
@@ -385,30 +381,7 @@ export default function App() {
     });
   }, [shows]);
 
-  // Whole feed and recommendation refresh after 10 minutes
-  useEffect(() => {
-    const refreshTimer = setInterval(() => {
-      const eligibleAll = shows.filter((s) => s.is_recommended !== false);
-      const poolAll = eligibleAll.length > 0 ? eligibleAll : shows;
-
-      const eligibleSeries = shows.filter((s) => s.type === 'series' && s.is_recommended !== false);
-      const poolSeries = eligibleSeries.length > 0 ? eligibleSeries : shows.filter((s) => s.type === 'series');
-
-      const eligibleMovies = shows.filter((s) => s.type === 'movie' && s.is_recommended !== false);
-      const poolMovies = eligibleMovies.length > 0 ? eligibleMovies : shows.filter((s) => s.type === 'movie');
-
-      setPageRecommendations({
-        all: getPinnedOrRotatingRecommendation(poolAll, 'dizi_pinned_rec_all', true) || poolAll[0] || null,
-        series: getPinnedOrRotatingRecommendation(poolSeries, 'dizi_pinned_rec_series', true) || poolSeries[0] || poolAll[0] || null,
-        movies: getPinnedOrRotatingRecommendation(poolMovies, 'dizi_pinned_rec_movies', true) || poolMovies[0] || poolAll[0] || null,
-      });
-      initialWatchlistRef.current = watchlist;
-      initialWatchHistoryRef.current = watchHistory;
-      setCurrentTimeSlot(Date.now());
-    }, 10 * 60 * 1000);
-
-    return () => clearInterval(refreshTimer);
-  }, [shows]);
+  // Feed and row arrangement remain frozen for the entire session (only refreshed on page reload/reopen)
 
   const [isWatchlistModalOpen, setIsWatchlistModalOpen] = useState<boolean>(false);
   const [isDownloadModalOpen, setIsDownloadModalOpen] = useState<boolean>(false);
@@ -536,15 +509,57 @@ export default function App() {
 
   // Shared Title Desktop Page state (/share/:slug) & click origin metadata for exact card collapse animations
   const [sharedTitleShow, setSharedTitleShow] = useState<Show | null>(null);
+  const [isShareOverlayClosing, setIsShareOverlayClosing] = useState<boolean>(false);
+  const [isShareClosingGlareFading, setIsShareClosingGlareFading] = useState<boolean>(false);
   const sharedTitleShowRef = useRef<Show | null>(null);
   const shareBackStackRef = useRef<Show[]>([]);
   useEffect(() => {
     sharedTitleShowRef.current = sharedTitleShow;
+    if (!sharedTitleShow) {
+      setIsShareOverlayClosing(false);
+      setIsShareClosingGlareFading(false);
+    }
   }, [sharedTitleShow]);
+  useEffect(() => {
+    if (!isShareOverlayClosing) {
+      setIsShareClosingGlareFading(false);
+      return;
+    }
+    let raf2 = 0;
+    const raf1 = window.requestAnimationFrame(() => {
+      raf2 = window.requestAnimationFrame(() => {
+        setIsShareClosingGlareFading(true);
+      });
+    });
+    return () => {
+      window.cancelAnimationFrame(raf1);
+      window.cancelAnimationFrame(raf2);
+    };
+  }, [isShareOverlayClosing]);
   const [detailOriginMeta, setDetailOriginMeta] = useState<DetailsOriginMeta | null>(null);
   const [is404Page, setIs404Page] = useState<boolean>(false);
-  const [isLoginPageOpen, setIsLoginPageOpen] = useState<boolean>(false);
-  const [loginInitialMode, setLoginInitialMode] = useState<'login' | 'create'>('login');
+  const [isLoginPageOpen, setIsLoginPageOpen] = useState<boolean>(() => {
+    if (typeof window === 'undefined') return false;
+    const p = window.location.pathname.replace(/\/+$/, '');
+    return p === '/login' || p === '/signup';
+  });
+  const [loginInitialMode, setLoginInitialMode] = useState<'login' | 'create'>(() => {
+    if (typeof window === 'undefined') return 'login';
+    const p = window.location.pathname.replace(/\/+$/, '');
+    return p === '/signup' ? 'create' : 'login';
+  });
+  const openedLoginFromSiteRef = useRef<boolean>(false);
+  const pendingLoginLogoRectRef = useRef<DOMRect | null>(null);
+  const [loginLogoGlide, setLoginLogoGlide] = useState<{
+    startLeft: number;
+    startTop: number;
+    startWidth: number;
+    startHeight: number;
+    dx: number;
+    dy: number;
+    targetScale: number;
+    active: boolean;
+  } | null>(null);
   const [isAlertPosterDismissed, setIsAlertPosterDismissed] = useState<boolean>(() => {
     if (typeof window === 'undefined') return false;
     try {
@@ -553,17 +568,120 @@ export default function App() {
       return false;
     }
   });
+  const [hasAlertLoadDelayElapsed, setHasAlertLoadDelayElapsed] = useState<boolean>(false);
+  const [alertDelayTick, setAlertDelayTick] = useState<number>(0);
+  const [alertDismissCount, setAlertDismissCount] = useState<number>(() => {
+    if (typeof window === 'undefined') return 0;
+    try {
+      const parsed = parseInt(localStorage.getItem('dizi_alert_dismiss_count') || '0', 10);
+      return Number.isFinite(parsed) && parsed > 0 ? parsed : 0;
+    } catch {
+      return 0;
+    }
+  });
+  const [alertActionCount, setAlertActionCount] = useState<number>(() => {
+    if (typeof window === 'undefined') return 0;
+    try {
+      const parsed = parseInt(localStorage.getItem('dizi_alert_action_count') || '0', 10);
+      return Number.isFinite(parsed) && parsed > 0 ? parsed : 0;
+    } catch {
+      return 0;
+    }
+  });
+  const alertActionTriggeredRef = useRef<boolean>(false);
+
+  const [hasNarrowBarDelayElapsed, setHasNarrowBarDelayElapsed] = useState<boolean>(false);
+  const [activeOverlayAd, setActiveOverlayAd] = useState<'none' | 'alert_poster' | 'narrow_bar'>('none');
+
+  const resolveAdDelayMs = (
+    mode: 'fixed' | 'random' | undefined,
+    minSeconds: number | undefined,
+    maxSeconds: number | undefined
+  ): number => {
+    const safeMin = Math.max(5, Number.isFinite(minSeconds as number) ? Number(minSeconds) : 5);
+    if (mode === 'random') {
+      const safeMax = Math.max(
+        safeMin + 5,
+        Number.isFinite(maxSeconds as number) ? Number(maxSeconds) : Math.max(safeMin + 15, 25)
+      );
+      return Math.round((safeMin + Math.random() * (safeMax - safeMin)) * 1000);
+    }
+    return safeMin * 1000;
+  };
+
+  useEffect(() => {
+    setHasAlertLoadDelayElapsed(false);
+    if (!adminSettings.alertPosterEnabled) return;
+    const delayMs = resolveAdDelayMs(
+      adminSettings.alertPosterDelayMode,
+      adminSettings.alertPosterDelaySeconds ?? 5,
+      adminSettings.alertPosterDelayMaxSeconds ?? 25
+    );
+    const timer = window.setTimeout(() => {
+      setHasAlertLoadDelayElapsed(true);
+    }, delayMs);
+    return () => window.clearTimeout(timer);
+  }, [
+    alertDelayTick,
+    adminSettings.alertPosterEnabled,
+    adminSettings.alertPosterDelayMode,
+    adminSettings.alertPosterDelaySeconds,
+    adminSettings.alertPosterDelayMaxSeconds
+  ]);
+
+  useEffect(() => {
+    setHasNarrowBarDelayElapsed(false);
+    if (!adminSettings.narrowAdBarEnabled) return;
+    const delayMs = resolveAdDelayMs(
+      adminSettings.narrowAdBarDelayMode,
+      adminSettings.narrowAdBarDelaySeconds ?? 5,
+      adminSettings.narrowAdBarDelayMaxSeconds ?? 25
+    );
+    const timer = window.setTimeout(() => {
+      setHasNarrowBarDelayElapsed(true);
+    }, delayMs);
+    return () => window.clearTimeout(timer);
+  }, [
+    alertDelayTick,
+    adminSettings.narrowAdBarEnabled,
+    adminSettings.narrowAdBarDelayMode,
+    adminSettings.narrowAdBarDelaySeconds,
+    adminSettings.narrowAdBarDelayMaxSeconds
+  ]);
 
   useEffect(() => {
     const handleResetAlert = () => {
       try {
         sessionStorage.removeItem('dizi_alert_poster_dismissed');
+        localStorage.removeItem('dizi_alert_dismiss_count');
+        localStorage.removeItem('dizi_alert_action_count');
       } catch {}
+      alertActionTriggeredRef.current = false;
+      setAlertDismissCount(0);
+      setAlertActionCount(0);
       setIsAlertPosterDismissed(false);
+      setIsNarrowAdBarDismissed(false);
+      setActiveOverlayAd('none');
+      setAlertDelayTick((t) => t + 1);
     };
     window.addEventListener('dizi_alert_poster_reset', handleResetAlert);
     return () => window.removeEventListener('dizi_alert_poster_reset', handleResetAlert);
   }, []);
+
+  // Open Login / Create Account page from an in-app navigation so Back returns to previous page
+  const openLoginPage = (mode: 'login' | 'create' = 'login') => {
+    openedLoginFromSiteRef.current = true;
+    setLoginInitialMode(mode);
+    setIsRecommendationPaused(true);
+    setIsLoginPageOpen(true);
+    try {
+      const targetPath = mode === 'create' ? '/signup' : '/login';
+      if (window.location.pathname !== targetPath) {
+        window.history.pushState(null, '', targetPath);
+      }
+      window.scrollTo({ top: 0, behavior: 'instant' });
+    } catch {}
+  };
 
   // When user clicks sign out (or Sign In from guest mode), open Login / Create Account page
   const handleSignOut = () => {
@@ -575,8 +693,7 @@ export default function App() {
     setIsMobileProfileOpen(false);
     setIsHamburgerDrawerOpen(false);
     setIsAdminPanelOpen(false);
-    setLoginInitialMode('login');
-    setIsLoginPageOpen(true);
+    openLoginPage('login');
   };
 
   // Fullscreen Video Player state
@@ -613,6 +730,23 @@ export default function App() {
       episodeId?: string;
     } | null;
   } | null>(null);
+  const playingMediaRef = useRef<typeof playingMedia>(null);
+  const suppressNextPlayerPopRef = useRef<boolean>(false);
+  useEffect(() => {
+    playingMediaRef.current = playingMedia;
+  }, [playingMedia]);
+
+  const handleCloseFullPlayer = (skipHistoryBack?: boolean) => {
+    playingMediaRef.current = null;
+    setPlayingMedia(null);
+    if (skipHistoryBack) return;
+    try {
+      if (window.history.state?.isFullPlayer) {
+        suppressNextPlayerPopRef.current = true;
+        window.history.back();
+      }
+    } catch {}
+  };
 
   // User Watch Progress History in Local Storage with exact position tracking (clean empty state for fresh users)
   const [watchHistory, setWatchHistory] = useState<Record<string, WatchProgressItem>>(() => {
@@ -944,30 +1078,103 @@ export default function App() {
   const [isMobileScrolled, setIsMobileScrolled] = useState<boolean>(false);
   const [mobileHeaderOpacity, setMobileHeaderOpacity] = useState<number>(0);
 
-  // Mobile and Tablet layout detection & states
+  // Mobile and Tablet layout detection & states (preserves Mobile UI when phones rotate to landscape)
   const [windowWidth, setWindowWidth] = useState<number>(() => {
     if (typeof window === 'undefined') return 1200;
     return window.innerWidth;
   });
+  const [isMobile, setIsMobile] = useState<boolean>(() => detectIsMobileDevice());
+  const [isTablet, setIsTablet] = useState<boolean>(() => detectIsTabletDevice());
+  // Session-frozen homepage row seed: refreshes on reload/reopen, never shifts while user browses
+  const [sessionRowSeed] = useState<number>(() =>
+    ((Date.now() ^ Math.floor(Math.random() * 0x7fffffff)) >>> 0) || 1337
+  );
+  const [isNarrowAdBarDismissed, setIsNarrowAdBarDismissed] = useState<boolean>(false);
+  const browseScrollYRef = useRef<number>(0);
 
-  const isMobile = windowWidth <= 768;
-  const isTablet = windowWidth > 768 && windowWidth < 1024;
   const currentDeviceLayout: 'desktop' | 'tablet' | 'mobile' = isTablet ? 'tablet' : isMobile ? 'mobile' : 'desktop';
-  const isAlertPosterActive =
+  const currentAdDeviceLayout: AdDeviceLayout = isTablet
+    ? 'tablet'
+    : isMobile
+    ? 'mobile'
+    : windowWidth >= 1440
+    ? 'desktop'
+    : 'laptop';
+
+  const matchesAdLayout = (layouts?: AdDeviceLayout[]): boolean => {
+    const list = layouts && layouts.length > 0 ? layouts : (['desktop', 'laptop', 'tablet', 'mobile'] as AdDeviceLayout[]);
+    if (list.includes(currentAdDeviceLayout)) return true;
+    // Backwards compatibility: if a legacy config only stored 'desktop' without mentioning 'laptop', honor it on laptop unless user explicitly edited layouts
+    if (currentAdDeviceLayout === 'laptop' && list.includes('desktop') && layouts === undefined) return true;
+    return false;
+  };
+
+  const alertMaxDismissCount = adminSettings.alertPosterMaxDismissCount ?? 0;
+  const alertMaxActionCount = adminSettings.alertPosterMaxActionCount ?? 0;
+  const isAlertSuppressedByLimits =
+    (alertMaxDismissCount > 0 && alertDismissCount >= alertMaxDismissCount) ||
+    (alertMaxActionCount > 0 && alertActionCount >= alertMaxActionCount);
+  const isOnEpisodePage = Boolean(playingMedia);
+
+  const isAlertPosterEligible =
     Boolean(adminSettings.alertPosterEnabled) &&
+    hasAlertLoadDelayElapsed &&
     !isAlertPosterDismissed &&
+    !isAlertSuppressedByLimits &&
     !isProfileLocked &&
     !isLoginPageOpen &&
     !isAdminPanelOpen &&
-    !playingMedia &&
-    (adminSettings.alertPosterLayouts || ['desktop', 'tablet', 'mobile']).includes(currentDeviceLayout);
+    !isOnEpisodePage &&
+    matchesAdLayout(adminSettings.alertPosterLayouts);
+
+  const isNarrowAdBarEligible =
+    Boolean(adminSettings.narrowAdBarEnabled) &&
+    hasNarrowBarDelayElapsed &&
+    !isNarrowAdBarDismissed &&
+    !isProfileLocked &&
+    !isLoginPageOpen &&
+    !isAdminPanelOpen &&
+    !isOnEpisodePage &&
+    matchesAdLayout(adminSettings.narrowAdBarLayouts);
+
+  // Strict mutual exclusion: Alert Banner & Narrow Ad Bar NEVER display at the same time (and NEVER on Episode page)
+  useEffect(() => {
+    if (activeOverlayAd === 'alert_poster' && !isAlertPosterEligible) {
+      setActiveOverlayAd(isNarrowAdBarEligible ? 'narrow_bar' : 'none');
+      return;
+    }
+    if (activeOverlayAd === 'narrow_bar' && !isNarrowAdBarEligible) {
+      setActiveOverlayAd(isAlertPosterEligible ? 'alert_poster' : 'none');
+      return;
+    }
+    if (activeOverlayAd === 'none') {
+      if (isAlertPosterEligible) {
+        setActiveOverlayAd('alert_poster');
+      } else if (isNarrowAdBarEligible) {
+        setActiveOverlayAd('narrow_bar');
+      }
+    }
+  }, [activeOverlayAd, isAlertPosterEligible, isNarrowAdBarEligible]);
+
+  const isAlertPosterActive = activeOverlayAd === 'alert_poster' && isAlertPosterEligible;
+  const isNarrowAdBarActive = activeOverlayAd === 'narrow_bar' && isNarrowAdBarEligible;
 
   useEffect(() => {
     const handleResize = () => {
       setWindowWidth(window.innerWidth);
+      setIsMobile(detectIsMobileDevice());
+      setIsTablet(detectIsTabletDevice());
     };
+    handleResize();
     window.addEventListener('resize', handleResize);
-    return () => window.removeEventListener('resize', handleResize);
+    window.addEventListener('orientationchange', handleResize);
+    const vv = window.visualViewport;
+    if (vv) vv.addEventListener('resize', handleResize);
+    return () => {
+      window.removeEventListener('resize', handleResize);
+      window.removeEventListener('orientationchange', handleResize);
+      if (vv) vv.removeEventListener('resize', handleResize);
+    };
   }, []);
 
   // Strictly block pinch-zoom, multi-touch zoom, and double-tap zoom across all screens in mobile layout
@@ -1022,6 +1229,8 @@ export default function App() {
   const [customHeroShow, setCustomHeroShow] = useState<Show | null>(null);
   const [categoriesResetKey, setCategoriesResetKey] = useState<number>(0);
   const [selectedCategoryFromGenre, setSelectedCategoryFromGenre] = useState<CategoryItem | null>(null);
+  const [selectedGenreView, setSelectedGenreView] = useState<GenreItem | CategoryItem | null>(null);
+  const genreReturnScrollRef = useRef<number>(0);
   const [isHamburgerDrawerOpen, setIsHamburgerDrawerOpen] = useState<boolean>(false);
   const [drawerDedicatedView, setDrawerDedicatedView] = useState<'top_10_movies' | 'top_10_series' | 'vertical_my_list' | null>(null);
   const [isNotificationOpen, setIsNotificationOpen] = useState<boolean>(false);
@@ -1031,6 +1240,29 @@ export default function App() {
   const [desktopCommittedExactQuery, setDesktopCommittedExactQuery] = useState<string>('');
   const searchExploreStripRef = useRef<HTMLDivElement>(null);
   const lastHomeClickTimeRef = useRef<number>(0);
+
+  // Global homepage background-preview pause flag (when any overlay, modal, drawer, or search/profile sheet is active)
+  const isHomepagePreviewPaused = Boolean(
+    isMobileProfileOpen ||
+      isMobileSearchOpen ||
+      isAccountModalOpen ||
+      isAppSettingsModalOpen ||
+      isRequestContentModalOpen ||
+      isDownloadModalOpen ||
+      isWatchlistModalOpen ||
+      isHamburgerDrawerOpen ||
+      isLoginPageOpen ||
+      isProfileLocked ||
+      isAlertPosterActive ||
+      playingMedia ||
+      selectedShowForDetail ||
+      (sharedTitleShow && !isMobile) ||
+      actionSheetShow ||
+      selectedActorForPool ||
+      selectedSpecialFeed ||
+      selectedGenreView ||
+      isRecommendationPaused
+  );
 
   const pushRoute = (path: string, replace = false) => {
     if (typeof window === 'undefined') return;
@@ -1059,6 +1291,7 @@ export default function App() {
     setSelectedSpecialFeed(null);
     setSelectedCategoryFilter(null);
     setSelectedCategoryFromGenre(null);
+    setSelectedGenreView(null);
     setIsCategoriesDetailOpen(false);
     setDesktopSearchTermFilter('');
     setDesktopCommittedExactQuery('');
@@ -1086,7 +1319,6 @@ export default function App() {
     setCustomHeroShow(nextShow);
     initialWatchlistRef.current = watchlist;
     initialWatchHistoryRef.current = watchHistory;
-    setCurrentTimeSlot(Date.now());
 
     try {
       const current = parseInt(localStorage.getItem('dizi_reload_count') || '0', 10);
@@ -1100,6 +1332,7 @@ export default function App() {
     setIsMobileProfileOpen(false);
     setSelectedSpecialFeed(null);
     setSelectedCategoryFilter(null);
+    setSelectedGenreView(null);
     setIsCategoriesDetailOpen(false);
     setDesktopSearchTermFilter('');
     setDesktopCommittedExactQuery('');
@@ -1230,6 +1463,7 @@ export default function App() {
     }
     setSelectedCategoryFilter(null);
     setSelectedSpecialFeed(null);
+    setSelectedGenreView(null);
     setDesktopSearchTermFilter('');
     setDesktopCommittedExactQuery('');
     setSearchQuery('');
@@ -1345,6 +1579,9 @@ export default function App() {
     }
     if (query.trim() && sharedTitleShow) {
       setSharedTitleShow(null);
+    }
+    if (query.trim() && selectedGenreView) {
+      setSelectedGenreView(null);
     }
     setDesktopSearchTermFilter('');
     setDesktopCommittedExactQuery('');
@@ -1542,16 +1779,20 @@ export default function App() {
       if (sharedTitleShowRef.current && sharedTitleShowRef.current.id !== liveShow.id) {
         shareBackStackRef.current.push(sharedTitleShowRef.current);
       } else if (!sharedTitleShowRef.current) {
+        browseScrollYRef.current = window.scrollY;
         shareBackStackRef.current = [];
       }
       setSelectedShowForDetail(null);
+      setIsShareOverlayClosing(false);
       setSharedTitleShow(liveShow);
-      const scroller = document.querySelector<HTMLElement>('[data-share-overlay-scroll="true"]');
-      if (scroller) scroller.scrollTop = 0;
+      window.scrollTo({ top: 0, behavior: 'instant' });
       try {
-        const shareUrl = `/share/${slug}`;
-        window.history.pushState({ showId: liveShow.id, slug, fullSizeMoreInfo: true }, '', shareUrl);
-        setMetaTags(shareTitle, shareDescription, linkPreviewImage, `${currentOrigin}${shareUrl}`);
+        const cleanUrl = buildCleanWatchUrl(liveShow, episodeId, { subView, trailerId });
+        const cur = `${window.location.pathname}${window.location.search}`;
+        if (cur !== cleanUrl) {
+          window.history.pushState({ showId: liveShow.id, slug, fullSizeMoreInfo: true }, '', cleanUrl);
+        }
+        setMetaTags(shareTitle, shareDescription, linkPreviewImage, `${currentOrigin}${cleanUrl}`);
       } catch {}
       return;
     }
@@ -1564,7 +1805,10 @@ export default function App() {
 
     try {
       const cleanUrl = buildCleanWatchUrl(liveShow, episodeId, { subView, trailerId });
-      window.history.pushState({ showId: liveShow.id, slug }, '', cleanUrl);
+      const cur = `${window.location.pathname}${window.location.search}`;
+      if (cur !== cleanUrl) {
+        window.history.pushState({ showId: liveShow.id, slug }, '', cleanUrl);
+      }
       const canonicalShareUrl = `${currentOrigin}${cleanUrl}`;
       setMetaTags(shareTitle, shareDescription, linkPreviewImage, canonicalShareUrl);
     } catch {}
@@ -1593,7 +1837,7 @@ export default function App() {
     } catch {}
   };
 
-  // Sub-view change listener for trailers, blog, cast, and episodes
+  // Sub-view change listener for trailers, blog, cast, and episodes (uses replaceState so Back closes modal in 1 gesture)
   const handleSubViewChange = (
     view: 'main' | 'cast' | 'blog',
     meta?: { episode?: Episode | null; trailer?: TrailerItem | null }
@@ -1606,7 +1850,10 @@ export default function App() {
         meta?.episode?.id || null,
         { subView: view, trailerId: meta?.trailer?.id || null }
       );
-      window.history.pushState(null, '', cleanUrl);
+      const cur = `${window.location.pathname}${window.location.search}`;
+      if (cur !== cleanUrl) {
+        window.history.replaceState(null, '', cleanUrl);
+      }
 
       if (view === 'blog') {
         setMetaTags(
@@ -1652,150 +1899,95 @@ export default function App() {
     } catch {}
   };
 
+  // Ephemeral Actor Pool modal: intentionally NOT pushed to browser history so Back gesture never re-opens closed actor cards
   const handleSelectActorForPool = (actor: CastMember) => {
     setSelectedActorForPool(actor);
-    try {
-      const currentUrl = new URL(window.location.href);
-      const actorSlug = actor.id || actor.name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '');
-      currentUrl.searchParams.set('actor', actorSlug);
-      window.history.pushState(null, '', currentUrl.toString());
-      setMetaTags(
-        `${actor.name} – Cast & Filmography – ${platformName}`,
-        `Explore all Turkish dramas and movies starring ${actor.name} on ${platformName}`,
-        actor.profileUrl,
-        currentUrl.toString()
-      );
-    } catch {}
   };
 
   const handleCloseActorPool = () => {
     setSelectedActorForPool(null);
-    try {
-      const currentUrl = new URL(window.location.href);
-      if (currentUrl.searchParams.has('actor')) {
-        currentUrl.searchParams.delete('actor');
-        window.history.pushState(null, '', currentUrl.toString());
-      }
-      if (selectedShowForDetail) {
-        const liveDetail = shows.find((s) => s.id === selectedShowForDetail.id) || selectedShowForDetail;
-        const { shareTitle, shareDescription, linkPreviewImage } = resolveShowShareMeta(liveDetail, platformName, isMobile);
-        setMetaTags(shareTitle, shareDescription, linkPreviewImage, currentUrl.toString());
-      } else {
-        setMetaTags(
-          `${platformName} – Discover Cast, Official Trailers, and Urdu Dubbed Turkish Dramas`,
-          `Discover Cast, Official Trailers, and Urdu Dubbed Turkish Dramas on ${platformName}.`,
-          `${window.location.origin}/favicon/android-chrome-512x512.png`,
-          window.location.origin
-        );
-      }
-    } catch {}
   };
 
-  // Guarantee normal DetailModal never remains open on desktop when Full Size More Info is default
+  // Keep desktop More Info UI synced with admin panel setting
   useEffect(() => {
     if (!isMobile && adminSettings.useFullSizeMoreInfoByDefault && selectedShowForDetail) {
       const targetShow = selectedShowForDetail;
       setSelectedShowForDetail(null);
+      setIsShareOverlayClosing(false);
       setSharedTitleShow(targetShow);
+    } else if (!isMobile && !adminSettings.useFullSizeMoreInfoByDefault && sharedTitleShow) {
+      const targetShow = sharedTitleShow;
+      setSharedTitleShow(null);
+      setSelectedShowForDetail(targetShow);
     }
-  }, [isMobile, adminSettings.useFullSizeMoreInfoByDefault, selectedShowForDetail]);
+  }, [isMobile, adminSettings.useFullSizeMoreInfoByDefault, selectedShowForDetail, sharedTitleShow]);
 
-  // Shareable URL slug listener: automatically opens show, episode, trailer, blog, cast, or actor on visit and back/forward
+  // Shareable URL slug listener: /watch/:slug and /share/:slug both open in the admin-selected More Info design
   useEffect(() => {
     const handleUrlChange = () => {
       try {
+        const wasPlayingFullPlayer = Boolean(playingMediaRef.current);
+        if (suppressNextPlayerPopRef.current) {
+          suppressNextPlayerPopRef.current = false;
+        } else if (wasPlayingFullPlayer && !window.history.state?.isFullPlayer) {
+          const ev = new CustomEvent('dizi-player-system-back', { cancelable: true });
+          window.dispatchEvent(ev);
+          if (!ev.defaultPrevented) {
+            setPlayingMedia(null);
+          }
+        }
+
+        // CRITICAL: When directly playing a video (isFullPlayer history entry), NEVER mount More Info underneath
+        // (e.g. when handleIncrementPoints updates `shows` or right before history.back() completes).
+        if (window.history.state?.isFullPlayer) {
+          return;
+        }
+
         const urlParams = new URLSearchParams(window.location.search);
         const watchParam = urlParams.get('watch');
+        const shareParam = urlParams.get('share');
         const episodeParam = urlParams.get('episode');
         const trailerParam = urlParams.get('trailer');
         const tabParam = urlParams.get('tab');
         const actorParam = urlParams.get('actor');
 
         const pathname = window.location.pathname;
-        let pathWatchSlug: string | null = null;
+        const normalizedPathname = pathname.replace(/\/+$/, '') || '/';
+        if (normalizedPathname === '/login' || normalizedPathname === '/signup') {
+          setIs404Page(false);
+          setLoginInitialMode(normalizedPathname === '/signup' ? 'create' : 'login');
+          setIsLoginPageOpen(true);
+          return;
+        }
+        setIsLoginPageOpen(false);
+        let pathTitleSlug: string | null = null;
         let pathSeasonNumber: number | null = null;
         let pathEpisodeNumber: number | null = null;
 
-        // Check for /share/:slug or ?share=:slug (HBO Max style full-stretch details view on desktop)
-        const shareParam = urlParams.get('share');
         const shareMatch = pathname.match(/^\/share\/([^/]+)\/?$/i);
-        let pathShareSlug: string | null = null;
-        if (shareMatch) {
-          pathShareSlug = decodeURIComponent(shareMatch[1]);
-        }
-        const effectiveShareTarget = pathShareSlug || shareParam;
-
-        if (effectiveShareTarget) {
-          const matched = shows.find(
-            (s) =>
-              s.id.toLowerCase() === effectiveShareTarget.toLowerCase() ||
-              s.slug?.toLowerCase() === effectiveShareTarget.toLowerCase() ||
-              s.title.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '') === effectiveShareTarget.toLowerCase()
-          );
-          if (matched) {
-            const isMobileScreen = typeof window !== 'undefined' && window.innerWidth <= 768;
-            if (isMobileScreen) {
-              setSelectedShowForDetail(matched);
-              setSharedTitleShow(null);
-              shareBackStackRef.current = [];
-            } else {
-              if (
-                shareBackStackRef.current.length > 0 &&
-                shareBackStackRef.current[shareBackStackRef.current.length - 1].id === matched.id
-              ) {
-                shareBackStackRef.current.pop();
-              }
-              setSharedTitleShow(matched);
-              const scroller = document.querySelector<HTMLElement>('[data-share-overlay-scroll="true"]');
-              if (scroller) scroller.scrollTop = 0;
-            }
-            const { shareTitle, shareDescription, linkPreviewImage } = resolveShowShareMeta(matched, platformName, isMobileScreen);
-            const currentOrigin = typeof window !== 'undefined' ? window.location.origin : 'http://localhost:3000';
-            setMetaTags(shareTitle, shareDescription, linkPreviewImage, `${currentOrigin}/share/${matched.slug || matched.id}`);
-            setIs404Page(false);
-            return;
-          } else {
-            shareBackStackRef.current = [];
-            setSharedTitleShow(null);
-            setIs404Page(true);
-            return;
-          }
-        } else {
-          shareBackStackRef.current = [];
-          let handledShareAnim = false;
-          if (sharedTitleShowRef.current) {
-            const ev = new CustomEvent('dizi-share-system-back', { cancelable: true });
-            window.dispatchEvent(ev);
-            if (ev.defaultPrevented) {
-              handledShareAnim = true;
-            }
-          }
-          if (!handledShareAnim) {
-            setSharedTitleShow(null);
-          }
-        }
-
         const multiSeasonMatch = pathname.match(/^\/watch\/([^/]+)\/s([0-9]+)\/e([0-9]+)\/?$/i);
         const singleSeasonMatch = pathname.match(/^\/watch\/([^/]+)\/e([0-9]+)\/?$/i);
         const showOnlyMatch = pathname.match(/^\/watch\/([^/]+)\/?$/i);
 
-        if (multiSeasonMatch) {
-          pathWatchSlug = decodeURIComponent(multiSeasonMatch[1]);
+        if (shareMatch) {
+          pathTitleSlug = decodeURIComponent(shareMatch[1]);
+        } else if (multiSeasonMatch) {
+          pathTitleSlug = decodeURIComponent(multiSeasonMatch[1]);
           pathSeasonNumber = parseInt(multiSeasonMatch[2], 10);
           pathEpisodeNumber = parseInt(multiSeasonMatch[3], 10);
         } else if (singleSeasonMatch) {
-          pathWatchSlug = decodeURIComponent(singleSeasonMatch[1]);
+          pathTitleSlug = decodeURIComponent(singleSeasonMatch[1]);
           pathSeasonNumber = 1;
           pathEpisodeNumber = parseInt(singleSeasonMatch[2], 10);
         } else if (showOnlyMatch) {
-          pathWatchSlug = decodeURIComponent(showOnlyMatch[1]);
-        } else if (pathname.startsWith('/watch/')) {
+          pathTitleSlug = decodeURIComponent(showOnlyMatch[1]);
+        } else if (pathname.startsWith('/watch/') || pathname.startsWith('/share/')) {
+          shareBackStackRef.current = [];
+          setSharedTitleShow(null);
           setSelectedShowForDetail(null);
           setIs404Page(true);
           return;
         }
-
-        const effectiveWatchTarget = pathWatchSlug || watchParam;
 
         if (actorParam) {
           const foundActor = shows.flatMap((s) => s.cast).find(
@@ -1810,12 +2002,14 @@ export default function App() {
           setSelectedActorForPool((prev) => (prev ? null : prev));
         }
 
-        if (effectiveWatchTarget) {
+        const effectiveTitleTarget = pathTitleSlug || watchParam || shareParam;
+
+        if (effectiveTitleTarget) {
           const matched = shows.find(
             (s) =>
-              s.id.toLowerCase() === effectiveWatchTarget.toLowerCase() ||
-              s.slug?.toLowerCase() === effectiveWatchTarget.toLowerCase() ||
-              s.title.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '') === effectiveWatchTarget.toLowerCase()
+              s.id.toLowerCase() === effectiveTitleTarget.toLowerCase() ||
+              s.slug?.toLowerCase() === effectiveTitleTarget.toLowerCase() ||
+              s.title.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '') === effectiveTitleTarget.toLowerCase()
           );
           if (matched) {
             let resolvedEpId = episodeParam || null;
@@ -1831,12 +2025,26 @@ export default function App() {
               }
             }
 
-            const isMobileScreen = typeof window !== 'undefined' && window.innerWidth <= 768;
+            const isMobileScreen = detectIsMobileDevice();
             if (!isMobileScreen && adminSettings.useFullSizeMoreInfoByDefault) {
+              const isReturningToSameShare = sharedTitleShowRef.current?.id === matched.id;
+              if (
+                shareBackStackRef.current.length > 0 &&
+                shareBackStackRef.current[shareBackStackRef.current.length - 1].id === matched.id
+              ) {
+                shareBackStackRef.current.pop();
+              }
               setSelectedShowForDetail(null);
+              setIsShareOverlayClosing(false);
               setSharedTitleShow(matched);
               setIs404Page(false);
+              if (!isReturningToSameShare) {
+                const scroller = document.querySelector<HTMLElement>('[data-share-overlay-scroll="true"]');
+                if (scroller) scroller.scrollTop = 0;
+              }
             } else {
+              shareBackStackRef.current = [];
+              setSharedTitleShow(null);
               setSelectedShowForDetail(matched);
               setIs404Page(false);
               setDetailEpisodeId(resolvedEpId || null);
@@ -1853,16 +2061,32 @@ export default function App() {
               }
             }
 
-            const { shareTitle, shareDescription, linkPreviewImage } = resolveShowShareMeta(matched, platformName, typeof window !== 'undefined' && window.innerWidth <= 768);
+            const { shareTitle, shareDescription, linkPreviewImage } = resolveShowShareMeta(matched, platformName, isMobileScreen);
             const currentOrigin = typeof window !== 'undefined' ? window.location.origin : 'http://localhost:3000';
             const cleanUrl = buildCleanWatchUrl(matched, resolvedEpId, { subView: tabParam || undefined, trailerId: trailerParam });
             setMetaTags(shareTitle, shareDescription, linkPreviewImage, currentOrigin + cleanUrl);
+            return;
           } else {
+            shareBackStackRef.current = [];
+            setSharedTitleShow(null);
             setSelectedShowForDetail(null);
             setIs404Page(true);
             return;
           }
         } else {
+          shareBackStackRef.current = [];
+          let handledShareAnim = false;
+          if (sharedTitleShowRef.current) {
+            const ev = new CustomEvent('dizi-share-system-back', { cancelable: true });
+            window.dispatchEvent(ev);
+            if (ev.defaultPrevented) {
+              handledShareAnim = true;
+            }
+          }
+          if (!handledShareAnim) {
+            setSharedTitleShow((prev) => (prev ? null : prev));
+          }
+
           let handledWithAnimation = false;
           if (selectedShowRef.current) {
             const ev = new CustomEvent('dizi-detail-system-back', { cancelable: true });
@@ -1877,7 +2101,6 @@ export default function App() {
             document.body.style.overflow = '';
             document.documentElement.style.overflow = '';
           }
-          setPlayingMedia((prev) => (prev ? null : prev));
         }
 
         // Hydrate full page URL routes (Home, Series, Movies, Categories, Category Slug, My List, Top 10, Collection, Search, Profile, Account, Settings)
@@ -1889,6 +2112,7 @@ export default function App() {
             setSelectedSpecialFeed(null);
             setSelectedCategoryFilter(null);
             setSelectedCategoryFromGenre(null);
+            setSelectedGenreView(null);
             setIsMobileSearchOpen(false);
             setIsMobileProfileOpen(false);
             setIsAccountModalOpen(false);
@@ -1901,6 +2125,7 @@ export default function App() {
             setSelectedSpecialFeed(null);
             setSelectedCategoryFilter(null);
             setSelectedCategoryFromGenre(null);
+            setSelectedGenreView(null);
             setIsMobileSearchOpen(false);
             setIsMobileProfileOpen(false);
             setIsAccountModalOpen(false);
@@ -1913,6 +2138,7 @@ export default function App() {
             setSelectedSpecialFeed(null);
             setSelectedCategoryFilter(null);
             setSelectedCategoryFromGenre(null);
+            setSelectedGenreView(null);
             setIsCategoriesDetailOpen(false);
             setIsMobileSearchOpen(false);
             setIsMobileProfileOpen(false);
@@ -1930,6 +2156,7 @@ export default function App() {
             );
             setDrawerDedicatedView(null);
             setSelectedSpecialFeed(null);
+            setSelectedGenreView(null);
             setIsMobileSearchOpen(false);
             setIsMobileProfileOpen(false);
             setIsAccountModalOpen(false);
@@ -1943,11 +2170,55 @@ export default function App() {
             } else {
               setIs404Page(true);
             }
+          } else if (cleanPath.startsWith('/genre/')) {
+            const genreSlug = decodeURIComponent(cleanPath.slice('/genre/'.length)).toLowerCase();
+            const managed = (adminSettings.managedGenres || []).filter((g) => g.enabled !== false);
+            const pool: Array<GenreItem | CategoryItem> = [
+              ...managed.map((g) => ({
+                id: g.id,
+                name: g.name,
+                displayName: g.displayName || g.name.toUpperCase(),
+                imageUrl: g.imageUrl || '',
+                keywords: g.keywords && g.keywords.length > 0 ? g.keywords : [g.name.toLowerCase()]
+              })),
+              ...DEFAULT_GENRES,
+              ...(categoriesList || CATEGORIES_DATA)
+            ];
+            const foundGenre = pool.find(
+              (g) =>
+                g.id.toLowerCase() === genreSlug ||
+                g.name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '') === genreSlug ||
+                g.name.toLowerCase() === genreSlug
+            );
+            setDrawerDedicatedView(null);
+            setSelectedSpecialFeed(null);
+            setSelectedCategoryFilter(null);
+            setSelectedCategoryFromGenre(null);
+            setIsCategoriesDetailOpen(false);
+            setIsMobileSearchOpen(false);
+            setIsMobileProfileOpen(false);
+            setIsAccountModalOpen(false);
+            setIsAppSettingsModalOpen(false);
+            setSearchQuery('');
+            if (foundGenre) {
+              setIs404Page(false);
+              setSelectedGenreView(foundGenre);
+            } else {
+              setSelectedGenreView({
+                id: genreSlug,
+                name: genreSlug.replace(/-/g, ' ').replace(/\b\w/g, (ch) => ch.toUpperCase()),
+                displayName: genreSlug.replace(/-/g, ' ').toUpperCase(),
+                imageUrl: '',
+                keywords: [genreSlug.replace(/-/g, ' ')]
+              });
+              setIs404Page(false);
+            }
           } else if (cleanPath === '/mylist') {
             setIs404Page(false);
             setDrawerDedicatedView(null);
             setSelectedSpecialFeed(null);
             setSelectedCategoryFilter(null);
+            setSelectedGenreView(null);
             setIsMobileSearchOpen(false);
             setIsMobileProfileOpen(false);
             setIsAccountModalOpen(false);
@@ -2004,7 +2275,7 @@ export default function App() {
             setIsAccountModalOpen(false);
             setIsAppSettingsModalOpen(false);
             setSearchQuery(qParam);
-            if (typeof window !== 'undefined' && window.innerWidth <= 768) {
+            if (detectIsMobileDevice()) {
               setIsMobileSearchOpen(true);
             }
           } else if (cleanPath === '/profile') {
@@ -2016,17 +2287,24 @@ export default function App() {
           } else if (cleanPath === '/account') {
             setIs404Page(false);
             setIsAppSettingsModalOpen(false);
-            setIsAccountModalOpen(true);
+            if (isLoggedIn) {
+              setIsAccountModalOpen(true);
+            } else {
+              setIsAccountModalOpen(false);
+              setLoginInitialMode('login');
+              setIsLoginPageOpen(true);
+            }
           } else if (cleanPath === '/settings') {
             setIs404Page(false);
             setIsAccountModalOpen(false);
             setIsAppSettingsModalOpen(true);
-          } else if (cleanPath === '/' && !watchParam && !effectiveShareTarget) {
+          } else if (cleanPath === '/' && !effectiveTitleTarget) {
             setIs404Page(false);
             setDrawerDedicatedView(null);
             setSelectedSpecialFeed(null);
             setSelectedCategoryFilter(null);
             setSelectedCategoryFromGenre(null);
+            setSelectedGenreView(null);
             setIsCategoriesDetailOpen(false);
             setIsMobileSearchOpen(false);
             setIsMobileProfileOpen(false);
@@ -2046,11 +2324,11 @@ export default function App() {
     return () => window.removeEventListener('popstate', handleUrlChange);
   }, [shows, feeds, categoriesList]);
 
-  // Cleanly restore body scroll whenever no modals, players, login, or PIN lock screens are open
+  // Cleanly restore body scroll whenever no overlay modals, players, or PIN lock screens are open.
+  // Full-Size Desktop More Info and Login Page run in primary document flow so desktop NEVER shows a 2nd scrollbar.
   useEffect(() => {
     const isAnyModalOpen = Boolean(
       selectedShowForDetail ||
-      (sharedTitleShow && !isMobile) ||
       playingMedia ||
       selectedActorForPool ||
       isAdminPanelOpen ||
@@ -2061,7 +2339,6 @@ export default function App() {
       isDownloadModalOpen ||
       isMobileSearchOpen ||
       isMobileProfileOpen ||
-      isLoginPageOpen ||
       isProfileLocked ||
       isAlertPosterActive
     );
@@ -2076,8 +2353,6 @@ export default function App() {
     }
   }, [
     selectedShowForDetail,
-    sharedTitleShow,
-    isMobile,
     playingMedia,
     selectedActorForPool,
     isAdminPanelOpen,
@@ -2088,10 +2363,97 @@ export default function App() {
     isDownloadModalOpen,
     isMobileSearchOpen,
     isMobileProfileOpen,
-    isLoginPageOpen,
     isProfileLocked,
     isAlertPosterActive
   ]);
+
+  // Restore saved browse scroll position immediately when Full-Size Desktop More Info starts sliding back down
+  useEffect(() => {
+    if (isShareOverlayClosing && !isMobile) {
+      const savedY = browseScrollYRef.current;
+      window.scrollTo({ top: savedY, behavior: 'instant' });
+    }
+  }, [isShareOverlayClosing, isMobile]);
+
+  // Restore saved browse scroll position when returning from Full-Size Desktop More Info
+  const prevSharedTitleRef = useRef<Show | null>(null);
+  useEffect(() => {
+    if (prevSharedTitleRef.current && !sharedTitleShow && !isMobile) {
+      const savedY = browseScrollYRef.current;
+      requestAnimationFrame(() => {
+        window.scrollTo({ top: savedY, behavior: 'instant' });
+      });
+    }
+    prevSharedTitleRef.current = sharedTitleShow;
+  }, [sharedTitleShow, isMobile]);
+
+  // Post-login center logo glide animation into Home / Profile navbar logo (never when going to Profile PIN screen)
+  useEffect(() => {
+    if (isLoginPageOpen || isProfileLocked || !pendingLoginLogoRectRef.current) return;
+    const startRect = pendingLoginLogoRectRef.current;
+    pendingLoginLogoRectRef.current = null;
+
+    let raf1 = 0;
+    let raf2 = 0;
+    let raf3 = 0;
+    let clearTimer: number | null = null;
+
+    raf1 = window.requestAnimationFrame(() => {
+      raf2 = window.requestAnimationFrame(() => {
+        const candidates = Array.from(
+          document.querySelectorAll<HTMLElement>('[data-brand-logo-target="true"]')
+        );
+        const visibleTarget = candidates.find((el) => {
+          const r = el.getBoundingClientRect();
+          return r.width > 0 && r.height > 0;
+        });
+
+        const startCenterX = startRect.left + startRect.width / 2;
+        const startCenterY = startRect.top + startRect.height / 2;
+
+        let dx = 0;
+        let dy = 28 - startCenterY;
+        let targetScale = 0.72;
+
+        if (visibleTarget) {
+          const targetRect = visibleTarget.getBoundingClientRect();
+          const targetCenterX = targetRect.left + targetRect.width / 2;
+          const targetCenterY = targetRect.top + targetRect.height / 2;
+          dx = targetCenterX - startCenterX;
+          dy = targetCenterY - startCenterY;
+          targetScale = Math.max(0.45, Math.min(1.4, targetRect.height / Math.max(1, startRect.height)));
+        } else {
+          dx = window.innerWidth / 2 - startCenterX;
+        }
+
+        setLoginLogoGlide({
+          startLeft: startRect.left,
+          startTop: startRect.top,
+          startWidth: startRect.width,
+          startHeight: startRect.height,
+          dx,
+          dy,
+          targetScale,
+          active: false
+        });
+
+        raf3 = window.requestAnimationFrame(() => {
+          setLoginLogoGlide((prev) => (prev ? { ...prev, active: true } : null));
+        });
+
+        clearTimer = window.setTimeout(() => {
+          setLoginLogoGlide(null);
+        }, 620);
+      });
+    });
+
+    return () => {
+      window.cancelAnimationFrame(raf1);
+      window.cancelAnimationFrame(raf2);
+      window.cancelAnimationFrame(raf3);
+      if (clearTimer !== null) window.clearTimeout(clearTimer);
+    };
+  }, [isLoginPageOpen, isProfileLocked]);
 
   // Media Resource Protection:
   // Prevents saving images/videos, opening in new tab via context menu or drag, copying addresses, and Ctrl+S
@@ -2273,12 +2635,17 @@ export default function App() {
 
     try {
       const slug = show.slug || show.id || show.title.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '');
+      const prePlayerUrl = `${window.location.pathname}${window.location.search}`;
       const cleanUrl = buildCleanWatchUrl(
         show,
         activeEp && !isTargetLink ? activeEp.id : null,
         { trailerId: isTargetLink ? 'main' : null }
       );
-      window.history.pushState({ showId: show.id, slug }, '', cleanUrl);
+      window.history.pushState(
+        { ...(window.history.state || {}), showId: show.id, slug, isFullPlayer: true, prePlayerUrl },
+        '',
+        cleanUrl
+      );
       setMetaTags(
         `${show.title} – Watch on ${platformName}`,
         show.shortDescription || show.synopsis,
@@ -2311,7 +2678,7 @@ export default function App() {
       );
     }
 
-    setPlayingMedia({
+    const nextMedia = {
       show,
       videoUrl: effectiveVideoUrl,
       videoSourceType: effectiveSourceType,
@@ -2348,7 +2715,9 @@ export default function App() {
             episodeNumber: secondEp.episodeNumber
           }
         : null
-    });
+    };
+    playingMediaRef.current = nextMedia;
+    setPlayingMedia(nextMedia);
   };
 
   // Update show blog
@@ -2535,11 +2904,19 @@ export default function App() {
     };
   }, [searchQuery, desktopCommittedExactQuery, desktopSearchTermFilter, shows, categoriesList]);
 
-  // Comprehensive Feed Engine: Section A (History/State), Section B (Algorithmic Top 10 / Rewatched),
-  // Section C (Curated Categories) with 10-minute rotation, 3-reload arrangement cycle, and anti-fatigue de-duplication
-  const dailyFeeds = useMemo(() => {
+  // Freeze catalog snapshot per session (only refreshes on page reload/reopen or if admin adds/removes shows)
+  // so clicking/liking/playing never reshuffles homepage rows mid-session.
+  const showsIdSignature = useMemo(() => shows.map((s) => s.id).join('|'), [shows]);
+  const showsSnapshotForFeedsRef = useRef<Show[]>(shows);
+  const lastShowsSigRef = useRef<string>(showsIdSignature);
+  if (lastShowsSigRef.current !== showsIdSignature) {
+    lastShowsSigRef.current = showsIdSignature;
+    showsSnapshotForFeedsRef.current = shows;
+  }
+
+  const baseDailyFeeds = useMemo(() => {
     const rows = generateDailyFeeds(
-      shows,
+      showsSnapshotForFeedsRef.current,
       initialWatchHistoryRef.current,
       initialWatchlistRef.current,
       new Date(currentTimeSlot),
@@ -2550,28 +2927,92 @@ export default function App() {
     // Special feed ONLY shows on home page (activeFilter === 'all')
     const pageRows = activeFilter === 'all' ? rows : rows.filter((row) => !row.isSpecialFeed);
 
-    // If activeFilter is 'series', filter to series-only shows and series rows
     if (activeFilter === 'series') {
       return pageRows
         .map((row) => ({
           ...row,
           shows: row.shows.filter((s) => s.type === 'series')
         }))
-        .filter((row) => row.shows.length >= 2);
+        .filter((row) => row.shows.length >= 2 || row.id === 'feed-continue-watching');
     }
 
-    // If activeFilter is 'movies', filter to movies-only shows and movie rows
     if (activeFilter === 'movies') {
       return pageRows
         .map((row) => ({
           ...row,
           shows: row.shows.filter((s) => s.type === 'movie')
         }))
-        .filter((row) => row.shows.length >= 2);
+        .filter((row) => row.shows.length >= 2 || row.id === 'feed-continue-watching');
     }
 
     return pageRows;
-  }, [shows, currentTimeSlot, feeds, activeFilter, arrangementCycle]);
+  }, [showsIdSignature, currentTimeSlot, feeds, activeFilter, arrangementCycle]);
+
+  // Hydrate live show metadata AND update ONLY the Keep Watching row live when watchHistory changes
+  const dailyFeeds = useMemo(() => {
+    const showById = new Map<string, Show>();
+    for (const s of shows) showById.set(s.id, s);
+
+    // Compute live Keep Watching list from current watchHistory
+    const historyEntries = Object.values(watchHistory || {})
+      .filter(Boolean)
+      .sort((a, b) => (b.updatedAt || 0) - (a.updatedAt || 0));
+    const liveContinueShows: Show[] = [];
+    const seenIds = new Set<string>();
+    for (const h of historyEntries) {
+      if (!h.showId || seenIds.has(h.showId)) continue;
+      const liveShow = showById.get(h.showId);
+      if (!liveShow) continue;
+      if (activeFilter === 'series' && liveShow.type !== 'series') continue;
+      if (activeFilter === 'movies' && liveShow.type !== 'movie') continue;
+      const isUnfinished =
+        h.seasonNumber !== undefined ||
+        h.episodeNumber !== undefined ||
+        (liveShow.type === 'movie' && (h.progressPercent === undefined || h.progressPercent < 90));
+      if (isUnfinished && !h.completed) {
+        seenIds.add(liveShow.id);
+        liveContinueShows.push(liveShow);
+      }
+    }
+
+    let hadContinueRow = false;
+    const hydrated = baseDailyFeeds
+      .map((row) => {
+        if (row.id === 'feed-continue-watching' || row.categoryKey === 'continue_watching') {
+          hadContinueRow = true;
+          return {
+            ...row,
+            shows: liveContinueShows
+          };
+        }
+        return {
+          ...row,
+          shows: row.shows.map((s) => showById.get(s.id) || s)
+        };
+      })
+      .filter((row) => {
+        if (row.id === 'feed-continue-watching' || row.categoryKey === 'continue_watching') {
+          return row.shows.length >= 1;
+        }
+        return true;
+      });
+
+    // If user started watching a new title during this session and Keep Watching wasn't mounted yet,
+    // insert it cleanly right after the first row without disturbing any other row order.
+    if (!hadContinueRow && liveContinueShows.length >= 1) {
+      const keepWatchingRow = {
+        id: 'feed-continue-watching',
+        title: 'Keep Watching',
+        subtitle: 'Pick up right where you left off',
+        categoryKey: 'continue_watching' as const,
+        shows: liveContinueShows
+      };
+      const insertAt = hydrated.length > 0 ? 1 : 0;
+      hydrated.splice(insertAt, 0, keepWatchingRow);
+    }
+
+    return hydrated;
+  }, [baseDailyFeeds, shows, watchHistory, activeFilter]);
 
   // Category filter: matching shows and custom feed lines for multi-line regular feed (strictly from that category)
   const categoryMatchingShows = useMemo(() => {
@@ -2720,32 +3161,75 @@ export default function App() {
     return combined.slice(0, 4);
   }, [shows, currentHeroShow]);
 
-  // Handler for selecting genre card from Browse by Genre row on homepage
+  // Handler for selecting genre card from Browse by Genre row:
+  // Opens dedicated genre titles page with the exact same top header name & card style as Category card detail, WITHOUT opening the Categories tab
   const handleSelectGenreFromFeed = (genre: GenreItem | CategoryItem) => {
-    const catNameLower = genre.name.toLowerCase();
-    const foundCat = categoriesList.find(
-      (c) =>
-        c.name.toLowerCase() === catNameLower ||
-        c.id.toLowerCase() === genre.id.toLowerCase() ||
-        c.name.toLowerCase().includes(catNameLower) ||
-        catNameLower.includes(c.name.toLowerCase())
-    );
-
-    const targetCat: CategoryItem = foundCat || {
-      id: genre.id,
-      name: genre.name,
-      imageUrl: genre.imageUrl,
-      genreKeywords: (genre as GenreItem).keywords || [genre.name.toLowerCase()]
-    };
-
-    setSelectedCategoryFromGenre(targetCat);
+    genreReturnScrollRef.current = window.scrollY;
+    setSelectedGenreView(genre);
+    setSelectedCategoryFromGenre(null);
     setSelectedCategoryFilter(null);
     setSelectedSpecialFeed(null);
     setSearchQuery('');
-    setActiveFilter('categories');
-    setCategoriesResetKey((prev) => prev + 1);
+    const slug =
+      genre.id ||
+      genre.name
+        .toLowerCase()
+        .replace(/[^a-z0-9]+/g, '-')
+        .replace(/(^-|-$)/g, '');
+    pushRoute(`/genre/${encodeURIComponent(slug)}`);
     window.scrollTo({ top: 0, behavior: 'instant' });
   };
+
+  const handleCloseGenreView = () => {
+    setSelectedGenreView(null);
+    const routeMap: Record<string, string> = {
+      all: '/',
+      series: '/series',
+      movies: '/movies',
+      categories: '/categories',
+      watchlist: '/mylist'
+    };
+    pushRoute(routeMap[activeFilter] || '/');
+    window.setTimeout(() => {
+      window.scrollTo({ top: genreReturnScrollRef.current || 0, behavior: 'instant' });
+    }, 0);
+  };
+
+  const genreViewMatchingShows = useMemo(() => {
+    if (!selectedGenreView) return [];
+    const genreNameLower = selectedGenreView.name.toLowerCase().trim();
+    const genreIdLower = selectedGenreView.id.toLowerCase().trim();
+    const rawKeywords =
+      'keywords' in selectedGenreView && Array.isArray(selectedGenreView.keywords) && selectedGenreView.keywords.length > 0
+        ? selectedGenreView.keywords
+        : 'genreKeywords' in selectedGenreView &&
+          Array.isArray(selectedGenreView.genreKeywords) &&
+          selectedGenreView.genreKeywords.length > 0
+        ? selectedGenreView.genreKeywords
+        : genreNameLower.split(/[ &,-]+/).filter(Boolean);
+    const keywordsLower = Array.from(
+      new Set([genreNameLower, genreIdLower, ...rawKeywords.map((k) => k.toLowerCase().trim())])
+    ).filter(Boolean);
+
+    return shows.filter((s) => {
+      const showGenres = (s.genres || []).map((g) => g.toLowerCase().trim());
+      if (
+        showGenres.some(
+          (g) =>
+            g === genreNameLower ||
+            g === genreIdLower ||
+            keywordsLower.some((kw) => g.includes(kw) || kw.includes(g))
+        )
+      ) {
+        return true;
+      }
+      const showCats = (s.categories || []).map((c) => c.toLowerCase().trim());
+      if (showCats.some((c) => c === genreNameLower || c === genreIdLower)) {
+        return true;
+      }
+      return false;
+    });
+  }, [shows, selectedGenreView]);
 
   // Watchlist shows list
   const watchlistShows = shows.filter((s) => watchlist.includes(s.id));
@@ -2835,13 +3319,119 @@ export default function App() {
     );
   }
 
+  // Standalone Login / Create Account Screen: single browser scrollbar, custom background, minimal footer
+  if (isLoginPageOpen) {
+    return (
+      <>
+        <GlobalTooltip />
+        <LoginPage
+          shows={shows}
+          platformName={platformName}
+          customLogoUrl={adminSettings.customLogoUrl}
+          useCustomLogo={adminSettings.useCustomLogo}
+          desktopBgMode={adminSettings.loginDesktopBgMode}
+          backgroundImageUrl={adminSettings.loginBackgroundImageUrl}
+          desktopVideoUrl={adminSettings.loginDesktopVideoUrl}
+          desktopVideoPlayMode={adminSettings.loginDesktopVideoPlayMode || 'loop'}
+          desktopGlareColor={adminSettings.loginDesktopGlareColor || '#e11d48'}
+          mobileBgMode={adminSettings.loginMobileBgMode}
+          mobileMediaUrl={adminSettings.loginMobileMediaUrl}
+          mobileVideoUrl={adminSettings.loginMobileVideoUrl}
+          mobileVideoPlayMode={adminSettings.loginMobileVideoPlayMode || 'loop'}
+          mobileGlareColor={adminSettings.loginMobileGlareColor || '#e11d48'}
+          initialEmail={userEmail}
+          initialAuthMode={loginInitialMode}
+          isGlobalMuted={isGlobalMuted}
+          onToggleGlobalMute={(muted) => {
+            setIsGlobalMuted(muted);
+            try {
+              localStorage.setItem('cineflix_global_muted', String(muted));
+            } catch {}
+          }}
+          onAuthSuccess={({ email, password, name, logoRect }) => {
+            let shouldShowPinLock = false;
+            try {
+              localStorage.setItem('cineflix_user_email', email);
+              localStorage.setItem('cineflix_user_password', password);
+              if (name && name.trim()) {
+                localStorage.setItem('cineflix_user_name', name.trim());
+              }
+              const existingPin = localStorage.getItem('dizi_profile_lock_pin');
+              const existingLockEnabled =
+                localStorage.getItem('dizi_profile_lock_enabled') === 'true' && Boolean(existingPin);
+              shouldShowPinLock = existingLockEnabled;
+              if (existingLockEnabled) {
+                sessionStorage.removeItem('dizi_profile_unlocked');
+              }
+            } catch {}
+            if (name && name.trim()) {
+              setUserName(name.trim());
+            }
+            setUserEmail(email);
+            setUserPassword(password);
+            setIsLoggedIn(true);
+            setIsRecommendationPaused(false);
+            setIsProfileLocked(shouldShowPinLock);
+
+            // Trigger center-logo glide ONLY when landing on Home or Profile (NOT on Profile PIN lock screen)
+            if (!shouldShowPinLock && logoRect && logoRect.width > 0 && logoRect.height > 0) {
+              pendingLoginLogoRectRef.current = logoRect;
+            } else {
+              pendingLoginLogoRectRef.current = null;
+            }
+
+            setIsLoginPageOpen(false);
+            if (openedLoginFromSiteRef.current) {
+              openedLoginFromSiteRef.current = false;
+              try {
+                window.history.back();
+              } catch {
+                pushRoute('/', true);
+              }
+            } else {
+              pushRoute('/', true);
+            }
+          }}
+          onBack={() => {
+            setIsRecommendationPaused(false);
+            if (openedLoginFromSiteRef.current) {
+              openedLoginFromSiteRef.current = false;
+              setIsLoginPageOpen(false);
+              try {
+                window.history.back();
+              } catch {
+                handleGoHome();
+              }
+            } else {
+              setIsLoginPageOpen(false);
+              handleGoHome();
+              pushRoute('/', true);
+            }
+          }}
+          onGoHome={() => {
+            openedLoginFromSiteRef.current = false;
+            setIsRecommendationPaused(false);
+            setIsLoginPageOpen(false);
+            handleGoHome();
+            pushRoute('/', true);
+          }}
+        />
+      </>
+    );
+  }
+
+  const handleNavigateInternalUrl = (path: string) => {
+    pushRoute(path);
+    window.dispatchEvent(new PopStateEvent('popstate'));
+  };
+
   return (
     <div
       style={{
         paddingTop: isOffline && !isMobile ? '52px' : undefined
       }}
       className={`min-h-screen text-zinc-100 flex flex-col font-sans selection:bg-red-600 selection:text-white ${
-        sharedTitleShow && !isMobile ? 'bg-[#181818]' : 'bg-black md:bg-[#141414]'
+        sharedTitleShow && !isMobile && !isShareOverlayClosing ? 'bg-[#181818]' : isMobile ? 'bg-black' : 'bg-[#141414]'
       }`}
     >
       {/* Live Internet Connection Offline Alert Bar */}
@@ -2857,6 +3447,10 @@ export default function App() {
           setIsDownloadModalOpen(true);
         }}
         onOpenAccount={() => {
+          if (!isLoggedIn) {
+            openLoginPage('login');
+            return;
+          }
           setIsRecommendationPaused(true);
           setIsAccountModalOpen(true);
           pushRoute('/account');
@@ -2877,11 +3471,7 @@ export default function App() {
         userName={userName}
         isLoggedIn={isLoggedIn}
         onToggleAuth={handleSignOut}
-        onOpenCreateAccount={() => {
-          setLoginInitialMode('create');
-          setIsRecommendationPaused(true);
-          setIsLoginPageOpen(true);
-        }}
+        onOpenCreateAccount={() => openLoginPage('create')}
         shows={shows}
         onSelectCategory={handleSelectPage}
         activeFilter={activeFilter}
@@ -2904,12 +3494,13 @@ export default function App() {
         isSpecialFeedPage={Boolean(selectedSpecialFeed)}
         hideMobileLogoBar={
           (isMobile && adminSettings.mobileRecommendationStyle === 'poster_no_preview') ||
-          Boolean(isMobile && ((activeFilter === 'categories' && isCategoriesDetailOpen) || selectedCategoryFilter))
+          Boolean(isMobile && ((activeFilter === 'categories' && isCategoriesDetailOpen) || selectedCategoryFilter || selectedGenreView))
         }
-        isSharePage={Boolean(sharedTitleShow && !isMobile)}
+        isSharePage={Boolean(sharedTitleShow && !isMobile && !isShareOverlayClosing)}
         hideProfileAvatar={isProfileLocked}
         onOpenHamburgerDrawer={() => setIsHamburgerDrawerOpen(true)}
         desktopNavbarStyle={adminSettings.desktopNavbarStyle || 'classic'}
+        hideNavbarOnFullSizeMoreInfo={Boolean(adminSettings.hideNavbarOnFullSizeMoreInfo)}
         onShareBack={() => {
           if (shareBackStackRef.current.length > 0) {
             window.history.back();
@@ -2919,14 +3510,23 @@ export default function App() {
         }}
       />
 
-      {/* Full-Size Desktop More Info Overlay (keeps underlying browse cards mounted in DOM for exact FLIP collapse) */}
+      {/* Full-Size Desktop More Info Page (renders in primary document flow; switches to transparent glarence overlay on slide-down back) */}
       {sharedTitleShow && !isMobile && (() => {
         const activeSharedShow = shows.find((s) => s.id === sharedTitleShow.id) || sharedTitleShow;
         return (
           <div
-            data-share-overlay-scroll="true"
-            className="fixed inset-0 z-[45] overflow-y-auto overflow-x-hidden bg-[#181818] custom-scrollbar"
+            className={
+              isShareOverlayClosing
+                ? 'fixed inset-0 z-[45] overflow-hidden pointer-events-none'
+                : 'relative z-[45] w-full min-h-screen bg-[#181818]'
+            }
           >
+            {isShareOverlayClosing && (
+              <div
+                className="absolute inset-0 bg-black/35 pointer-events-none transition-opacity duration-[440ms] ease-out"
+                style={{ opacity: isShareClosingGlareFading ? 0 : 1 }}
+              />
+            )}
             <ShareTitleDesktopPage
               show={activeSharedShow}
               allShows={shows}
@@ -2941,6 +3541,16 @@ export default function App() {
                   window.open(trailer.videoUrl, '_blank', 'noopener,noreferrer');
                   return;
                 }
+                try {
+                  const prePlayerUrl = `${window.location.pathname}${window.location.search}`;
+                  const slug = s.slug || s.id || s.title.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '');
+                  const cleanUrl = buildCleanWatchUrl(s, null, { trailerId: trailer.id });
+                  window.history.pushState(
+                    { ...(window.history.state || {}), showId: s.id, slug, isFullPlayer: true, prePlayerUrl },
+                    '',
+                    cleanUrl
+                  );
+                } catch {}
                 const startSec = parseTimeToSeconds(trailer.startTime) || 0;
                 setPlayingMedia({
                   show: s,
@@ -2965,14 +3575,18 @@ export default function App() {
                   shareBackStackRef.current.push(sharedTitleShowRef.current);
                 }
                 setDetailOriginMeta(origin || { sourceFeedType: 'other' });
+                setIsShareOverlayClosing(false);
                 setSharedTitleShow(s);
-                const scroller = document.querySelector<HTMLElement>('[data-share-overlay-scroll="true"]');
-                if (scroller) scroller.scrollTop = 0;
-                window.history.pushState({ showId: s.id, fullSizeMoreInfo: true }, '', `/share/${s.slug || s.id}`);
+                window.scrollTo({ top: 0, behavior: 'instant' });
+                const nextWatchUrl = buildCleanWatchUrl(s);
+                if (`${window.location.pathname}${window.location.search}` !== nextWatchUrl) {
+                  window.history.pushState({ showId: s.id, fullSizeMoreInfo: true }, '', nextWatchUrl);
+                }
               }}
               onSelectActor={(actor) => handleSelectActorForPool(actor)}
               onBackToBrowse={(skipHistoryPush) => {
                 shareBackStackRef.current = [];
+                setIsShareOverlayClosing(false);
                 setSharedTitleShow(null);
                 setDetailOriginMeta(null);
                 if (!skipHistoryPush) {
@@ -2985,13 +3599,17 @@ export default function App() {
               likedShowIds={likedShowIds}
               onToggleLike={handleToggleLike}
               originMeta={detailOriginMeta}
+              isFullPlayerOpen={Boolean(playingMedia)}
+              onClosingStateChange={setIsShareOverlayClosing}
+              currentAdLayout={currentAdDeviceLayout}
+              onNavigateInternal={handleNavigateInternalUrl}
             />
           </div>
         );
       })()}
 
-      {/* Main Content Area: clearance passing padding on mobile (halved to pb-18) so content completely passes bottom navbar */}
-      <main className="flex-1 pb-18 md:pb-0">
+      {/* Main Content Area: hidden while Full-Size Desktop More Info is active, un-hidden during transparent slide-down closing */}
+      <main className={`${sharedTitleShow && !isMobile && !isShareOverlayClosing ? 'hidden' : 'flex-1'} ${isMobile ? 'pb-18' : 'pb-0'}`}>
         {is404Page ? (
           <NotFound404Page
             onGoHome={handleGoHome}
@@ -3059,13 +3677,15 @@ export default function App() {
                         />
                         <div className="absolute inset-x-0 bottom-0 h-40 bg-gradient-to-t from-black/95 via-black/50 to-transparent pointer-events-none z-10" />
                         <div className="absolute inset-x-4 bottom-12 z-20 flex flex-col items-center justify-end pointer-events-none">
-                          {show.titleLogoUrl ? (
-                            <img
-                              src={show.titleLogoUrl}
-                              alt={show.title}
-                              referrerPolicy="no-referrer"
-                              className="h-12 sm:h-14 md:h-16 w-auto max-w-[80%] object-contain drop-shadow-[0_2px_8px_rgba(0,0,0,0.85)]"
-                            />
+                          {(show.centralLogoUrl || show.titleLogoUrl) ? (
+                            <div className="relative w-[62%] aspect-[2.5/1] overflow-hidden shrink-0">
+                              <img
+                                src={show.centralLogoUrl || show.titleLogoUrl}
+                                alt={show.title}
+                                referrerPolicy="no-referrer"
+                                className="absolute inset-0 block w-full h-full max-w-full max-h-full object-contain object-bottom drop-shadow-[0_2px_8px_rgba(0,0,0,0.85)]"
+                              />
+                            </div>
                           ) : (
                             <span className="text-white font-extrabold text-base sm:text-lg text-center tracking-tight drop-shadow-md">
                               {show.title}
@@ -3178,12 +3798,14 @@ export default function App() {
                               className="min-w-0 flex-1 cursor-pointer"
                             >
                               {show.titleLogoUrl ? (
-                                <img
-                                  src={show.titleLogoUrl}
-                                  alt={show.title}
-                                  referrerPolicy="no-referrer"
-                                  className="max-h-11 sm:max-h-13 max-w-[195px] w-auto h-auto object-contain object-left drop-shadow-[0_2px_10px_rgba(0,0,0,0.95)]"
-                                />
+                                <div className="relative w-[58%] max-w-[200px] aspect-[2.5/1] overflow-hidden shrink-0">
+                                  <img
+                                    src={show.titleLogoUrl}
+                                    alt={show.title}
+                                    referrerPolicy="no-referrer"
+                                    className="absolute inset-0 block w-full h-full max-w-full max-h-full object-contain object-bottom-left drop-shadow-[0_2px_10px_rgba(0,0,0,0.95)]"
+                                  />
+                                </div>
                               ) : (
                                 <h3 className="text-lg sm:text-xl font-black text-white tracking-tight truncate drop-shadow-[0_2px_8px_rgba(0,0,0,0.9)]">
                                   {show.title}
@@ -3287,7 +3909,7 @@ export default function App() {
             )}
           </div>
         ) : searchQuery.trim() ? (
-          /* Desktop Search Redesign: "More to explore" terms/genres strip + 4-column grid (max 8 rows), or SpecialSingleFeed Spotlight + 4 rows of 4 cards on exact title commit */
+          /* Desktop Search Redesign: "More to explore" terms/genres strip + 4-column grid with randomized Recommended-For-You style Search Ad card */
           <div className="relative z-20 pt-20 md:pt-24 pb-16 space-y-6 animate-in fade-in duration-200">
             {/* "More to explore:" related terms & genres bar */}
             {desktopExploreTerms.length > 0 && (
@@ -3350,40 +3972,87 @@ export default function App() {
                 isGlobalMuted={isGlobalMuted}
                 onToggleGlobalMute={handleToggleGlobalMute}
                 isMobile={isMobile && !isTablet}
-                isPaused={Boolean(playingMedia || selectedShowForDetail || isLoginPageOpen || isProfileLocked || isAlertPosterActive || (sharedTitleShow && !isMobile))}
+                isPaused={isHomepagePreviewPaused}
                 isAnyOtherCardHovered={isFeedCardHovered}
                 isSearchSpotlight={true}
               />
             )}
 
-            {/* 4-Column Results Grid: max 8 rows (32 cards) when browsing/typing, max 4 rows (16 cards) below Exact Spotlight */}
+            {/* 4-Column Results Grid: injects Search Page Ad card at a random non-fixed position matching Recommended For You card UI */}
             <div className="w-full px-4 md:px-8 xl:px-12">
               <h2 className="text-[15px] sm:text-base md:text-[17px] font-semibold text-white/95 tracking-tight mb-4">
                 {desktopGridHeading}
               </h2>
               {desktopGridShows.length > 0 ? (
                 <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-4 sm:gap-5">
-                  {desktopGridShows.map((s) => (
-                    <ShowCard
-                      key={`search-grid-${s.id}`}
-                      show={s}
-                      cardSize="full"
-                      isInWatchlist={watchlist.includes(s.id)}
-                      onToggleWatchlist={handleToggleWatchlist}
-                      onOpenDetails={(show, origin) => handleOpenDetails(show, 'trailer', 'main', undefined, undefined, origin)}
-                      onPlay={handlePlayShow}
-                      onIncrementPoints={handleIncrementPoints}
-                      isGlobalMuted={isGlobalMuted}
-                      onToggleGlobalMute={handleToggleGlobalMute}
-                      onHoverPreviewStart={() => setIsFeedCardHovered(true)}
-                      onHoverPreviewEnd={() => setIsFeedCardHovered(false)}
-                      onLongPress={(show) => setActionSheetShow(show)}
-                      showTop10Badge={adminSettings.showTop10Badges !== false}
-                      isLiked={likedShowIds.includes(s.id)}
-                      onToggleLike={handleToggleLike}
-                      popoutStyle={adminSettings.desktopPopoutStyle || 'classic'}
-                    />
-                  ))}
+                  {(() => {
+                    const canShowDesktopSearchAd = Boolean(
+                      adminSettings.searchAdEnabled &&
+                        matchesAdLayout(adminSettings.searchAdLayouts) &&
+                        (adminSettings.searchAdTitle?.trim() ||
+                          adminSettings.searchAdImageUrl?.trim() ||
+                          adminSettings.searchAdSubtitle?.trim())
+                    );
+                    const queryHash = (searchQuery.trim() + '|' + sessionRowSeed)
+                      .split('')
+                      .reduce((acc, ch) => ((acc * 31 + ch.charCodeAt(0)) >>> 0), 7);
+                    const adSlotIndex = canShowDesktopSearchAd
+                      ? queryHash % Math.max(1, Math.min(8, desktopGridShows.length + 1))
+                      : -1;
+                    const gridItems: React.ReactNode[] = [];
+                    desktopGridShows.forEach((s, idx) => {
+                      if (idx === adSlotIndex) {
+                        gridItems.push(
+                          <SearchAdCard
+                            key="desktop-search-grid-ad"
+                            variant="desktop_card"
+                            imageUrl={adminSettings.searchAdImageUrl}
+                            badgeText={adminSettings.searchAdBadgeText || 'Ad'}
+                            title={adminSettings.searchAdTitle}
+                            subtitle={adminSettings.searchAdSubtitle}
+                            buttonUrl={adminSettings.searchAdButtonUrl}
+                            onNavigateInternal={handleNavigateInternalUrl}
+                          />
+                        );
+                      }
+                      gridItems.push(
+                        <ShowCard
+                          key={`search-grid-${s.id}`}
+                          show={s}
+                          cardSize="full"
+                          isInWatchlist={watchlist.includes(s.id)}
+                          onToggleWatchlist={handleToggleWatchlist}
+                          onOpenDetails={(show, origin) => handleOpenDetails(show, 'trailer', 'main', undefined, undefined, origin)}
+                          onPlay={handlePlayShow}
+                          onIncrementPoints={handleIncrementPoints}
+                          isGlobalMuted={isGlobalMuted}
+                          onToggleGlobalMute={handleToggleGlobalMute}
+                          onHoverPreviewStart={() => setIsFeedCardHovered(true)}
+                          onHoverPreviewEnd={() => setIsFeedCardHovered(false)}
+                          onLongPress={(show) => setActionSheetShow(show)}
+                          showTop10Badge={adminSettings.showTop10Badges !== false}
+                          isLiked={likedShowIds.includes(s.id)}
+                          onToggleLike={handleToggleLike}
+                          popoutStyle={adminSettings.desktopPopoutStyle || 'classic'}
+                        />
+                      );
+                    });
+                    if (canShowDesktopSearchAd && adSlotIndex >= desktopGridShows.length) {
+                      gridItems.push(
+                        <SearchAdCard
+                          key="desktop-search-grid-ad"
+                          variant="desktop_card"
+                          imageUrl={adminSettings.searchAdImageUrl}
+                          badgeText={adminSettings.searchAdBadgeText || 'Ad'}
+                          title={adminSettings.searchAdTitle}
+                          subtitle={adminSettings.searchAdSubtitle}
+                          buttonUrl={adminSettings.searchAdButtonUrl}
+                          onNavigateInternal={handleNavigateInternalUrl}
+                        />
+                      );
+                    }
+                    return gridItems;
+                  })()}
                 </div>
               ) : (
                 <div className="py-16 text-center text-zinc-400">
@@ -3427,7 +4096,7 @@ export default function App() {
                   likedShowIds={likedShowIds}
                   onToggleLike={handleToggleLike}
                   feedIndex={0}
-                  isPaused={Boolean(isLoginPageOpen || isProfileLocked || isAlertPosterActive || playingMedia || selectedShowForDetail || (sharedTitleShow && !isMobile))}
+                  isPaused={isHomepagePreviewPaused}
                   desktopPopoutStyle={adminSettings.desktopPopoutStyle || 'classic'}
                 />
               ) : (
@@ -3467,7 +4136,7 @@ export default function App() {
                   likedShowIds={likedShowIds}
                   onToggleLike={handleToggleLike}
                   feedIndex={0}
-                  isPaused={Boolean(isLoginPageOpen || isProfileLocked || isAlertPosterActive || playingMedia || selectedShowForDetail || (sharedTitleShow && !isMobile))}
+                  isPaused={isHomepagePreviewPaused}
                   desktopPopoutStyle={adminSettings.desktopPopoutStyle || 'classic'}
                 />
               ) : (
@@ -3507,7 +4176,7 @@ export default function App() {
                   likedShowIds={likedShowIds}
                   onToggleLike={handleToggleLike}
                   feedIndex={0}
-                  isPaused={Boolean(isLoginPageOpen || isProfileLocked || isAlertPosterActive || playingMedia || selectedShowForDetail || (sharedTitleShow && !isMobile))}
+                  isPaused={isHomepagePreviewPaused}
                   desktopPopoutStyle={adminSettings.desktopPopoutStyle || 'classic'}
                 />
               ) : (
@@ -3539,17 +4208,86 @@ export default function App() {
             isFeedCardHovered={isFeedCardHovered}
             desktopPopoutStyle={adminSettings.desktopPopoutStyle || 'classic'}
           />
+        ) : selectedGenreView ? (
+          /* Dedicated Genre Titles Page: identical top header name & 2:3 poster card grid as Category Card detail, without switching to Categories tab */
+          <div
+            className={`pb-36 w-full animate-in fade-in duration-300 ${
+              isMobile ? 'pt-14 px-2.5 sm:px-4' : 'pt-28 lg:pt-32 px-8 xl:px-12'
+            }`}
+          >
+            <div className="pt-2">
+              {isMobile ? (
+                <div className="fixed top-0 inset-x-0 z-50 h-14 bg-black px-4 flex items-center justify-between border-b border-white/10 select-none">
+                  <div className="flex items-center gap-3 min-w-0">
+                    <button
+                      onClick={handleCloseGenreView}
+                      className="p-1 -ml-1.5 text-white hover:text-white/80 active:scale-90 transition-transform cursor-pointer shrink-0"
+                      aria-label="Back"
+                    >
+                      <ChevronLeft className="w-7 h-7 stroke-[2.2]" />
+                    </button>
+                    <h1 className="text-lg font-black text-white tracking-tight truncate">
+                      {selectedGenreView.name}
+                    </h1>
+                  </div>
+                </div>
+              ) : (
+                <div className="flex items-center gap-3 mb-6 select-none">
+                  <button
+                    onClick={handleCloseGenreView}
+                    className="p-1.5 -ml-1.5 text-white/85 hover:text-white hover:bg-white/10 rounded-full active:scale-90 transition-all cursor-pointer shrink-0"
+                    aria-label="Back"
+                  >
+                    <ChevronLeft className="w-7 h-7 stroke-[2.2]" />
+                  </button>
+                  <h1 className="text-2xl lg:text-3xl font-black text-white tracking-tight truncate">
+                    {selectedGenreView.name}
+                  </h1>
+                </div>
+              )}
+
+              {genreViewMatchingShows.length > 0 ? (
+                <div
+                  className={`grid ${
+                    isMobile
+                      ? 'grid-cols-3 gap-2 sm:gap-2.5'
+                      : 'grid-cols-4 md:grid-cols-5 lg:grid-cols-6 gap-5'
+                  }`}
+                >
+                  {genreViewMatchingShows.map((showItem) => (
+                    <div
+                      key={showItem.id}
+                      data-show-id={showItem.id}
+                      onClick={() => handleOpenDetails(showItem, 'trailer')}
+                      className="aspect-[2/3] rounded-md overflow-hidden bg-black shadow cursor-pointer group active:scale-95 transition-transform"
+                    >
+                      <MediaImage
+                        src={showItem.posterVerticalUrl || showItem.posterUrl || showItem.posterLandscapeUrl}
+                        fallbackTitle={showItem.title}
+                        fallbackClassName={`w-full h-full ${isMobile ? 'bg-[#111]' : 'bg-[#181818]'} flex items-center justify-center p-2.5 text-center select-none`}
+                        className="w-full h-full object-cover group-hover:scale-105 transition-transform"
+                      />
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <div className="py-24 text-center text-zinc-400 text-sm">
+                  No titles found in {selectedGenreView.name}.
+                </div>
+              )}
+            </div>
+          </div>
         ) : activeFilter === 'categories' && !selectedCategoryFilter ? (
           /* Dedicated Categories View with top mobile filter strip (hidden when a mobile category detail grid is open) */
           <div className={`w-full ${adminSettings.mobileRecommendationStyle === 'poster_no_preview' && !isCategoriesDetailOpen ? 'pt-14' : ''}`}>
-            {!isCategoriesDetailOpen && (
+            {!isCategoriesDetailOpen && isMobile && (
               adminSettings.mobileRecommendationStyle === 'poster_no_preview' ? (
                 <div
                   data-mobile-top-navbar="true"
                   style={{
                     backgroundColor: mobileHeaderOpacity > 0.05 ? `rgba(0, 0, 0, ${mobileHeaderOpacity})` : 'transparent'
                   }}
-                  className={`md:hidden fixed top-0 inset-x-0 z-50 w-full px-4 h-14 flex items-center justify-between select-none transition-colors duration-150 border-0 ${
+                  className={`fixed top-0 inset-x-0 z-50 w-full px-4 h-14 flex items-center justify-between select-none transition-colors duration-150 border-0 ${
                     mobileHeaderOpacity > 0.05 ? 'shadow-md' : 'shadow-none'
                   }`}
                 >
@@ -3598,7 +4336,7 @@ export default function App() {
                   </div>
                 </div>
               ) : (
-                <div className="md:hidden relative z-30 w-full px-4 pt-14 pb-[18px] flex items-center gap-2 overflow-x-auto no-scrollbar select-none">
+                <div className="relative z-30 w-full px-4 pt-14 pb-[18px] flex items-center gap-2 overflow-x-auto no-scrollbar select-none">
                   {[
                     { id: 'all' as const, label: 'All' },
                     { id: 'series' as const, label: 'Series' },
@@ -3654,14 +4392,14 @@ export default function App() {
         ) : (
           <>
             {/* Mobile Top Header / Filter Strip (hidden on mobile when category detail grid uses Top-10-style header) */}
-            {!selectedCategoryFilter && (adminSettings.mobileRecommendationStyle === 'poster_no_preview' ? (
+            {!selectedCategoryFilter && isMobile && (adminSettings.mobileRecommendationStyle === 'poster_no_preview' ? (
               /* Mobile Header: Hamburger Menu + Platform Icon on left, Notification Bell on right (without profile icon) */
               <div
                 data-mobile-top-navbar="true"
                 style={{
                   backgroundColor: mobileHeaderOpacity > 0.05 ? `rgba(0, 0, 0, ${mobileHeaderOpacity})` : 'transparent'
                 }}
-                className={`md:hidden fixed top-0 inset-x-0 z-50 w-full px-4 h-14 flex items-center justify-between select-none transition-colors duration-150 border-0 ${
+                className={`fixed top-0 inset-x-0 z-50 w-full px-4 h-14 flex items-center justify-between select-none transition-colors duration-150 border-0 ${
                   mobileHeaderOpacity > 0.05 ? 'shadow-md' : 'shadow-none'
                 }`}
               >
@@ -3713,7 +4451,7 @@ export default function App() {
               </div>
             ) : (
               /* Standard Mobile Filter Strip: Natural transparent bar with tabs */
-              <div className="md:hidden relative z-30 w-full px-4 pt-14 pb-[18px] flex items-center gap-2 overflow-x-auto no-scrollbar select-none">
+              <div className="relative z-30 w-full px-4 pt-14 pb-[18px] flex items-center gap-2 overflow-x-auto no-scrollbar select-none">
                 {[
                   { id: 'all' as const, label: 'All' },
                   { id: 'series' as const, label: 'Series' },
@@ -3743,7 +4481,7 @@ export default function App() {
 
             {/* 2. Hero Recommendation with Ambient Glow (Hidden on mobile when a Category grid is open) */}
             {currentHeroShow ? (
-              <div className={selectedCategoryFilter ? 'hidden md:block' : ''}>
+              <div className={selectedCategoryFilter && isMobile ? 'hidden' : ''}>
                 <HeroRecommendation
                 show={currentHeroShow}
                 isInWatchlist={watchlist.includes(currentHeroShow.id)}
@@ -3752,24 +4490,9 @@ export default function App() {
                 onPlay={handlePlayShow}
                 isPausedByFeedHover={isFeedCardHovered}
                 isPausedByModal={
-                  Boolean(selectedShowForDetail) ||
-                  Boolean(sharedTitleShow && !isMobile) ||
-                  Boolean(playingMedia) ||
-                  Boolean(selectedSpecialFeed) ||
-                  Boolean(selectedActorForPool) ||
-                  isLoginPageOpen ||
-                  isProfileLocked ||
-                  isAlertPosterActive ||
-                  isMobileSearchOpen ||
-                  isMobileProfileOpen ||
-                  isAccountModalOpen ||
-                  isAppSettingsModalOpen ||
-                  isRequestContentModalOpen ||
-                  isDownloadModalOpen ||
-                  isWatchlistModalOpen ||
+                  isHomepagePreviewPaused ||
                   activeFilter !== 'all' ||
-                  searchQuery.trim().length > 0 ||
-                  isRecommendationPaused
+                  searchQuery.trim().length > 0
                 }
                 isGlobalMuted={isGlobalMuted}
                 onToggleGlobalMute={handleToggleGlobalMute}
@@ -3798,8 +4521,8 @@ export default function App() {
 
             {/* Active Category Filter: Mobile gets Top-10-style fixed black header; Desktop keeps filter pill */}
             {Boolean(selectedCategoryFilter) && activeFilter !== 'series' && activeFilter !== 'movies' && (
-              <>
-                <div className="md:hidden fixed top-0 inset-x-0 z-50 h-14 bg-black px-4 flex items-center justify-between border-b border-white/10 select-none">
+              isMobile ? (
+                <div className="fixed top-0 inset-x-0 z-50 h-14 bg-black px-4 flex items-center justify-between border-b border-white/10 select-none">
                   <div className="flex items-center gap-3 min-w-0">
                     <button
                       onClick={() => {
@@ -3816,7 +4539,8 @@ export default function App() {
                     </h1>
                   </div>
                 </div>
-                <div className="hidden md:flex relative z-30 w-full px-4 md:px-8 xl:px-12 my-3 sm:my-4 items-center justify-between">
+              ) : (
+                <div className="flex relative z-30 w-full px-4 md:px-8 xl:px-12 my-3 sm:my-4 items-center justify-between">
                   <div className="inline-flex items-center gap-2.5 bg-white/20 backdrop-blur-sm text-white px-4 py-1.5 rounded-full shadow-sm text-xs sm:text-sm font-medium border-0">
                     <Filter className="w-4 h-4 text-white/90 shrink-0" />
                     <span className="text-zinc-200">Filtering by:</span>
@@ -3835,14 +4559,19 @@ export default function App() {
                     </button>
                   </div>
                 </div>
-              </>
+              )
             )}
 
             {/* 3. Shows Display: If in selected category, display 3 in a row 2:3 cards matching Mobile More Like This, 4 per line on desktop */}
             {selectedCategoryFilter ? (
-              <div className="relative z-20 w-full px-2.5 sm:px-4 md:px-8 xl:px-12 pt-16 md:pt-0 mt-0 md:mt-6 pb-16">
-                {/* Mobile Layout (< sm): 3 in a row, 2:3 aspect ratio cards matching DetailModal More Like This */}
-                <div className="grid sm:hidden grid-cols-3 gap-2 sm:gap-2.5">
+              <div
+                className={`relative z-20 w-full px-2.5 sm:px-4 md:px-8 xl:px-12 ${
+                  isMobile ? 'pt-16 mt-0' : 'pt-0 mt-6'
+                } pb-16`}
+              >
+                {isMobile ? (
+                /* Mobile Layout (portrait & landscape): 3 in a row, 2:3 aspect ratio cards matching DetailModal More Like This */
+                <div className="grid grid-cols-3 gap-2 sm:gap-2.5">
                   {categoryMatchingShows.map((s) => (
                     <div
                       key={s.id}
@@ -3859,9 +4588,9 @@ export default function App() {
                     </div>
                   ))}
                 </div>
-
-                {/* Tablet / Desktop Grid (sm and up) */}
-                <div className="hidden sm:grid sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4 sm:gap-5 md:gap-6">
+                ) : (
+                /* Tablet / Desktop Grid */
+                <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4 sm:gap-5 md:gap-6">
                   {categoryMatchingShows.map((s) => (
                     <ShowCard
                       key={s.id}
@@ -3881,196 +4610,307 @@ export default function App() {
                     />
                   ))}
                 </div>
+                )}
               </div>
             ) : (() => {
+              const isUnfilteredHome =
+                activeFilter === 'all' && !selectedCategoryFilter && !searchQuery.trim();
               const canShowSignupBanner =
-                activeFilter === 'all' &&
-                !selectedCategoryFilter &&
-                !searchQuery.trim() &&
+                isUnfilteredHome &&
                 Boolean(adminSettings.signupTileEnabled) &&
                 (adminSettings.signupTileLayouts || ['desktop', 'tablet', 'mobile']).includes(currentDeviceLayout);
-              const signupBannerInsertIdx =
-                dailyFeeds.length >= 4 ? dailyFeeds.length - 2 : dailyFeeds.length === 3 ? 2 : -1;
+
+              const useMobileBannerConfig =
+                isMobile && !isTablet && Boolean(adminSettings.signupTileSeparateMobile);
+              const bannerTitle = useMobileBannerConfig
+                ? adminSettings.signupTileMobileTitle
+                : adminSettings.signupTileTitle;
+              const bannerSubtitle = useMobileBannerConfig
+                ? (adminSettings.signupTileMobileSubtitle ?? '')
+                : (adminSettings.signupTileSubtitle ?? '');
+              const bannerButtonText = useMobileBannerConfig
+                ? adminSettings.signupTileMobileButtonText
+                : adminSettings.signupTileButtonText;
+              const bannerImageUrl = useMobileBannerConfig
+                ? adminSettings.signupTileMobileImageUrl
+                : adminSettings.signupTileImageUrl;
+              const bannerUseCustomLogo = useMobileBannerConfig
+                ? Boolean(adminSettings.signupTileMobileUseCustomLogo ?? adminSettings.useCustomLogo)
+                : Boolean(adminSettings.signupTileUseCustomLogo ?? adminSettings.useCustomLogo);
+              const bannerCustomLogoUrl = useMobileBannerConfig
+                ? (adminSettings.signupTileMobileCustomLogoUrl?.trim() || adminSettings.customLogoUrl)
+                : (adminSettings.signupTileCustomLogoUrl?.trim() || adminSettings.customLogoUrl);
+              const bannerContainerMode =
+                isMobile && !isTablet
+                  ? (adminSettings.signupTileMobileContainerMode || adminSettings.signupTileContainerMode || 'contained')
+                  : (adminSettings.signupTileContainerMode || 'contained');
 
               const renderSignupBanner = () => (
                 <SignupTileBanner
                   shows={shows}
-                  title={adminSettings.signupTileTitle}
-                  subtitle={adminSettings.signupTileSubtitle}
-                  buttonText={adminSettings.signupTileButtonText}
-                  imageUrl={adminSettings.signupTileImageUrl}
+                  title={bannerTitle}
+                  subtitle={bannerSubtitle}
+                  buttonText={bannerButtonText}
+                  imageUrl={bannerImageUrl}
                   platformName={platformName}
-                  customLogoUrl={adminSettings.signupTileCustomLogoUrl?.trim() || adminSettings.customLogoUrl}
-                  useCustomLogo={Boolean(adminSettings.signupTileUseCustomLogo ?? adminSettings.useCustomLogo)}
-                  onActionClick={() => {
-                    setLoginInitialMode('create');
-                    setIsRecommendationPaused(true);
-                    setIsLoginPageOpen(true);
-                  }}
+                  customLogoUrl={bannerCustomLogoUrl}
+                  useCustomLogo={bannerUseCustomLogo}
+                  containerMode={bannerContainerMode}
+                  onActionClick={() => openLoginPage('create')}
                 />
               );
 
+              const canShowAdTile =
+                isUnfilteredHome &&
+                Boolean(adminSettings.adTileEnabled) &&
+                matchesAdLayout(adminSettings.adTileLayouts);
+              const useMobileAdTileConfig =
+                isMobile && !isTablet && Boolean(adminSettings.adTileSeparateMobile);
+
+              const renderHomepageAdTile = () => (
+                <AdTileBanner
+                  title={useMobileAdTileConfig ? adminSettings.adTileMobileTitle : adminSettings.adTileTitle}
+                  subtitle={useMobileAdTileConfig ? adminSettings.adTileMobileSubtitle : adminSettings.adTileSubtitle}
+                  buttonText={useMobileAdTileConfig ? adminSettings.adTileMobileButtonText : adminSettings.adTileButtonText}
+                  buttonUrl={useMobileAdTileConfig ? adminSettings.adTileMobileButtonUrl : adminSettings.adTileButtonUrl}
+                  imageUrl={useMobileAdTileConfig ? adminSettings.adTileMobileImageUrl : adminSettings.adTileImageUrl}
+                  logoImageUrl={useMobileAdTileConfig ? adminSettings.adTileMobileLogoImageUrl : adminSettings.adTileLogoImageUrl}
+                  containerMode={
+                    useMobileAdTileConfig
+                      ? (adminSettings.adTileMobileContainerMode || adminSettings.adTileContainerMode || 'contained')
+                      : (adminSettings.adTileContainerMode || 'contained')
+                  }
+                  aspectHeight={
+                    useMobileAdTileConfig
+                      ? (adminSettings.adTileMobileAspectHeight || adminSettings.adTileAspectHeight || 'default')
+                      : (adminSettings.adTileAspectHeight || 'default')
+                  }
+                  imageGlare={
+                    useMobileAdTileConfig
+                      ? (adminSettings.adTileMobileImageGlare !== false)
+                      : (adminSettings.adTileImageGlare !== false)
+                  }
+                  badgePosition={
+                    useMobileAdTileConfig
+                      ? (adminSettings.adTileMobileBadgePosition || adminSettings.adTileBadgePosition || 'bottom_left')
+                      : (adminSettings.adTileBadgePosition || 'bottom_left')
+                  }
+                  textPosition={
+                    useMobileAdTileConfig
+                      ? (adminSettings.adTileMobileTextPosition || adminSettings.adTileTextPosition || 'center')
+                      : (adminSettings.adTileTextPosition || 'center')
+                  }
+                  buttonPosition={
+                    useMobileAdTileConfig
+                      ? (adminSettings.adTileMobileButtonPosition || adminSettings.adTileButtonPosition || 'center')
+                      : (adminSettings.adTileButtonPosition || 'center')
+                  }
+                  showCloseButton={
+                    useMobileAdTileConfig
+                      ? Boolean(adminSettings.adTileMobileShowCloseButton ?? adminSettings.adTileShowCloseButton)
+                      : Boolean(adminSettings.adTileShowCloseButton)
+                  }
+                  onNavigateInternal={handleNavigateInternalUrl}
+                />
+              );
+
+              type FeedRowItem = (typeof dailyFeeds)[number];
+              type HomeRowEntry =
+                | { key: string; kind: 'feed'; row: FeedRowItem }
+                | { key: string; kind: 'single_special' }
+                | { key: string; kind: 'start_ep1' }
+                | { key: string; kind: 'signup_tile' }
+                | { key: string; kind: 'ad_tile' }
+                | { key: string; kind: 'browse_genre' };
+
+              let orderedRows: HomeRowEntry[];
+              if (!isUnfilteredHome) {
+                orderedRows = dailyFeeds.map((row) => ({ key: row.id, kind: 'feed', row }));
+              } else {
+                // Session-frozen PRNG seeded ONCE per reload/reopen so rows never shift while browsing
+                let seed = (sessionRowSeed * 2654435761 + 1013904223) >>> 0;
+                const nextRand = () => {
+                  seed = (seed + 0x6d2b79f5) >>> 0;
+                  let t = Math.imul(seed ^ (seed >>> 15), 1 | seed);
+                  t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+                  return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+                };
+
+                let keepWatchingEntry: HomeRowEntry | null = null;
+                const regularFeeds: HomeRowEntry[] = [];
+                const randomInsertPool: HomeRowEntry[] = [];
+
+                dailyFeeds.forEach((row) => {
+                  if (row.id === 'feed-continue-watching' || row.categoryKey === 'continue_watching') {
+                    keepWatchingEntry = { key: row.id, kind: 'feed', row };
+                  } else if (row.isSpecialFeed || row.isStretchableFeed) {
+                    randomInsertPool.push({ key: row.id, kind: 'feed', row });
+                  } else {
+                    regularFeeds.push({ key: row.id, kind: 'feed', row });
+                  }
+                });
+
+                if (specialSingleFeedShows.length > 0) {
+                  randomInsertPool.push({ key: 'special-single-feed', kind: 'single_special' });
+                }
+                if (adminSettings.startFromFirstEpisodeEnabled !== false) {
+                  randomInsertPool.push({ key: 'start-from-first-episode', kind: 'start_ep1' });
+                }
+                if (canShowSignupBanner) {
+                  randomInsertPool.push({ key: 'signup-tile-banner', kind: 'signup_tile' });
+                }
+                if (canShowAdTile) {
+                  randomInsertPool.push({ key: 'homepage-ad-tile', kind: 'ad_tile' });
+                }
+
+                // Fisher-Yates shuffle the special/featured/ad modules before random insertion
+                for (let i = randomInsertPool.length - 1; i > 0; i--) {
+                  const j = Math.floor(nextRand() * (i + 1));
+                  const tmp = randomInsertPool[i];
+                  randomInsertPool[i] = randomInsertPool[j];
+                  randomInsertPool[j] = tmp;
+                }
+
+                const assembled: HomeRowEntry[] = [...regularFeeds];
+                const minInsertIdx = 1;
+
+                randomInsertPool.forEach((item) => {
+                  const span = Math.max(1, assembled.length - minInsertIdx + 1);
+                  const insertAt = minInsertIdx + Math.floor(nextRand() * span);
+                  assembled.splice(insertAt, 0, item);
+                });
+
+                // Place Browse by Genre inside the last 5 rows in BOTH desktop and mobile layouts
+                const genreMinIdx = Math.max(minInsertIdx, assembled.length - 4);
+                const genreSpan = Math.max(1, assembled.length - genreMinIdx + 1);
+                const genreInsertIdx = genreMinIdx + Math.floor(nextRand() * genreSpan);
+                assembled.splice(genreInsertIdx, 0, { key: 'browse-by-genre', kind: 'browse_genre' });
+
+                // Re-insert Keep Watching live at row index 1 (right below first row) so adding/removing
+                // Keep Watching items updates live WITHOUT shifting the random order of any other rows!
+                if (keepWatchingEntry) {
+                  const kwIdx = assembled.length > 0 ? 1 : 0;
+                  assembled.splice(kwIdx, 0, keepWatchingEntry);
+                }
+
+                orderedRows = assembled;
+              }
+
               return (
-              <div className="relative z-20 space-y-5 sm:space-y-6 md:space-y-7 mt-2 md:mt-3">
-                {dailyFeeds.map((row, idx) => (
-                  <React.Fragment key={row.id}>
-                    <FeedStrip
-                      feed={{
-                        id: row.id,
-                        title: row.title,
-                        subtitle: row.subtitle,
-                        categoryKey: (row.categoryKey as any) || 'custom',
-                        enabled: true,
-                        showRankNumbers: row.showRankNumbers,
-                        isCuratedByAdmin: row.isCuratedByAdmin,
-                        isSpecialFeed: row.isSpecialFeed,
-                        isStretchableFeed: row.isStretchableFeed,
-                        specialLogoUrl: row.specialLogoUrl,
-                        specialTagline: row.specialTagline,
-                        specialExploreText: row.specialExploreText,
-                        specialShowActionButton: row.specialShowActionButton,
-                        specialExploreAction: row.specialExploreAction,
-                        specialExploreCategory: row.specialExploreCategory,
-                        specialBgImageUrl: row.specialBgImageUrl,
-                        specialBgDarkness: row.specialBgDarkness,
-                        specialBgColor: row.specialBgColor
-                      }}
-                      shows={shows}
-                      customShows={row.shows}
-                      watchlist={watchlist}
-                      watchHistory={watchHistory}
-                      onToggleWatchlist={handleToggleWatchlist}
-                      onOpenDetails={(s, origin) => handleOpenDetails(s, 'trailer', 'main', undefined, undefined, origin)}
-                      onPlayShow={handlePlayShow}
-                      onIncrementPoints={handleIncrementPoints}
-                      isGlobalMuted={isGlobalMuted}
-                      onToggleGlobalMute={handleToggleGlobalMute}
-                      onHoverCardStart={() => setIsFeedCardHovered(true)}
-                      onHoverCardEnd={() => setIsFeedCardHovered(false)}
-                      onExploreSpecialFeed={(f, fShows) => handleExploreSpecialFeed(f, fShows)}
-                      onEditFeed={(feedId) => handleEditCuratedFeed(feedId)}
-                      isMobile={isMobile}
-                      isTablet={isTablet}
-                      onLongPressShow={(s) => setActionSheetShow(s)}
-                      enableStretchableCards={adminSettings.enableStretchableCards !== false}
-                      showTop10Badges={adminSettings.showTop10Badges !== false}
-                      modernTop10RankList={adminSettings.modernTop10RankList}
-                      top10RankStyle={adminSettings.top10RankStyle}
-                      likedShowIds={likedShowIds}
-                      onToggleLike={handleToggleLike}
-                      feedIndex={idx}
-                      isPaused={Boolean(isLoginPageOpen || isProfileLocked || isAlertPosterActive || playingMedia || selectedShowForDetail || (sharedTitleShow && !isMobile))}
-                      desktopPopoutStyle={adminSettings.desktopPopoutStyle || 'classic'}
-                    />
+                <div className="relative z-20 space-y-5 sm:space-y-6 md:space-y-7 mt-2 md:mt-3">
+                  {orderedRows.map((entry, idx) => {
+                    if (entry.kind === 'single_special') {
+                      return (
+                        <SpecialSingleFeed
+                          key={entry.key}
+                          shows={specialSingleFeedShows}
+                          onPlay={handlePlayShow}
+                          onOpenDetails={(s, origin) =>
+                            handleOpenDetails(s, 'trailer', 'main', undefined, undefined, origin || { sourceFeedType: 'other' })
+                          }
+                          watchlist={watchlist}
+                          onToggleWatchlist={handleToggleWatchlist}
+                          isGlobalMuted={isGlobalMuted}
+                          onToggleGlobalMute={handleToggleGlobalMute}
+                          isMobile={isMobile && !isTablet}
+                          isPaused={isHomepagePreviewPaused}
+                          isAnyOtherCardHovered={isFeedCardHovered}
+                        />
+                      );
+                    }
 
-                    {/* Special Single Feed Section: Rendered on Desktop & Mobile homepage */}
-                    {idx === 1 && activeFilter === 'all' && !selectedCategoryFilter && !searchQuery.trim() && specialSingleFeedShows.length > 0 && (
-                      <SpecialSingleFeed
-                        shows={specialSingleFeedShows}
-                        onPlay={handlePlayShow}
-                        onOpenDetails={(s, origin) => handleOpenDetails(s, 'trailer', 'main', undefined, undefined, origin || { sourceFeedType: 'other' })}
-                        watchlist={watchlist}
-                        onToggleWatchlist={handleToggleWatchlist}
-                        isGlobalMuted={isGlobalMuted}
-                        onToggleGlobalMute={handleToggleGlobalMute}
-                        isMobile={isMobile && !isTablet}
-                        isPaused={Boolean(playingMedia || selectedShowForDetail || isLoginPageOpen || isProfileLocked || isAlertPosterActive || (sharedTitleShow && !isMobile))}
-                        isAnyOtherCardHovered={isFeedCardHovered}
-                      />
-                    )}
-
-                    {/* Browse by Genre & Start from the 1st Episode (Desktop): Rendered on homepage */}
-                    {idx === 2 && activeFilter === 'all' && !selectedCategoryFilter && !searchQuery.trim() && (
-                      <>
+                    if (entry.kind === 'browse_genre') {
+                      return (
                         <BrowseByGenreRow
+                          key={entry.key}
                           categories={categoriesList}
                           shows={shows}
                           managedGenres={adminSettings.managedGenres}
                           onSelectGenre={handleSelectGenreFromFeed}
                         />
-                        {adminSettings.startFromFirstEpisodeEnabled !== false && (
-                          <StartFromFirstEpisodeRow
-                            shows={shows}
-                            selectedShowIds={adminSettings.startFromFirstEpisodeShowIds}
-                            onPlayEpisode={(show, ep) => handlePlayShow(show, ep)}
-                            onOpenDetails={(s, origin) => handleOpenDetails(s, 'trailer', 'main', undefined, undefined, origin)}
-                            watchlist={watchlist}
-                            onToggleWatchlist={handleToggleWatchlist}
-                            onIncrementPoints={handleIncrementPoints}
-                            desktopPopoutStyle={adminSettings.desktopPopoutStyle || 'classic'}
-                          />
-                        )}
-                      </>
-                    )}
+                      );
+                    }
 
-                    {/* Promotional Sign-Up Tile Banner dynamically placed in lower feed section (not strictly fixed last) */}
-                    {canShowSignupBanner && idx === signupBannerInsertIdx && renderSignupBanner()}
-                  </React.Fragment>
-                ))}
+                    if (entry.kind === 'start_ep1') {
+                      return (
+                        <StartFromFirstEpisodeRow
+                          key={entry.key}
+                          shows={shows}
+                          selectedShowIds={adminSettings.startFromFirstEpisodeShowIds}
+                          onPlayEpisode={(show, ep) => handlePlayShow(show, ep)}
+                          onOpenDetails={(s, origin) =>
+                            handleOpenDetails(s, 'trailer', 'main', undefined, undefined, origin)
+                          }
+                          watchlist={watchlist}
+                          onToggleWatchlist={handleToggleWatchlist}
+                          onIncrementPoints={handleIncrementPoints}
+                          desktopPopoutStyle={adminSettings.desktopPopoutStyle || 'classic'}
+                        />
+                      );
+                    }
 
-                {/* If feeds list has fewer than 2 rows, guarantee SpecialSingleFeed, BrowseByGenreRow, and StartFromFirstEpisodeRow are shown on homepage */}
-                {dailyFeeds.length < 2 && activeFilter === 'all' && !selectedCategoryFilter && !searchQuery.trim() && (
-                  <>
-                    {specialSingleFeedShows.length > 0 && (
-                      <SpecialSingleFeed
-                        shows={specialSingleFeedShows}
-                        onPlay={handlePlayShow}
-                        onOpenDetails={(s, origin) => handleOpenDetails(s, 'trailer', 'main', undefined, undefined, origin || { sourceFeedType: 'other' })}
+                    if (entry.kind === 'signup_tile') {
+                      return <React.Fragment key={entry.key}>{renderSignupBanner()}</React.Fragment>;
+                    }
+
+                    if (entry.kind === 'ad_tile') {
+                      return <React.Fragment key={entry.key}>{renderHomepageAdTile()}</React.Fragment>;
+                    }
+
+                    const row = entry.row;
+                    return (
+                      <FeedStrip
+                        key={row.id}
+                        feed={{
+                          id: row.id,
+                          title: row.title,
+                          subtitle: row.subtitle,
+                          categoryKey: (row.categoryKey as any) || 'custom',
+                          enabled: true,
+                          showRankNumbers: row.showRankNumbers,
+                          isCuratedByAdmin: row.isCuratedByAdmin,
+                          isSpecialFeed: row.isSpecialFeed,
+                          isStretchableFeed: row.isStretchableFeed,
+                          specialLogoUrl: row.specialLogoUrl,
+                          specialTagline: row.specialTagline,
+                          specialExploreText: row.specialExploreText,
+                          specialShowActionButton: row.specialShowActionButton,
+                          specialExploreAction: row.specialExploreAction,
+                          specialExploreCategory: row.specialExploreCategory,
+                          specialBgImageUrl: row.specialBgImageUrl,
+                          specialBgDarkness: row.specialBgDarkness,
+                          specialBgColor: row.specialBgColor
+                        }}
+                        shows={shows}
+                        customShows={row.shows}
                         watchlist={watchlist}
+                        watchHistory={watchHistory}
                         onToggleWatchlist={handleToggleWatchlist}
+                        onOpenDetails={(s, origin) => handleOpenDetails(s, 'trailer', 'main', undefined, undefined, origin)}
+                        onPlayShow={handlePlayShow}
+                        onIncrementPoints={handleIncrementPoints}
                         isGlobalMuted={isGlobalMuted}
                         onToggleGlobalMute={handleToggleGlobalMute}
-                        isMobile={isMobile && !isTablet}
-                        isPaused={Boolean(playingMedia || selectedShowForDetail || isLoginPageOpen || isProfileLocked || isAlertPosterActive || (sharedTitleShow && !isMobile))}
-                        isAnyOtherCardHovered={isFeedCardHovered}
-                      />
-                    )}
-                    <BrowseByGenreRow
-                      categories={categoriesList}
-                      shows={shows}
-                      managedGenres={adminSettings.managedGenres}
-                      onSelectGenre={handleSelectGenreFromFeed}
-                    />
-                    {adminSettings.startFromFirstEpisodeEnabled !== false && (
-                      <StartFromFirstEpisodeRow
-                        shows={shows}
-                        selectedShowIds={adminSettings.startFromFirstEpisodeShowIds}
-                        onPlayEpisode={(show, ep) => handlePlayShow(show, ep)}
-                        onOpenDetails={(s, origin) => handleOpenDetails(s, 'trailer', 'main', undefined, undefined, origin)}
-                        watchlist={watchlist}
-                        onToggleWatchlist={handleToggleWatchlist}
-                        onIncrementPoints={handleIncrementPoints}
+                        onHoverCardStart={() => setIsFeedCardHovered(true)}
+                        onHoverCardEnd={() => setIsFeedCardHovered(false)}
+                        onExploreSpecialFeed={(f, fShows) => handleExploreSpecialFeed(f, fShows)}
+                        onEditFeed={(feedId) => handleEditCuratedFeed(feedId)}
+                        isMobile={isMobile}
+                        isTablet={isTablet}
+                        onLongPressShow={(s) => setActionSheetShow(s)}
+                        enableStretchableCards={adminSettings.enableStretchableCards !== false}
+                        showTop10Badges={adminSettings.showTop10Badges !== false}
+                        modernTop10RankList={adminSettings.modernTop10RankList}
+                        top10RankStyle={adminSettings.top10RankStyle}
+                        likedShowIds={likedShowIds}
+                        onToggleLike={handleToggleLike}
+                        feedIndex={idx}
+                        isPaused={isHomepagePreviewPaused}
                         desktopPopoutStyle={adminSettings.desktopPopoutStyle || 'classic'}
                       />
-                    )}
-                  </>
-                )}
-                {dailyFeeds.length === 2 && activeFilter === 'all' && !selectedCategoryFilter && !searchQuery.trim() && (
-                  <>
-                    <BrowseByGenreRow
-                      categories={categoriesList}
-                      shows={shows}
-                      managedGenres={adminSettings.managedGenres}
-                      onSelectGenre={handleSelectGenreFromFeed}
-                    />
-                    {adminSettings.startFromFirstEpisodeEnabled !== false && (
-                      <StartFromFirstEpisodeRow
-                        shows={shows}
-                        selectedShowIds={adminSettings.startFromFirstEpisodeShowIds}
-                        onPlayEpisode={(show, ep) => handlePlayShow(show, ep)}
-                        onOpenDetails={(s, origin) => handleOpenDetails(s, 'trailer', 'main', undefined, undefined, origin)}
-                        watchlist={watchlist}
-                        onToggleWatchlist={handleToggleWatchlist}
-                        onIncrementPoints={handleIncrementPoints}
-                        desktopPopoutStyle={adminSettings.desktopPopoutStyle || 'classic'}
-                      />
-                    )}
-                  </>
-                )}
-
-                {/* Fallback placement when feed list has <= 2 rows */}
-                {canShowSignupBanner && signupBannerInsertIdx === -1 && renderSignupBanner()}
-              </div>
+                    );
+                  })}
+                </div>
               );
             })()}
           </>
@@ -4080,6 +4920,10 @@ export default function App() {
         <Footer
           shows={shows}
           onOpenAccount={() => {
+            if (!isLoggedIn) {
+              openLoginPage('login');
+              return;
+            }
             setIsAccountModalOpen(true);
             pushRoute('/account');
           }}
@@ -4111,6 +4955,8 @@ export default function App() {
           onMobileInfoSheetChange={setIsMobileInfoSheetOpen}
           onSelectShow={(newShow) => handleOpenDetails(newShow, 'trailer', 'main', undefined, undefined, { sourceFeedType: 'other' })}
           onSelectActor={(actor) => handleSelectActorForPool(actor)}
+          currentAdLayout={currentAdDeviceLayout}
+          onNavigateInternal={handleNavigateInternalUrl}
           onSelectGenre={(genre) => {
             handleCloseDetails();
             setSearchQuery(genre);
@@ -4119,13 +4965,20 @@ export default function App() {
           onUpdateShowBlog={handleUpdateShowBlog}
           watchProgress={selectedShowForDetail ? watchHistory[selectedShowForDetail.id] : undefined}
           onWatchInFullPlayer={(s, ep, trailer, initialSeekTime) => {
-            if (ep) {
-              handleSubViewChange('main', { episode: ep });
-            } else if (trailer) {
-              handleSubViewChange('main', { trailer });
-            } else {
-              handleSubViewChange('main');
-            }
+            try {
+              const prePlayerUrl = `${window.location.pathname}${window.location.search}`;
+              const slug = s.slug || s.id || s.title.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '');
+              const cleanUrl = buildCleanWatchUrl(
+                s,
+                ep?.id || null,
+                { subView: 'main', trailerId: trailer?.id || null }
+              );
+              window.history.pushState(
+                { ...(window.history.state || {}), showId: s.id, slug, isFullPlayer: true, prePlayerUrl },
+                '',
+                cleanUrl
+              );
+            } catch {}
             const epSubtitle = trailer
               ? trailer.title
               : ep
@@ -4282,7 +5135,10 @@ export default function App() {
               setSharedTitleShow(s);
               const scroller = document.querySelector<HTMLElement>('[data-share-overlay-scroll="true"]');
               if (scroller) scroller.scrollTop = 0;
-              window.history.pushState({ showId: s.id, fullSizeMoreInfo: true }, '', `/share/${s.slug || s.id}`);
+              const nextWatchUrl = buildCleanWatchUrl(s);
+              if (`${window.location.pathname}${window.location.search}` !== nextWatchUrl) {
+                window.history.pushState({ showId: s.id, fullSizeMoreInfo: true }, '', nextWatchUrl);
+              }
             } else {
               handleOpenDetails(s, 'trailer', 'main', undefined, undefined, { sourceFeedType: 'other' });
             }
@@ -4320,9 +5176,9 @@ export default function App() {
         platformName={platformName}
       />
 
-      {/* 8. Full Page Account / Edit Profile Settings */}
+      {/* 8. Full Page Account / Edit Profile Settings (only accessible when logged in) */}
       <EditProfilePage
-        isOpen={isAccountModalOpen}
+        isOpen={isLoggedIn && isAccountModalOpen}
         onClose={() => {
           setIsAccountModalOpen(false);
           setIsRecommendationPaused(false);
@@ -4414,7 +5270,7 @@ export default function App() {
             backdropDarkness={playingMedia.show?.embedBackdropDarkness ?? 35}
             backdropBlur={playingMedia.show?.embedBackdropBlur ?? 0}
             autoFullscreenLandscapeOnMobile={Boolean(adminSettings.mobileAutoFullscreenLandscapeEmbed)}
-            isEpisodePlayback={!playingMedia.isTrailer && (playingMedia.episodeNumber !== undefined || playingMedia.episodeId !== undefined)}
+            isEpisodePlayback={!playingMedia.isTrailer}
             onNextEpisode={() => {
               if (playingMedia.nextEpisodeInfo) {
                 const next = playingMedia.nextEpisodeInfo;
@@ -4473,37 +5329,36 @@ export default function App() {
                 });
               }
             }}
-            onClose={() => setPlayingMedia(null)}
+            onClose={handleCloseFullPlayer}
           />
         ) : (
-          <div className="fixed inset-0 z-[200] bg-black flex items-center justify-center animate-in fade-in duration-300">
-            <CustomPlayer
-              videoUrl={playingMedia.videoUrl}
-              title={playingMedia.title}
-              subtitle={playingMedia.subtitle}
-              episodeSubtitle={playingMedia.episodeSubtitle}
-              titleLogoUrl={playingMedia.titleLogoUrl}
-              previewThumbnailUrl={playingMedia.previewThumbnailUrl}
-              autoPlay={true}
-              initialCurrentTime={playingMedia.initialCurrentTime || 0}
-              onProgressUpdate={(cur, dur) => {
-                if (playingMedia.isTrailer) return;
-                handleProgressUpdate(
-                  playingMedia.show,
-                  cur,
-                  dur,
-                  playingMedia.seasonNumber,
-                  playingMedia.episodeNumber,
-                  playingMedia.episodeTitle || playingMedia.subtitle,
-                  playingMedia.episodeId,
-                  playingMedia.videoUrl,
-                  playingMedia.videoSourceType,
-                  playingMedia.isTrailer
-                );
-              }}
-              onClose={() => setPlayingMedia(null)}
-            />
-          </div>
+          <CustomPlayer
+            videoUrl={playingMedia.videoUrl}
+            title={playingMedia.title}
+            subtitle={playingMedia.subtitle}
+            episodeSubtitle={playingMedia.episodeSubtitle}
+            titleLogoUrl={playingMedia.titleLogoUrl}
+            previewThumbnailUrl={playingMedia.previewThumbnailUrl}
+            autoPlay={true}
+            initialCurrentTime={playingMedia.initialCurrentTime || 0}
+            isFullscreenDesign={Boolean(adminSettings.mobileAutoFullscreenLandscapeEmbed && !playingMedia.isTrailer)}
+            onProgressUpdate={(cur, dur) => {
+              if (playingMedia.isTrailer) return;
+              handleProgressUpdate(
+                playingMedia.show,
+                cur,
+                dur,
+                playingMedia.seasonNumber,
+                playingMedia.episodeNumber,
+                playingMedia.episodeTitle || playingMedia.subtitle,
+                playingMedia.episodeId,
+                playingMedia.videoUrl,
+                playingMedia.videoSourceType,
+                playingMedia.isTrailer
+              );
+            }}
+            onClose={handleCloseFullPlayer}
+          />
         )
       )}
 
@@ -4535,6 +5390,8 @@ export default function App() {
           setIsMobileSearchOpen(false);
           handlePlayShow(s);
         }}
+        adminSettings={adminSettings}
+        onNavigateInternal={handleNavigateInternalUrl}
       />
 
       {/* Mobile Profile & My List Modal */}
@@ -4595,9 +5452,7 @@ export default function App() {
         onToggleAuth={handleSignOut}
         onOpenCreateAccount={() => {
           setIsMobileProfileOpen(false);
-          setLoginInitialMode('create');
-          setIsRecommendationPaused(true);
-          setIsLoginPageOpen(true);
+          openLoginPage('create');
         }}
         isLoggedIn={isLoggedIn}
         onSelectAvatar={(avatarUrl) => {
@@ -4906,42 +5761,23 @@ export default function App() {
       {/* Universal Top-Layer Custom Pointer Tooltip */}
       <GlobalTooltip />
 
-      {/* Login / Create Account Screen (Triggered on Sign Out or Guest Sign In) */}
-      {isLoginPageOpen && (
-        <LoginPage
-          shows={shows}
-          platformName={platformName}
-          customLogoUrl={adminSettings.customLogoUrl}
-          initialEmail={userEmail}
-          initialAuthMode={loginInitialMode}
-          isGlobalMuted={isGlobalMuted}
-          onToggleGlobalMute={(muted) => {
-            setIsGlobalMuted(muted);
-            try {
-              localStorage.setItem('cineflix_global_muted', String(muted));
-            } catch {}
-          }}
-          onAuthSuccess={({ email, password }) => {
-            try {
-              localStorage.setItem('cineflix_user_email', email);
-              localStorage.setItem('cineflix_user_password', password);
-              if (!localStorage.getItem('dizi_profile_lock_pin')) {
-                localStorage.setItem('dizi_profile_lock_pin', '1234');
-              }
-              localStorage.setItem('dizi_profile_lock_enabled', 'true');
-              sessionStorage.removeItem('dizi_profile_unlocked');
-            } catch {}
-            setUserEmail(email);
-            setUserPassword(password);
-            setIsLoggedIn(true);
-            setIsLoginPageOpen(false);
-            setIsProfileLocked(true);
-          }}
-          onBrowseFree={() => {
-            setIsLoggedIn(false);
-            setIsLoginPageOpen(false);
-            setIsProfileLocked(false);
-          }}
+      {/* Narrow Dismissible Ad Bar (Mutually exclusive with Alert Banner; never shown on Episode page) */}
+      {isNarrowAdBarActive && (
+        <NarrowAdBar
+          imageUrl={adminSettings.narrowAdBarImageUrl}
+          logoImageUrl={adminSettings.narrowAdBarLogoImageUrl}
+          title={adminSettings.narrowAdBarTitle}
+          subtitle={adminSettings.narrowAdBarSubtitle}
+          buttonText={adminSettings.narrowAdBarButtonText}
+          buttonUrl={adminSettings.narrowAdBarButtonUrl}
+          placement={adminSettings.narrowAdBarPlacement || 'bottom_floating'}
+          badgePosition={adminSettings.narrowAdBarBadgePosition || 'top_left'}
+          textPosition={adminSettings.narrowAdBarTextPosition || 'left'}
+          buttonPosition={adminSettings.narrowAdBarButtonPosition || 'right'}
+          showCloseButton={adminSettings.narrowAdBarShowCloseButton !== false}
+          isMobile={isMobile && !isTablet}
+          onDismiss={() => setIsNarrowAdBarDismissed(true)}
+          onNavigateInternal={handleNavigateInternalUrl}
         />
       )}
 
@@ -4968,6 +5804,10 @@ export default function App() {
           <AlertPosterModal
             isOpen={true}
             imageUrl={adminSettings.alertPosterImageUrl}
+            videoUrl={adminSettings.alertPosterVideoUrl}
+            isAd={Boolean(adminSettings.alertPosterIsAd)}
+            adSkipDelaySeconds={adminSettings.alertPosterAdSkipDelaySeconds ?? 5}
+            adRequireFullWatch={Boolean(adminSettings.alertPosterAdRequireFullWatch)}
             title={adminSettings.alertPosterTitle}
             subtitle={adminSettings.alertPosterSubtitle}
             buttonText={adminSettings.alertPosterButtonText}
@@ -4978,17 +5818,68 @@ export default function App() {
               try {
                 sessionStorage.setItem('dizi_alert_poster_dismissed', 'true');
               } catch {}
+              if (alertActionTriggeredRef.current) {
+                alertActionTriggeredRef.current = false;
+                return;
+              }
+              setAlertDismissCount((prev) => {
+                const next = prev + 1;
+                try {
+                  localStorage.setItem('dizi_alert_dismiss_count', String(next));
+                } catch {}
+                return next;
+              });
             }}
-            onOpenLogin={() => {
-              setLoginInitialMode('login');
-              setIsLoginPageOpen(true);
+            onActionTriggered={() => {
+              alertActionTriggeredRef.current = true;
+              setAlertActionCount((prev) => {
+                const next = prev + 1;
+                try {
+                  sessionStorage.setItem('dizi_alert_poster_dismissed', 'true');
+                  localStorage.setItem('dizi_alert_action_count', String(next));
+                } catch {}
+                return next;
+              });
             }}
+            onOpenLogin={() => openLoginPage('login')}
             onNavigateInternal={(path) => {
               pushRoute(path);
               window.dispatchEvent(new PopStateEvent('popstate'));
             }}
           />
         )}
+
+      {/* Smooth Post-Login Logo Glide Overlay (transitions centered Login logo into destination Navbar logo; never runs on PIN lock) */}
+      {loginLogoGlide && !isProfileLocked && (
+        <div
+          className="fixed z-[320] pointer-events-none flex items-center justify-center"
+          style={{
+            left: `${loginLogoGlide.startLeft}px`,
+            top: `${loginLogoGlide.startTop}px`,
+            width: `${loginLogoGlide.startWidth}px`,
+            height: `${loginLogoGlide.startHeight}px`,
+            transformOrigin: 'center center',
+            transform: loginLogoGlide.active
+              ? `translate3d(${loginLogoGlide.dx}px, ${loginLogoGlide.dy}px, 0) scale(${loginLogoGlide.targetScale})`
+              : 'translate3d(0, 0, 0) scale(1)',
+            opacity: loginLogoGlide.active ? 0 : 1,
+            transition:
+              'transform 520ms cubic-bezier(0.22, 1, 0.36, 1), opacity 190ms ease-out 380ms',
+            willChange: 'transform, opacity'
+          }}
+        >
+          {adminSettings.useCustomLogo && adminSettings.customLogoUrl ? (
+            <img
+              src={adminSettings.customLogoUrl}
+              alt={platformName}
+              referrerPolicy="no-referrer"
+              className="w-full h-full object-contain drop-shadow-[0_4px_18px_rgba(0,0,0,0.65)]"
+            />
+          ) : (
+            <DiziLogo variant="red" size="lg" className="w-full h-full" />
+          )}
+        </div>
+      )}
     </div>
   );
 }

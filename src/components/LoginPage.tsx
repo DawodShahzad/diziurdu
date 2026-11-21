@@ -1,621 +1,882 @@
-import React, { useState, useMemo, useRef, useEffect } from 'react';
+import React, { useState, useMemo, useEffect, useRef } from 'react';
+import { Eye, EyeOff, ChevronLeft } from 'lucide-react';
 import { Show } from '../types';
 import { DiziLogo } from './DiziLogo';
-import { Eye, EyeOff, Volume2, VolumeX, ChevronLeft, ChevronRight } from 'lucide-react';
-import { attachHlsVideo } from '../utils/hlsHelper';
-import { MediaImage } from './MediaImage';
+import { Footer } from './Footer';
+import { useDeviceLayout } from '../utils/deviceLayout';
+
+export type LoginBgMode = 'collage' | 'image' | 'video' | 'color_glare';
+export type LoginVideoPlayMode = 'loop' | 'once_with_image_fade';
 
 interface LoginPageProps {
   shows: Show[];
   platformName?: string;
   customLogoUrl?: string;
+  useCustomLogo?: boolean;
+  // Desktop background options
+  desktopBgMode?: LoginBgMode;
+  backgroundImageUrl?: string;
+  desktopVideoUrl?: string;
+  desktopVideoPlayMode?: LoginVideoPlayMode;
+  desktopGlareColor?: string;
+  // Mobile top visual options
+  mobileBgMode?: LoginBgMode;
+  mobileMediaUrl?: string;
+  mobileVideoUrl?: string;
+  mobileVideoPlayMode?: LoginVideoPlayMode;
+  mobileGlareColor?: string;
   initialEmail?: string;
   initialAuthMode?: 'login' | 'create';
   isGlobalMuted?: boolean;
   onToggleGlobalMute?: (muted: boolean) => void;
-  onAuthSuccess: (data: { email: string; password: string; mode: 'login' | 'create' }) => void;
-  onBrowseFree: () => void;
+  onAuthSuccess: (user: {
+    email: string;
+    password: string;
+    name?: string;
+    logoRect?: DOMRect | null;
+  }) => void;
+  onBack: () => void;
+  onGoHome: () => void;
 }
+
+const isVideoMediaUrl = (url: string): boolean => {
+  const clean = url.trim().toLowerCase();
+  return /\.(mp4|webm|ogg|mov|m4v)(\?.*)?$/i.test(clean);
+};
+
+interface LoginVideoWithImageFadeProps {
+  videoUrl: string;
+  fallbackImageUrl?: string;
+  playMode: LoginVideoPlayMode;
+  renderFallbackCollage: () => React.ReactNode;
+}
+
+const LoginVideoWithImageFade: React.FC<LoginVideoWithImageFadeProps> = ({
+  videoUrl,
+  fallbackImageUrl,
+  playMode,
+  renderFallbackCollage
+}) => {
+  const videoRef = useRef<HTMLVideoElement>(null);
+  const [showVideoLayer, setShowVideoLayer] = useState<boolean>(playMode === 'loop');
+  const [hasEndedOnce, setHasEndedOnce] = useState<boolean>(false);
+
+  useEffect(() => {
+    setHasEndedOnce(false);
+    if (playMode === 'loop') {
+      setShowVideoLayer(true);
+      return;
+    }
+    setShowVideoLayer(false);
+    const v = videoRef.current;
+    if (v) {
+      try {
+        v.currentTime = 0;
+        const p = v.play();
+        if (p && typeof p.catch === 'function') p.catch(() => {});
+      } catch {}
+    }
+  }, [videoUrl, playMode]);
+
+  const handleVideoPlaying = () => {
+    if (playMode === 'loop') {
+      setShowVideoLayer(true);
+      return;
+    }
+    if (!hasEndedOnce) {
+      window.setTimeout(() => {
+        setShowVideoLayer(true);
+      }, 650);
+    }
+  };
+
+  const handleVideoEnded = () => {
+    if (playMode === 'once_with_image_fade') {
+      setHasEndedOnce(true);
+      setShowVideoLayer(false);
+    }
+  };
+
+  const cleanImg = (fallbackImageUrl || '').trim();
+
+  return (
+    <div className="absolute inset-0 w-full h-full overflow-hidden">
+      {/* Underlying Start / End Image (or Collage if no companion image was set) */}
+      {cleanImg ? (
+        <img
+          src={cleanImg}
+          alt=""
+          referrerPolicy="no-referrer"
+          className="absolute inset-0 w-full h-full object-cover"
+        />
+      ) : (
+        renderFallbackCollage()
+      )}
+
+      {/* Video Layer: loops continuously OR smoothly fades in from start image & fades back out when ended */}
+      <video
+        ref={videoRef}
+        src={videoUrl}
+        autoPlay
+        muted
+        loop={playMode === 'loop'}
+        playsInline
+        onPlaying={handleVideoPlaying}
+        onEnded={handleVideoEnded}
+        className={`absolute inset-0 w-full h-full object-cover transition-opacity duration-700 ease-in-out ${
+          showVideoLayer ? 'opacity-100' : 'opacity-0'
+        }`}
+      />
+    </div>
+  );
+};
 
 export const LoginPage: React.FC<LoginPageProps> = ({
   shows,
-  platformName = 'DiziUrdu',
+  platformName = 'Dizi Urdu',
   customLogoUrl,
+  useCustomLogo = false,
+  desktopBgMode,
+  backgroundImageUrl,
+  desktopVideoUrl,
+  desktopVideoPlayMode = 'loop',
+  desktopGlareColor = '#e11d48',
+  mobileBgMode,
+  mobileMediaUrl,
+  mobileVideoUrl,
+  mobileVideoPlayMode = 'loop',
+  mobileGlareColor = '#e11d48',
   initialEmail = '',
   initialAuthMode = 'login',
-  isGlobalMuted = true,
-  onToggleGlobalMute,
   onAuthSuccess,
-  onBrowseFree
+  onBack,
+  onGoHome
 }) => {
+  const { isMobile } = useDeviceLayout();
   const [authMode, setAuthMode] = useState<'login' | 'create'>(initialAuthMode);
+  const [name, setName] = useState('');
+  const [email, setEmail] = useState(initialEmail);
+  const [password, setPassword] = useState('');
+  const [showPassword, setShowPassword] = useState(false);
+  const [errorMsg, setErrorMsg] = useState<string | null>(null);
+  const [forgotMode, setForgotMode] = useState(false);
+  const [forgotSent, setForgotSent] = useState(false);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+
+  const desktopLogoRef = useRef<HTMLButtonElement>(null);
+  const mobileLogoRef = useRef<HTMLButtonElement>(null);
+
   useEffect(() => {
     setAuthMode(initialAuthMode);
   }, [initialAuthMode]);
-  const [email, setEmail] = useState<string>(initialEmail);
-  const [password, setPassword] = useState<string>('');
-  const [showPassword, setShowPassword] = useState<boolean>(false);
-  const [errorMsg, setErrorMsg] = useState<string>('');
-  const [hintMsg, setHintMsg] = useState<string>('');
 
-  // Top 3 movies & series of the platform sorted by popularity points
-  const top3Shows = useMemo(() => {
-    const validShows = (shows || []).filter((s) =>
-      Boolean(
-        s &&
-          (s.desktopRecommendationBackdropUrl ||
-            s.backdropUrl ||
-            s.backdropUrl2 ||
-            s.posterLandscapeUrl)
-      )
-    );
-    const sorted = [...validShows].sort((a, b) => (b.points || 0) - (a.points || 0));
-    return sorted.slice(0, 3);
+  // Lock orientation to vertical (portrait) on mobile login screen
+  useEffect(() => {
+    if (!isMobile || typeof window === 'undefined') return;
+    let locked = false;
+    try {
+      const orientation = (window.screen as unknown as { orientation?: { lock?: (o: string) => Promise<void>; unlock?: () => void } }).orientation;
+      if (orientation?.lock) {
+        orientation
+          .lock('portrait')
+          .then(() => {
+            locked = true;
+          })
+          .catch(() => {});
+      }
+    } catch {}
+    return () => {
+      if (locked) {
+        try {
+          const orientation = (window.screen as unknown as { orientation?: { unlock?: () => void } }).orientation;
+          orientation?.unlock?.();
+        } catch {}
+      }
+    };
+  }, [isMobile]);
+
+  // Resolve effective desktop & mobile background modes (with backwards compatibility for legacy URL fields)
+  const cleanDesktopImg = (backgroundImageUrl || '').trim();
+  const cleanDesktopVid = (desktopVideoUrl || '').trim();
+  const resolvedDesktopMode: LoginBgMode = useMemo(() => {
+    if (desktopBgMode) return desktopBgMode;
+    if (cleanDesktopVid) return 'video';
+    if (cleanDesktopImg) return isVideoMediaUrl(cleanDesktopImg) ? 'video' : 'image';
+    return 'collage';
+  }, [desktopBgMode, cleanDesktopVid, cleanDesktopImg]);
+
+  const effectiveDesktopVideoUrl =
+    cleanDesktopVid || (isVideoMediaUrl(cleanDesktopImg) ? cleanDesktopImg : '');
+  const effectiveDesktopImageUrl =
+    !isVideoMediaUrl(cleanDesktopImg) ? cleanDesktopImg : '';
+
+  const cleanMobileImg = (mobileMediaUrl || '').trim();
+  const cleanMobileVid = (mobileVideoUrl || '').trim();
+  const resolvedMobileMode: LoginBgMode = useMemo(() => {
+    if (mobileBgMode) return mobileBgMode;
+    if (cleanMobileVid) return 'video';
+    if (cleanMobileImg) return isVideoMediaUrl(cleanMobileImg) ? 'video' : 'image';
+    return 'collage';
+  }, [mobileBgMode, cleanMobileVid, cleanMobileImg]);
+
+  const effectiveMobileVideoUrl =
+    cleanMobileVid || (isVideoMediaUrl(cleanMobileImg) ? cleanMobileImg : '');
+  const effectiveMobileImageUrl =
+    !isVideoMediaUrl(cleanMobileImg) ? cleanMobileImg : '';
+
+  // Desktop catalog poster wall collage fallback
+  const desktopCollagePosters = useMemo(() => {
+    const urls: string[] = [];
+    for (const s of shows) {
+      const img = s.posterLandscapeUrl || s.backdropUrl || s.posterVerticalUrl || s.posterUrl;
+      if (img && !urls.includes(img)) {
+        urls.push(img);
+      }
+      if (urls.length >= 24) break;
+    }
+    return urls;
   }, [shows]);
 
-  const [activeSlideIndex, setActiveSlideIndex] = useState<number>(0);
-  // Video does NOT auto-play; user must click Play to start playback
-  const [isPlayingPreview, setIsPlayingPreview] = useState<boolean>(false);
-  const [isVideoReady, setIsVideoReady] = useState<boolean>(false);
-  const [localMuted, setLocalMuted] = useState<boolean>(isGlobalMuted);
-  const videoRef = useRef<HTMLVideoElement | null>(null);
-
-  // 3D Turn-Around Animation State when user clicks Left / Right
-  const [turnPhase, setTurnPhase] = useState<'idle' | 'out' | 'in-start'>('idle');
-  const [turnDir, setTurnDir] = useState<'next' | 'prev'>('next');
-  const turnTimerRef = useRef<number | null>(null);
-
-  useEffect(() => {
-    return () => {
-      if (turnTimerRef.current) window.clearTimeout(turnTimerRef.current);
-    };
-  }, []);
-
-  const effectiveMuted = onToggleGlobalMute ? isGlobalMuted : localMuted;
-  const activeShow = top3Shows[activeSlideIndex] || top3Shows[0];
-
-  // Ambiance color selected by admin for the backdrop image (matches Desktop Recommendation priority)
-  const activeAmbiance = useMemo(() => {
-    if (!activeShow) return '#b45309';
-    return (
-      activeShow.desktopRecommendationBackdropAmbiance ||
-      activeShow.recommendationBackdropColor ||
-      activeShow.desktopSpecialSingleFeedAmbiance ||
-      activeShow.ambientColor ||
-      '#b45309'
-    );
-  }, [activeShow]);
-
-  const activeBackdrop = useMemo(() => {
-    if (!activeShow) return '';
-    return (
-      activeShow.desktopRecommendationBackdropUrl ||
-      activeShow.desktopSpecialSingleFeedUrl ||
-      activeShow.backdropUrl2 ||
-      activeShow.backdropUrl ||
-      activeShow.posterLandscapeUrl
-    );
-  }, [activeShow]);
-
-  const activePreviewUrl = useMemo(() => {
-    if (!activeShow) return '';
-    return (
-      activeShow.trailerUrl ||
-      activeShow.seasons?.[0]?.episodes?.[0]?.videoUrl ||
-      (activeShow as any).streamUrl ||
-      ''
-    );
-  }, [activeShow]);
-
-  // Attach/play preview video ONLY when user clicks Play
-  useEffect(() => {
-    setIsVideoReady(false);
-    const video = videoRef.current;
-    if (!video || !activePreviewUrl || !isPlayingPreview) {
-      if (video && !video.paused) video.pause();
-      return;
+  // Mobile circular portrait/artwork collage
+  const mobileCollageImages = useMemo(() => {
+    const urls: string[] = [];
+    for (const s of shows) {
+      if (s.cast && s.cast.length > 0) {
+        for (const c of s.cast) {
+          if (c.profileUrl && !urls.includes(c.profileUrl)) {
+            urls.push(c.profileUrl);
+          }
+          if (urls.length >= 16) break;
+        }
+      }
+      if (urls.length >= 16) break;
     }
-
-    const cleanup = attachHlsVideo(video, activePreviewUrl, {
-      autoPlay: true,
-      muted: Boolean(effectiveMuted)
-    });
-
-    return () => {
-      if (cleanup) cleanup();
-    };
-  }, [activeSlideIndex, activePreviewUrl, isPlayingPreview]);
-
-  useEffect(() => {
-    if (videoRef.current) {
-      videoRef.current.muted = Boolean(effectiveMuted);
-    }
-  }, [effectiveMuted]);
-
-  const triggerTurnSlide = (direction: 'next' | 'prev') => {
-    if (top3Shows.length <= 1 || turnPhase !== 'idle') return;
-    if (turnTimerRef.current) window.clearTimeout(turnTimerRef.current);
-
-    setTurnDir(direction);
-    setTurnPhase('out');
-
-    turnTimerRef.current = window.setTimeout(() => {
-      setIsPlayingPreview(false);
-      setIsVideoReady(false);
-      setActiveSlideIndex((prev) =>
-        direction === 'next'
-          ? (prev + 1) % top3Shows.length
-          : (prev - 1 + top3Shows.length) % top3Shows.length
-      );
-      setTurnPhase('in-start');
-
-      requestAnimationFrame(() => {
-        requestAnimationFrame(() => {
-          setTurnPhase('idle');
-        });
-      });
-    }, 220);
-  };
-
-  const handlePrevSlide = () => triggerTurnSlide('prev');
-  const handleNextSlide = () => triggerTurnSlide('next');
-
-  const handleTogglePlay = () => {
-    const video = videoRef.current;
-    if (!activePreviewUrl) {
-      return;
-    }
-    if (isPlayingPreview) {
-      setIsPlayingPreview(false);
-      if (video && !video.paused) video.pause();
-    } else {
-      setIsPlayingPreview(true);
-      if (video && video.paused) {
-        video.play().catch(() => {});
+    if (urls.length < 12) {
+      for (const s of shows) {
+        const img = s.posterVerticalUrl || s.posterUrl || s.posterLandscapeUrl || s.backdropUrl;
+        if (img && !urls.includes(img)) {
+          urls.push(img);
+        }
+        if (urls.length >= 16) break;
       }
     }
-  };
+    return urls;
+  }, [shows]);
 
-  const handleToggleMute = () => {
-    const nextMuted = !effectiveMuted;
-    if (onToggleGlobalMute) {
-      onToggleGlobalMute(nextMuted);
-    } else {
-      setLocalMuted(nextMuted);
-    }
-    if (videoRef.current) {
-      videoRef.current.muted = nextMuted;
-    }
-  };
+  const renderDesktopCollage = () =>
+    desktopCollagePosters.length > 0 ? (
+      <div className="w-full h-full grid grid-cols-3 sm:grid-cols-4 md:grid-cols-6 gap-2.5 p-2.5 opacity-55 scale-[1.02]">
+        {Array.from({ length: 24 }).map((_, idx) => {
+          const src = desktopCollagePosters[idx % desktopCollagePosters.length];
+          return (
+            <div key={idx} className="relative aspect-[16/10] rounded-lg overflow-hidden bg-zinc-900">
+              <img
+                src={src}
+                alt=""
+                loading="lazy"
+                referrerPolicy="no-referrer"
+                className="w-full h-full object-cover"
+              />
+            </div>
+          );
+        })}
+      </div>
+    ) : null;
+
+  const renderMobileCollage = () => (
+    <div className="absolute -inset-x-6 -top-6 bottom-0 flex flex-col justify-center gap-3.5 opacity-85">
+      {[0, 1, 2, 3].map((rowIdx) => (
+        <div
+          key={rowIdx}
+          className={`flex items-center justify-center gap-3.5 ${
+            rowIdx % 2 === 1 ? 'translate-x-5' : '-translate-x-4'
+          }`}
+        >
+          {Array.from({ length: 5 }).map((_, colIdx) => {
+            const imgIndex = rowIdx * 5 + colIdx;
+            const src =
+              mobileCollageImages.length > 0
+                ? mobileCollageImages[imgIndex % mobileCollageImages.length]
+                : '';
+            return (
+              <div
+                key={colIdx}
+                className="w-[82px] h-[82px] sm:w-[94px] sm:h-[94px] rounded-full overflow-hidden bg-zinc-900 shrink-0 shadow-lg"
+              >
+                {src && (
+                  <img
+                    src={src}
+                    alt=""
+                    referrerPolicy="no-referrer"
+                    className="w-full h-full object-cover"
+                  />
+                )}
+              </div>
+            );
+          })}
+        </div>
+      ))}
+    </div>
+  );
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    setErrorMsg('');
-    setHintMsg('');
+    setErrorMsg(null);
+
+    const trimmedName = name.trim();
     const trimmedEmail = email.trim();
-    if (!trimmedEmail || !password) {
-      setErrorMsg('Please enter an email address and password.');
+
+    if (authMode === 'create' && !forgotMode && trimmedName.length < 2) {
+      setErrorMsg('Please enter your name.');
       return;
     }
-    onAuthSuccess({
-      email: trimmedEmail,
-      password,
-      mode: authMode
-    });
+
+    if (!trimmedEmail || !trimmedEmail.includes('@')) {
+      setErrorMsg('Please enter a valid email address.');
+      return;
+    }
+
+    if (forgotMode) {
+      setForgotSent(true);
+      return;
+    }
+
+    if (password.length < 4) {
+      setErrorMsg('Password must be at least 4 characters.');
+      return;
+    }
+
+    setIsSubmitting(true);
+    const activeLogoEl = isMobile ? mobileLogoRef.current : desktopLogoRef.current;
+    const logoRect = activeLogoEl ? activeLogoEl.getBoundingClientRect() : null;
+
+    window.setTimeout(() => {
+      setIsSubmitting(false);
+      onAuthSuccess({
+        email: trimmedEmail,
+        password,
+        name: authMode === 'create' ? trimmedName : undefined,
+        logoRect
+      });
+    }, 180);
   };
 
-  // Convert hex color to rgba for smooth multi-stop ambient lighting
-  const hexToRgba = (hex: string, alpha: number) => {
-    let clean = (hex || '#b45309').replace('#', '');
-    if (clean.length === 3) {
-      clean = clean.split('').map((c) => c + c).join('');
-    }
-    const num = parseInt(clean, 16);
-    if (isNaN(num)) return `rgba(180, 83, 9, ${alpha})`;
-    const r = (num >> 16) & 255;
-    const g = (num >> 8) & 255;
-    const b = num & 255;
-    return `rgba(${r}, ${g}, ${b}, ${alpha})`;
-  };
-
-  // 3D turning transform for Top-3 card
-  const getCardTransformStyle = (): React.CSSProperties => {
-    if (turnPhase === 'out') {
-      return {
-        transform:
-          turnDir === 'next'
-            ? 'rotateY(90deg) rotateX(4deg) scale(0.92)'
-            : 'rotateY(-104deg) rotateX(4deg) scale(0.92)',
-        opacity: 0.2,
-        transition: 'transform 220ms cubic-bezier(0.4, 0, 1, 1), opacity 200ms ease-in'
-      };
-    }
-    if (turnPhase === 'in-start') {
-      return {
-        transform:
-          turnDir === 'next'
-            ? 'rotateY(-104deg) rotateX(4deg) scale(0.92)'
-            : 'rotateY(90deg) rotateX(4deg) scale(0.92)',
-        opacity: 0.2,
-        transition: 'none'
-      };
-    }
-    return {
-      transform: 'rotateY(-8deg) rotateX(2.5deg) scale(1)',
-      opacity: 1,
-      transition: 'transform 340ms cubic-bezier(0.16, 1, 0.3, 1), opacity 280ms ease-out'
-    };
-  };
-
-  // Shared button style matching desktop HeroRecommendation circular mute button
-  const desktopRecButtonStyle =
-    'w-8 h-8 sm:w-8.5 sm:h-8.5 md:w-9 md:h-9 xl:w-9.5 xl:h-9.5 rounded-full bg-black/25 hover:bg-black/40 text-white border-0 flex items-center justify-center cursor-pointer shadow-md transition-all active:scale-95';
-
-  return (
-    <div className="fixed inset-0 z-[240] min-h-[100dvh] bg-[#070709] text-white flex flex-col justify-between overflow-y-auto overflow-x-hidden select-none font-sans">
-      {/* Dynamic Page-Wide Ambient Radial Glow from Active Backdrop's Selected Ambiance */}
-      <div className="fixed inset-0 pointer-events-none overflow-hidden z-0">
-        <div
-          className="absolute right-[5%] top-[12%] w-[720px] h-[620px] rounded-full blur-[130px] transition-all duration-700"
-          style={{
-            background: `radial-gradient(circle, ${hexToRgba(activeAmbiance, 0.32)} 0%, ${hexToRgba(activeAmbiance, 0.1)} 45%, transparent 75%)`
-          }}
-        />
-        <div
-          className="absolute left-[10%] top-[24%] w-[460px] h-[460px] rounded-full blur-[120px] transition-all duration-700"
-          style={{
-            background: `radial-gradient(circle, ${hexToRgba(activeAmbiance, 0.16)} 0%, transparent 70%)`
-          }}
-        />
-      </div>
-
-      {/* 1. Top Header Bar: Admin Logo Left | Login/Create Account Middle | Browse Free Right */}
-      <header className="relative z-20 w-full max-w-[1360px] mx-auto px-5 sm:px-8 lg:px-12 pt-5 pb-3 flex items-center justify-between gap-3 shrink-0">
-        {/* Top Left: Admin Selected Logo */}
-        <div className="flex items-center shrink-0">
-          <DiziLogo
-            variant="red"
-            size="md"
-            customLogoUrl={customLogoUrl}
-            className="cursor-default"
-          />
-        </div>
-
-        {/* Middle: Single Pill Selector for Login / Create Account */}
-        <div className="flex items-center p-1 rounded-full bg-black/25 shadow-md border-0">
+  // =========================================================================
+  // MOBILE LAYOUT
+  // Vertical orientation-locked viewport: top media section adapts to screen
+  // height while logo and form block remain strictly fixed with minimal bottom
+  // padding so toggling Login <-> Create Account NEVER shifts the logo up/down.
+  // =========================================================================
+  if (isMobile) {
+    const mobileAccent = (mobileGlareColor || '#e11d48').trim();
+    return (
+      <div className="fixed inset-0 h-[100dvh] w-full bg-black text-white flex flex-col overflow-hidden select-none">
+        {/* Top Flexible Media Section (adjusts automatically to screen height above fixed logo + form dock) */}
+        <div className="relative flex-1 min-h-0 w-full overflow-hidden bg-black">
+          {/* Transparent Back Button with exact More Info shadow (no circle container) */}
           <button
             type="button"
-            onClick={() => {
-              setAuthMode('login');
-              setErrorMsg('');
-              setHintMsg('');
-            }}
-            className={`px-4 sm:px-5 py-1.5 rounded-full text-xs sm:text-sm font-semibold transition-all cursor-pointer ${
-              authMode === 'login'
-                ? 'bg-white/20 text-white shadow-sm'
-                : 'text-zinc-400 hover:text-white'
-            }`}
+            onClick={onBack}
+            aria-label="Go back"
+            className="absolute top-3.5 left-3 z-30 h-9 w-9 bg-transparent text-white hover:text-white/80 flex items-center justify-center active:scale-90 transition-transform cursor-pointer"
           >
-            Login
+            <ChevronLeft className="w-7 h-7 stroke-[2.2] text-white drop-shadow-[0_2px_6px_rgba(0,0,0,0.85)]" />
           </button>
-          <button
-            type="button"
-            onClick={() => {
-              setAuthMode('create');
-              setErrorMsg('');
-              setHintMsg('');
-            }}
-            className={`px-4 sm:px-5 py-1.5 rounded-full text-xs sm:text-sm font-semibold transition-all cursor-pointer ${
-              authMode === 'create'
-                ? 'bg-white/20 text-white shadow-sm'
-                : 'text-zinc-400 hover:text-white'
-            }`}
-          >
-            Create Account
-          </button>
-        </div>
 
-        {/* Right Side: Browse Free Button */}
-        <button
-          type="button"
-          onClick={onBrowseFree}
-          className="px-4 sm:px-6 py-2 rounded-full bg-white hover:bg-white/90 text-black font-bold text-xs sm:text-sm shadow-lg cursor-pointer transition-transform active:scale-95 shrink-0"
-        >
-          Browse Free
-        </button>
-      </header>
-
-      {/* 2. Center Split Section: Left Form Card + Right Tilted Top-3 Showcase Card */}
-      <main className="relative z-10 w-full max-w-[1260px] mx-auto px-5 sm:px-8 lg:px-12 py-6 sm:py-10 my-auto">
-        <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 lg:gap-12 items-center">
-          {/* Left Side: Identical Container Dimensions for both Login & Create Account */}
-          <div className="lg:col-span-5 flex justify-center lg:justify-start">
-            <div className="relative w-full max-w-[390px] rounded-2xl p-6 sm:p-8 bg-[#121215]/90 border-[2.5px] border-zinc-400/[0.09] shadow-[0_30px_80px_-15px_rgba(0,0,0,0.95)] backdrop-blur-xl overflow-hidden">
-              {/* Top Specular Ambiance Accent Glow along Card Top Border */}
+          {/* Media Layer */}
+          {resolvedMobileMode === 'color_glare' ? (
+            <div className="absolute inset-0 bg-black overflow-hidden">
               <div
-                aria-hidden="true"
-                className="pointer-events-none absolute inset-x-0 top-0 h-28 transition-all duration-700"
+                className="absolute -top-24 left-1/2 -translate-x-1/2 w-[460px] h-[460px] rounded-full blur-[120px] opacity-35"
                 style={{
-                  background: `radial-gradient(ellipse 85% 60% at 50% 0%, ${hexToRgba(activeAmbiance, 0.25)} 0%, transparent 100%)`
+                  background: `radial-gradient(circle, ${mobileAccent} 0%, #b45309 52%, transparent 80%)`
                 }}
               />
-              <div
-                aria-hidden="true"
-                className="pointer-events-none absolute inset-x-6 top-0 h-[1.5px] transition-all duration-700"
-                style={{
-                  background: `linear-gradient(90deg, transparent 0%, ${hexToRgba(activeAmbiance, 0.8)} 50%, transparent 100%)`
-                }}
-              />
-
-              <form onSubmit={handleSubmit} className="relative z-10 space-y-4">
-                <div className="space-y-1 pb-1">
-                  <h1 className="text-3xl sm:text-4xl font-bold text-white tracking-tight line-clamp-1">
-                    {authMode === 'login' ? 'Sign In' : 'Create Account'}
-                  </h1>
-                  <p className="text-xs sm:text-sm text-zinc-400 line-clamp-1">
-                    {authMode === 'login'
-                      ? `to continue watching on ${platformName}.`
-                      : `Join ${platformName} and start streaming free.`}
-                  </p>
-                </div>
-
-                <div className="space-y-3">
-                  <div>
-                    <input
-                      type="email"
-                      value={email}
-                      onChange={(e) => {
-                        setEmail(e.target.value);
-                        if (errorMsg) setErrorMsg('');
-                      }}
-                      placeholder="Email address"
-                      autoComplete="email"
-                      className="w-full px-4 py-3 rounded-full bg-white/[0.06] border border-white/12 focus:border-white/40 text-sm text-white placeholder-zinc-400 outline-none transition-colors"
-                    />
-                  </div>
-
-                  <div className="relative">
-                    <input
-                      type={showPassword ? 'text' : 'password'}
-                      value={password}
-                      onChange={(e) => {
-                        setPassword(e.target.value);
-                        if (errorMsg) setErrorMsg('');
-                      }}
-                      placeholder="Password"
-                      autoComplete={authMode === 'login' ? 'current-password' : 'new-password'}
-                      className="w-full pl-4 pr-11 py-3 rounded-full bg-white/[0.06] border border-white/12 focus:border-white/40 text-sm text-white placeholder-zinc-400 outline-none transition-colors"
-                    />
-                    <button
-                      type="button"
-                      onClick={() => setShowPassword(!showPassword)}
-                      className="absolute right-3.5 top-1/2 -translate-y-1/2 text-zinc-400 hover:text-white cursor-pointer p-1 transition-colors"
-                      aria-label={showPassword ? 'Hide password' : 'Show password'}
-                    >
-                      {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
-                    </button>
-                  </div>
-
-                  {/* Fixed-height slot keeps Login & Create Account containers identical height */}
-                  <div className="flex justify-end h-4 items-center">
-                    <button
-                      type="button"
-                      onClick={() =>
-                        setHintMsg('You can use any email and password to sign in right now.')
-                      }
-                      className={`text-[11px] text-zinc-400 hover:text-zinc-200 transition-opacity ${
-                        authMode === 'login'
-                          ? 'opacity-100 cursor-pointer pointer-events-auto'
-                          : 'opacity-0 pointer-events-none'
-                      }`}
-                      tabIndex={authMode === 'login' ? 0 : -1}
-                    >
-                      Forgot password?
-                    </button>
-                  </div>
-                </div>
-
-                {/* Fixed feedback height prevents vertical resize jump */}
-                <div className="min-h-[16px]">
-                  {errorMsg && (
-                    <p className="text-xs text-red-400 font-medium px-1">{errorMsg}</p>
-                  )}
-                  {!errorMsg && hintMsg && (
-                    <p className="text-xs text-zinc-300 font-medium px-1">{hintMsg}</p>
-                  )}
-                </div>
-
-                <button
-                  type="submit"
-                  className="w-full py-3 rounded-full text-black font-bold text-sm shadow-lg cursor-pointer transition-all hover:brightness-110 active:scale-[0.98]"
-                  style={{
-                    backgroundColor: activeAmbiance,
-                    color: '#090b10',
-                    boxShadow: `0 8px 24px ${hexToRgba(activeAmbiance, 0.35)}`
-                  }}
-                >
-                  {authMode === 'login' ? 'Sign In' : 'Create Account'}
-                </button>
-
-                <p className="text-center text-[11px] text-zinc-400 pt-1">
-                  100% Free • No Ads
-                </p>
-              </form>
             </div>
-          </div>
+          ) : resolvedMobileMode === 'video' && effectiveMobileVideoUrl ? (
+            <LoginVideoWithImageFade
+              videoUrl={effectiveMobileVideoUrl}
+              fallbackImageUrl={effectiveMobileImageUrl}
+              playMode={mobileVideoPlayMode}
+              renderFallbackCollage={renderMobileCollage}
+            />
+          ) : resolvedMobileMode === 'image' && effectiveMobileImageUrl ? (
+            <img
+              src={effectiveMobileImageUrl}
+              alt=""
+              referrerPolicy="no-referrer"
+              className="absolute inset-0 w-full h-full object-cover"
+            />
+          ) : (
+            renderMobileCollage()
+          )}
 
-          {/* Right Side: Tilted Top 3 Movies & Series Card with Desktop Recommendation Shadow & Border */}
-          <div className="lg:col-span-7 flex justify-center lg:justify-end">
-            {activeShow && (
-              <div
-                className="relative w-full max-w-[640px]"
-                style={{ perspective: '1300px' }}
-              >
-                {/* Wide Diffused Ambient Aura Behind Container (same as HeroRecommendation) */}
-                <div
-                  aria-hidden="true"
-                  className="absolute -inset-8 rounded-full blur-[110px] pointer-events-none transition-all duration-1000 ease-out"
-                  style={{
-                    background: `radial-gradient(ellipse 80% 70% at 50% 45%, ${activeAmbiance} 0%, ${activeAmbiance}65 35%, ${activeAmbiance}20 65%, transparent 100%)`,
-                    opacity: 0.72
-                  }}
+          {/* Smooth Dark Glarence Covering Top Section & Merging Seamlessly into Pure Black Lower Section */}
+          <div
+            className="absolute inset-0 pointer-events-none z-10"
+            style={{
+              background:
+                'radial-gradient(ellipse 92% 82% at 50% 34%, rgba(0,0,0,0.14) 0%, rgba(0,0,0,0.48) 68%, rgba(0,0,0,0.86) 100%)'
+            }}
+          />
+          <div
+            className="absolute inset-x-0 bottom-0 h-[58%] pointer-events-none z-10"
+            style={{
+              background:
+                'linear-gradient(to top, #000000 0%, rgba(0,0,0,0.95) 18%, rgba(0,0,0,0.74) 44%, rgba(0,0,0,0.36) 72%, rgba(0,0,0,0) 100%)'
+            }}
+          />
+
+          {/* Centered Platform Logo — anchored right above the fixed-height lower dock so it NEVER moves up or down */}
+          <div className="absolute inset-x-0 bottom-2.5 z-20 flex items-center justify-center">
+            <button
+              ref={mobileLogoRef}
+              type="button"
+              onClick={onGoHome}
+              aria-label="Go to homepage"
+              className="inline-flex items-center justify-center cursor-pointer active:scale-95 transition-transform"
+            >
+              {useCustomLogo && customLogoUrl ? (
+                <img
+                  src={customLogoUrl}
+                  alt={platformName}
+                  referrerPolicy="no-referrer"
+                  className="h-9.5 w-auto max-w-[170px] object-contain drop-shadow-[0_4px_18px_rgba(0,0,0,0.75)]"
                 />
+              ) : (
+                <DiziLogo
+                  variant="red"
+                  size="lg"
+                  className="h-9.5 max-w-[170px] drop-shadow-[0_4px_18px_rgba(0,0,0,0.75)]"
+                />
+              )}
+            </button>
+          </div>
+        </div>
 
-                {/* 3D Tilted Showcase Container with Turn-Around Animation */}
-                <div
-                  className="relative aspect-[16/10] sm:aspect-[16/9.5] w-full rounded-[14px] sm:rounded-[18px] md:rounded-[22px] overflow-hidden bg-[#121319] border-0"
-                  style={{
-                    ...getCardTransformStyle(),
-                    transformStyle: 'preserve-3d',
-                    boxShadow: `0 35px 95px -15px rgba(0,0,0,0.98), 0 15px 45px rgba(0,0,0,0.8), 0 0 60px ${activeAmbiance}65, 0 0 110px ${activeAmbiance}25`
-                  }}
-                >
-                  {/* Exact Inner Overlay Border matching Desktop Recommendation Element */}
-                  <div className="absolute inset-0 rounded-[inherit] pointer-events-none z-30 border-[2.5px] border-zinc-400/[0.09]" />
-
-                  {/* Base Backdrop Poster Image */}
-                  <MediaImage
-                    key={`login-backdrop-${activeShow.id}`}
-                    src={activeBackdrop}
-                    fallbackTitle={activeShow.title}
-                    hideFallback={isPlayingPreview && isVideoReady}
-                    fallbackClassName="absolute inset-0 w-full h-full bg-[#121319] flex items-center justify-center p-6 text-center select-none"
-                    fallbackTextClassName="text-white/80 font-bold text-xl sm:text-2xl font-sans"
-                    className="absolute inset-0 w-full h-full object-cover transition-opacity duration-500"
-                  />
-
-                  {/* Preview Video: Plays ONLY when user explicitly clicks Play */}
-                  {activePreviewUrl && isPlayingPreview && (
-                    <video
-                      ref={videoRef}
-                      key={`login-video-${activeShow.id}`}
-                      poster={activeBackdrop}
-                      autoPlay
-                      playsInline
-                      loop
-                      muted={effectiveMuted}
-                      onPlaying={() => setIsVideoReady(true)}
-                      onPause={() => setIsVideoReady(false)}
-                      className={`absolute inset-0 w-full h-full object-cover transition-opacity duration-500 ${
-                        isVideoReady ? 'opacity-100' : 'opacity-0'
-                      }`}
-                    />
-                  )}
-
-                  {/* Vignette Scrim for Rank Number & ClearArt Logo Contrast */}
-                  <div
-                    className="absolute inset-0 pointer-events-none"
-                    style={{
-                      background:
-                        'linear-gradient(to top, rgba(0,0,0,0.82) 0%, rgba(0,0,0,0.18) 38%, transparent 65%), linear-gradient(to right, rgba(0,0,0,0.35) 0%, transparent 45%)'
-                    }}
-                  />
-
-                  {/* Top-Left Rank Number (Desktop Recommendation / Top 10 Style) */}
-                  <div className="absolute top-4 left-5 sm:top-6 sm:left-7 z-20 pointer-events-none select-none">
-                    <span
-                      className="text-6xl sm:text-7xl lg:text-[84px] font-black leading-none tracking-tight inline-block"
-                      style={{
-                        backgroundImage:
-                          'linear-gradient(180deg, #ffffff 35%, #a1a1aa 100%)',
-                        WebkitBackgroundClip: 'text',
-                        color: 'transparent',
-                        filter: 'drop-shadow(0 4px 10px rgba(0, 0, 0, 0.75))'
-                      }}
-                    >
-                      {activeSlideIndex + 1}
-                    </span>
-                  </div>
-
-                  {/* Bottom-Left Title PNG Logo */}
-                  <div className="absolute bottom-5 left-5 sm:bottom-7 sm:left-7 z-20 pointer-events-none max-w-[55%]">
-                    {activeShow.titleLogoUrl ? (
-                      <img
-                        src={activeShow.titleLogoUrl}
-                        alt={activeShow.title}
-                        referrerPolicy="no-referrer"
-                        className="max-h-14 sm:max-h-20 lg:max-h-24 w-auto object-contain object-left drop-shadow-[0_4px_12px_rgba(0,0,0,0.8)]"
-                      />
-                    ) : (
-                      <h2 className="text-2xl sm:text-3xl font-black text-white tracking-tight drop-shadow-lg">
-                        {activeShow.title}
-                      </h2>
-                    )}
-                  </div>
-
-                  {/* Bottom-Right Controls: Same Desktop Recommendation Mute Button Style */}
-                  <div className="absolute bottom-4 right-4 sm:bottom-6 sm:right-6 z-30 flex items-center gap-2">
-                    {/* Play / Pause Button */}
-                    <button
-                      type="button"
-                      onClick={handleTogglePlay}
-                      aria-label={isPlayingPreview ? 'Pause preview' : 'Play preview'}
-                      className={desktopRecButtonStyle}
-                    >
-                      {isPlayingPreview ? (
-                        <svg className="w-3.5 h-3.5 sm:w-4 sm:h-4 fill-current text-white" viewBox="0 0 24 24">
-                          <rect x="5" y="4" width="4.8" height="16" rx="1" />
-                          <rect x="14.2" y="4" width="4.8" height="16" rx="1" />
-                        </svg>
-                      ) : (
-                        <svg className="w-3.5 h-3.5 sm:w-4 sm:h-4 fill-current ml-0.5 text-white" viewBox="0 0 24 24">
-                          <polygon points="6,4 20,12 6,20" />
-                        </svg>
-                      )}
-                    </button>
-
-                    {/* Mute / Unmute Button (exact HeroRecommendation mute button) */}
-                    <button
-                      type="button"
-                      onClick={handleToggleMute}
-                      aria-label={effectiveMuted ? 'Unmute preview' : 'Mute preview'}
-                      className={desktopRecButtonStyle}
-                    >
-                      {effectiveMuted ? (
-                        <VolumeX className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-white" />
-                      ) : (
-                        <Volume2 className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-white" />
-                      )}
-                    </button>
-
-                    {/* Left / Right Top 3 Carousel Buttons (exact HeroRecommendation mute button style) */}
-                    {top3Shows.length > 1 && (
-                      <div className="flex items-center gap-1.5">
-                        <button
-                          type="button"
-                          onClick={handlePrevSlide}
-                          aria-label="Previous featured title"
-                          className={desktopRecButtonStyle}
-                        >
-                          <ChevronLeft className="w-4 h-4 text-white stroke-[2.2]" />
-                        </button>
-                        <button
-                          type="button"
-                          onClick={handleNextSlide}
-                          aria-label="Next featured title"
-                          className={desktopRecButtonStyle}
-                        >
-                          <ChevronRight className="w-4 h-4 text-white stroke-[2.2]" />
-                        </button>
-                      </div>
-                    )}
-                  </div>
-                </div>
+        {/* Fixed-Height Lower Form Dock (reduced bottom padding, locked height so logo NEVER shifts between Login / Create Account) */}
+        <div className="relative z-20 shrink-0 h-[258px] w-full bg-black px-6 pt-2 pb-[max(env(safe-area-inset-bottom),12px)] flex flex-col justify-end">
+          <div className="w-full max-w-[400px] mx-auto">
+            {forgotMode && (
+              <div className="text-center mb-2.5">
+                <h2 className="text-sm font-bold text-white">Reset Password</h2>
+                <p className="text-[11px] text-zinc-400 mt-0.5">
+                  Enter your email to receive reset instructions.
+                </p>
               </div>
             )}
+
+            <form onSubmit={handleSubmit} className={authMode === 'create' ? 'space-y-2' : 'space-y-2.5'}>
+              {/* Name Input (Create Account mode only) */}
+              {!forgotMode && authMode === 'create' && (
+                <div>
+                  <input
+                    type="text"
+                    value={name}
+                    onChange={(e) => setName(e.target.value)}
+                    placeholder="Full Name"
+                    autoComplete="name"
+                    className="w-full rounded-xl bg-white/[0.1] focus:bg-white/[0.15] text-white placeholder-zinc-400 px-4 py-2.5 text-sm font-medium border-0 outline-none focus:ring-1 focus:ring-white/25 transition-colors"
+                  />
+                </div>
+              )}
+
+              {/* Email Input */}
+              <div>
+                <input
+                  type="email"
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                  placeholder="Email"
+                  autoComplete="email"
+                  className={`w-full rounded-xl bg-white/[0.1] focus:bg-white/[0.15] text-white placeholder-zinc-400 px-4 ${
+                    authMode === 'create' ? 'py-2.5' : 'py-3'
+                  } text-sm font-medium border-0 outline-none focus:ring-1 focus:ring-white/25 transition-colors`}
+                />
+              </div>
+
+              {/* Password Input (No Confirm Password) */}
+              {!forgotMode && (
+                <div className="relative">
+                  <input
+                    type={showPassword ? 'text' : 'password'}
+                    value={password}
+                    onChange={(e) => setPassword(e.target.value)}
+                    placeholder="Password"
+                    autoComplete={authMode === 'create' ? 'new-password' : 'current-password'}
+                    className={`w-full rounded-xl bg-white/[0.1] focus:bg-white/[0.15] text-white placeholder-zinc-400 pl-4 pr-11 ${
+                      authMode === 'create' ? 'py-2.5' : 'py-3'
+                    } text-sm font-medium border-0 outline-none focus:ring-1 focus:ring-white/25 transition-colors`}
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowPassword((prev) => !prev)}
+                    aria-label={showPassword ? 'Hide password' : 'Show password'}
+                    className="absolute right-3.5 top-1/2 -translate-y-1/2 text-zinc-400 hover:text-white cursor-pointer p-1"
+                  >
+                    {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                  </button>
+                </div>
+              )}
+
+              {!forgotMode && authMode === 'login' && (
+                <div className="flex justify-end">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setForgotMode(true);
+                      setForgotSent(false);
+                      setErrorMsg(null);
+                    }}
+                    className="text-[11px] text-zinc-400 hover:text-white font-medium transition-colors cursor-pointer"
+                  >
+                    Forgot password?
+                  </button>
+                </div>
+              )}
+
+              {errorMsg && (
+                <p className="text-[11px] text-rose-400 font-semibold text-center bg-rose-500/10 rounded-lg py-1.5 px-3">
+                  {errorMsg}
+                </p>
+              )}
+              {forgotSent && forgotMode && (
+                <p className="text-[11px] text-emerald-400 font-semibold text-center bg-emerald-500/10 rounded-lg py-1.5 px-3">
+                  Reset link sent to {email}. Check your inbox.
+                </p>
+              )}
+
+              {/* Submit Button */}
+              <button
+                type="submit"
+                disabled={isSubmitting}
+                className={`w-full rounded-xl bg-[#e50914] hover:bg-[#f41924] active:scale-[0.98] disabled:opacity-60 text-white font-bold text-sm ${
+                  authMode === 'create' ? 'py-2.5' : 'py-3'
+                } shadow-[0_10px_28px_rgba(229,9,20,0.38)] transition-all cursor-pointer`}
+              >
+                {isSubmitting
+                  ? 'Please wait...'
+                  : forgotMode
+                  ? 'Send Reset Link'
+                  : authMode === 'create'
+                  ? 'Create Account'
+                  : 'Login'}
+              </button>
+            </form>
+
+            {/* Bottom Mode Switch (compact spacing, reduced bottom padding) */}
+            <div className="mt-3 text-center">
+              {forgotMode ? (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setForgotMode(false);
+                    setForgotSent(false);
+                    setErrorMsg(null);
+                  }}
+                  className="text-xs text-zinc-300 hover:text-white font-semibold transition-colors cursor-pointer"
+                >
+                  Back to Login
+                </button>
+              ) : authMode === 'login' ? (
+                <p className="text-xs text-zinc-400">
+                  Don&apos;t have an account?{' '}
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setAuthMode('create');
+                      setErrorMsg(null);
+                    }}
+                    className="text-white font-bold hover:underline cursor-pointer"
+                  >
+                    Create Account
+                  </button>
+                </p>
+              ) : (
+                <p className="text-xs text-zinc-400">
+                  Already have an account?{' '}
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setAuthMode('login');
+                      setErrorMsg(null);
+                    }}
+                    className="text-white font-bold hover:underline cursor-pointer"
+                  >
+                    Login
+                  </button>
+                </p>
+              )}
+            </div>
           </div>
         </div>
-      </main>
+      </div>
+    );
+  }
 
-      {/* 3. Simple Minimal Footer */}
-      <footer className="relative z-10 w-full max-w-[1260px] mx-auto px-5 sm:px-8 lg:px-12 py-4 flex flex-col sm:flex-row items-center justify-between gap-2 text-[11px] text-zinc-500 border-t border-white/[0.06] shrink-0">
-        <span>© {new Date().getFullYear()} {platformName}. All rights reserved.</span>
-        <div className="flex items-center gap-4">
-          <span>Privacy</span>
-          <span>Terms</span>
-          <span>Help</span>
+  // =========================================================================
+  // DESKTOP LAYOUT
+  // - Non-sticky transparent navbar that scrolls naturally with the page
+  // - Clickable centered logo -> Homepage
+  // - Circular-corner top-right Create Account / Login button
+  // - Lighter center glarence, slightly stronger top & bottom edge glarence
+  // - Supports Collage, Image/GIF, Video (loop or fade-in/out with image), or Color Glarence (PIN style)
+  // - No duplicate bottom "Already have an account / Don't have an account" inside the card
+  // - Fits 1920x1080 full screen cleanly without vertical scrollbar; background scrolls on narrow windows
+  // =========================================================================
+  const desktopAccent = (desktopGlareColor || '#e11d48').trim();
+
+  return (
+    <div className="relative min-h-screen w-full bg-[#0d0e11] text-white flex flex-col justify-between overflow-x-hidden select-none">
+      {/* Scrollable Background Layer (absolute inset-0 so it scrolls naturally when window is narrow/short) */}
+      <div className="absolute inset-0 z-0 pointer-events-none overflow-hidden bg-[#0c0d12]">
+        {resolvedDesktopMode === 'color_glare' ? (
+          <div className="absolute inset-0 bg-[#0c0d12] overflow-hidden">
+            <div
+              className="absolute -top-36 left-1/2 -translate-x-1/2 w-[720px] h-[640px] rounded-full blur-[150px] opacity-28"
+              style={{
+                background: `radial-gradient(circle, ${desktopAccent} 0%, #b45309 50%, transparent 80%)`
+              }}
+            />
+          </div>
+        ) : resolvedDesktopMode === 'video' && effectiveDesktopVideoUrl ? (
+          <LoginVideoWithImageFade
+            videoUrl={effectiveDesktopVideoUrl}
+            fallbackImageUrl={effectiveDesktopImageUrl}
+            playMode={desktopVideoPlayMode}
+            renderFallbackCollage={renderDesktopCollage}
+          />
+        ) : resolvedDesktopMode === 'image' && effectiveDesktopImageUrl ? (
+          <img
+            src={effectiveDesktopImageUrl}
+            alt=""
+            referrerPolicy="no-referrer"
+            className="w-full h-full object-cover"
+          />
+        ) : (
+          renderDesktopCollage()
+        )}
+
+        {/* Slightly reduced center glarence so background media breathes, with slightly increased top & bottom edge glarence */}
+        {resolvedDesktopMode !== 'color_glare' && (
+          <>
+            <div
+              className="absolute inset-0"
+              style={{
+                background:
+                  'radial-gradient(ellipse 85% 75% at 50% 48%, rgba(10,11,15,0.26) 0%, rgba(10,11,15,0.48) 62%, rgba(10,11,15,0.72) 100%)'
+              }}
+            />
+            {/* Increased Top Glarence */}
+            <div
+              className="absolute inset-x-0 top-0 h-44"
+              style={{
+                background:
+                  'linear-gradient(to bottom, rgba(8,9,13,0.84) 0%, rgba(8,9,13,0.48) 42%, rgba(8,9,13,0.16) 76%, rgba(8,9,13,0) 100%)'
+              }}
+            />
+            {/* Increased Bottom Glarence */}
+            <div
+              className="absolute inset-x-0 bottom-0 h-56"
+              style={{
+                background:
+                  'linear-gradient(to top, rgba(10,11,15,0.96) 0%, rgba(10,11,15,0.72) 38%, rgba(10,11,15,0.32) 72%, rgba(10,11,15,0) 100%)'
+              }}
+            />
+          </>
+        )}
+      </div>
+
+      {/* Desktop Top Navbar: Transparent, NON-sticky (moves naturally with page scroll) */}
+      <header className="relative z-20 w-full bg-transparent select-none">
+        <div className="relative w-full h-[68px] px-6 md:px-10 xl:px-12 flex items-center justify-between">
+          {/* Left: Back Button */}
+          <button
+            type="button"
+            onClick={onBack}
+            aria-label="Go back"
+            className="flex items-center gap-1 p-1.5 -ml-1.5 rounded-full text-white hover:bg-white/10 active:scale-90 transition-all cursor-pointer z-10"
+          >
+            <ChevronLeft className="w-6 h-6 stroke-[2.4] drop-shadow-[0_2px_6px_rgba(0,0,0,0.7)]" />
+          </button>
+
+          {/* Center: Clickable Platform Logo leading directly to Homepage */}
+          <button
+            ref={desktopLogoRef}
+            type="button"
+            onClick={onGoHome}
+            aria-label="Go to homepage"
+            className="absolute left-1/2 -translate-x-1/2 flex items-center justify-center cursor-pointer active:scale-95 transition-transform"
+          >
+            {useCustomLogo && customLogoUrl ? (
+              <img
+                src={customLogoUrl}
+                alt={platformName}
+                referrerPolicy="no-referrer"
+                className="h-7.5 w-auto max-w-[125px] object-contain drop-shadow-[0_2px_10px_rgba(0,0,0,0.65)]"
+              />
+            ) : (
+              <DiziLogo
+                variant="red"
+                size="md"
+                className="max-w-[125px] h-[34px] drop-shadow-[0_2px_10px_rgba(0,0,0,0.65)]"
+              />
+            )}
+          </button>
+
+          {/* Right: Circular-corner Create Account / Login Button */}
+          <button
+            type="button"
+            onClick={() => {
+              setForgotMode(false);
+              setForgotSent(false);
+              setErrorMsg(null);
+              setAuthMode((prev) => (prev === 'login' ? 'create' : 'login'));
+            }}
+            className="z-10 px-5 py-2 rounded-full bg-white/[0.14] hover:bg-white/[0.22] text-white text-xs sm:text-[13px] font-bold tracking-tight transition-all active:scale-95 cursor-pointer backdrop-blur-sm"
+          >
+            {authMode === 'login' ? 'Create Account' : 'Login'}
+          </button>
         </div>
-      </footer>
+      </header>
+
+      {/* Main Centered Auth Card (Reduced Opacity, Reduced Corner Radius, NO Border, NO Logo, NO duplicate bottom switch) */}
+      <div className="relative z-10 flex-1 flex items-center justify-center px-4 py-6">
+        <div className="w-full max-w-[400px] rounded-xl bg-[#14161a]/52 backdrop-blur-md border-0 shadow-[0_24px_70px_rgba(0,0,0,0.58)] px-7 sm:px-9 py-8 sm:py-9">
+          {/* Card Heading */}
+          <div className="text-center mb-6">
+            <h1 className="text-2xl sm:text-[26px] font-extrabold text-white tracking-tight">
+              {forgotMode
+                ? 'Reset Password'
+                : authMode === 'create'
+                ? 'Create Account'
+                : 'Login Now'}
+            </h1>
+            {forgotMode && (
+              <p className="text-xs text-zinc-300/80 mt-1.5">
+                Enter your email and we&apos;ll send reset instructions.
+              </p>
+            )}
+          </div>
+
+          {/* Form */}
+          <form onSubmit={handleSubmit} className="space-y-3.5">
+            {/* Name Input (Create Account Mode) */}
+            {!forgotMode && authMode === 'create' && (
+              <div>
+                <input
+                  type="text"
+                  value={name}
+                  onChange={(e) => setName(e.target.value)}
+                  placeholder="Full Name"
+                  autoComplete="name"
+                  className="w-full rounded-lg bg-white/[0.11] hover:bg-white/[0.15] focus:bg-white/[0.18] text-white placeholder-zinc-300/75 px-4 py-3 text-sm font-medium border-0 outline-none focus:ring-1 focus:ring-white/25 transition-colors"
+                />
+              </div>
+            )}
+
+            {/* Email Input */}
+            <div>
+              <input
+                type="email"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                placeholder="Email"
+                autoComplete="email"
+                className="w-full rounded-lg bg-white/[0.11] hover:bg-white/[0.15] focus:bg-white/[0.18] text-white placeholder-zinc-300/75 px-4 py-3 text-sm font-medium border-0 outline-none focus:ring-1 focus:ring-white/25 transition-colors"
+              />
+            </div>
+
+            {/* Password Input (No Confirm Password, No Stay Signed In) */}
+            {!forgotMode && (
+              <div className="relative">
+                <input
+                  type={showPassword ? 'text' : 'password'}
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  placeholder="Password"
+                  autoComplete={authMode === 'create' ? 'new-password' : 'current-password'}
+                  className="w-full rounded-lg bg-white/[0.11] hover:bg-white/[0.15] focus:bg-white/[0.18] text-white placeholder-zinc-300/75 pl-4 pr-11 py-3 text-sm font-medium border-0 outline-none focus:ring-1 focus:ring-white/25 transition-colors"
+                />
+                <button
+                  type="button"
+                  onClick={() => setShowPassword((prev) => !prev)}
+                  aria-label={showPassword ? 'Hide password' : 'Show password'}
+                  className="absolute right-3.5 top-1/2 -translate-y-1/2 text-zinc-300/80 hover:text-white cursor-pointer p-1"
+                >
+                  {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                </button>
+              </div>
+            )}
+
+            {/* Forgot Password Link (Login mode) */}
+            {!forgotMode && authMode === 'login' && (
+              <div className="flex justify-end pt-0.5">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setForgotMode(true);
+                    setForgotSent(false);
+                    setErrorMsg(null);
+                  }}
+                  className="text-xs text-zinc-300/85 hover:text-white font-medium transition-colors cursor-pointer"
+                >
+                  Forgot your password?
+                </button>
+              </div>
+            )}
+
+            {/* Error / Success Notice */}
+            {errorMsg && (
+              <p className="text-xs text-rose-300 font-semibold text-center bg-rose-500/15 rounded-lg py-2 px-3">
+                {errorMsg}
+              </p>
+            )}
+            {forgotSent && forgotMode && (
+              <p className="text-xs text-emerald-300 font-semibold text-center bg-emerald-500/15 rounded-lg py-2 px-3">
+                Reset link sent to {email}. Check your inbox.
+              </p>
+            )}
+
+            {/* Submit Button */}
+            <button
+              type="submit"
+              disabled={isSubmitting}
+              className="w-full mt-1 rounded-lg bg-[#e50914] hover:bg-[#f41924] active:scale-[0.99] disabled:opacity-60 text-white font-bold text-sm tracking-wide py-3 shadow-[0_10px_28px_rgba(229,9,20,0.4)] transition-all cursor-pointer"
+            >
+              {isSubmitting
+                ? 'Please wait...'
+                : forgotMode
+                ? 'Send Reset Link'
+                : authMode === 'create'
+                ? 'Create Account'
+                : 'Login'}
+            </button>
+          </form>
+
+          {/* Only show Back to Login when inside Forgot Password mode (top navbar already has Create Account / Login toggle) */}
+          {forgotMode && (
+            <div className="mt-4 text-center">
+              <button
+                type="button"
+                onClick={() => {
+                  setForgotMode(false);
+                  setForgotSent(false);
+                  setErrorMsg(null);
+                }}
+                className="text-xs text-zinc-300 hover:text-white font-semibold transition-colors cursor-pointer"
+              >
+                Back to Login
+              </button>
+            </div>
+          )}
+        </div>
+      </div>
+
+      {/* Minimal Desktop Footer — compact spacing so 1920x1080 full screen has zero vertical scrollbar */}
+      <div className="relative z-10 w-full [&>footer]:mt-0 [&>footer]:pt-6 [&>footer]:pb-6">
+        <Footer shows={shows} platformName={platformName} />
+      </div>
     </div>
   );
 };

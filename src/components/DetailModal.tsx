@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect, useLayoutEffect, useMemo } from 'react';
-import { Show, Episode, AdminSettings, CastMember, TrailerItem, DetailsOriginMeta } from '../types';
+import { Show, Episode, AdminSettings, CastMember, TrailerItem, DetailsOriginMeta, AdDeviceLayout, MoreInfoAdSection } from '../types';
 import { ShowTitleLogo } from './ShowTitleLogo';
 import { ShareModal } from './ShareModal';
 import { ShareArrowIcon } from './ShareArrowIcon';
@@ -7,6 +7,9 @@ import { MobileReactionButton } from './MobileReactionButton';
 import { normalizeActorKey } from '../utils/actorIndex';
 import { attachHlsVideo } from '../utils/hlsHelper';
 import { MediaImage } from './MediaImage';
+import { AdTileBanner } from './AdTileBanner';
+import { detectIsMobileDevice } from '../utils/deviceLayout';
+import { notifyPreviewStarted } from '../utils/previewResumeTracker';
 import {
   X,
   Plus,
@@ -62,6 +65,8 @@ interface DetailModalProps {
   likedShowIds?: string[];
   onToggleLike?: (showId: string) => void;
   originMeta?: DetailsOriginMeta | null;
+  currentAdLayout?: AdDeviceLayout;
+  onNavigateInternal?: (path: string) => void;
 }
 
 export const DetailModal: React.FC<DetailModalProps> = ({
@@ -92,11 +97,50 @@ export const DetailModal: React.FC<DetailModalProps> = ({
   onMobileInfoSheetChange,
   likedShowIds,
   onToggleLike,
-  originMeta
+  originMeta,
+  currentAdLayout,
+  onNavigateInternal
 }) => {
   if (!show) return null;
 
   const scrollContainerRef = useRef<HTMLDivElement>(null);
+
+  const renderMoreInfoAdForSection = (section: MoreInfoAdSection) => {
+    const resolvedLayout: AdDeviceLayout =
+      currentAdLayout || (detectIsMobileDevice() ? 'mobile' : 'desktop');
+    const enabled =
+      Boolean(adminSettings.moreInfoAdEnabled) &&
+      (adminSettings.moreInfoAdLayouts || ['desktop', 'laptop', 'tablet', 'mobile']).includes(resolvedLayout);
+    const targetPlacement: MoreInfoAdSection = adminSettings.moreInfoAdPlacement || 'episodes';
+    if (!enabled || targetPlacement !== section) return null;
+
+    const useCustom = Boolean(adminSettings.moreInfoAdUseCustomCreative);
+    const useMobileBase = resolvedLayout === 'mobile' && Boolean(adminSettings.adTileSeparateMobile);
+
+    return (
+      <div className={resolvedLayout === 'mobile' ? 'bg-black py-2' : 'bg-[#181818] py-3 px-6 md:px-10'}>
+        <AdTileBanner
+          title={useCustom ? adminSettings.moreInfoAdTitle : useMobileBase ? adminSettings.adTileMobileTitle : adminSettings.adTileTitle}
+          subtitle={useCustom ? adminSettings.moreInfoAdSubtitle : useMobileBase ? adminSettings.adTileMobileSubtitle : adminSettings.adTileSubtitle}
+          buttonText={useCustom ? adminSettings.moreInfoAdButtonText : useMobileBase ? adminSettings.adTileMobileButtonText : adminSettings.adTileButtonText}
+          buttonUrl={useCustom ? adminSettings.moreInfoAdButtonUrl : useMobileBase ? adminSettings.adTileMobileButtonUrl : adminSettings.adTileButtonUrl}
+          imageUrl={useCustom ? adminSettings.moreInfoAdImageUrl : useMobileBase ? adminSettings.adTileMobileImageUrl : adminSettings.adTileImageUrl}
+          logoImageUrl={useCustom ? adminSettings.moreInfoAdLogoImageUrl : useMobileBase ? adminSettings.adTileMobileLogoImageUrl : adminSettings.adTileLogoImageUrl}
+          containerMode={useCustom ? (adminSettings.moreInfoAdContainerMode || 'contained') : useMobileBase ? (adminSettings.adTileMobileContainerMode || 'contained') : (adminSettings.adTileContainerMode || 'contained')}
+          aspectHeight={useCustom ? (adminSettings.moreInfoAdAspectHeight || 'default') : useMobileBase ? (adminSettings.adTileMobileAspectHeight || 'default') : (adminSettings.adTileAspectHeight || 'default')}
+          imageGlare={useCustom ? (adminSettings.moreInfoAdImageGlare !== false) : useMobileBase ? (adminSettings.adTileMobileImageGlare !== false) : (adminSettings.adTileImageGlare !== false)}
+          badgePosition={useCustom ? (adminSettings.moreInfoAdBadgePosition || 'bottom_left') : useMobileBase ? (adminSettings.adTileMobileBadgePosition || adminSettings.adTileBadgePosition || 'bottom_left') : (adminSettings.adTileBadgePosition || 'bottom_left')}
+          textPosition={useCustom ? (adminSettings.moreInfoAdTextPosition || 'center') : useMobileBase ? (adminSettings.adTileMobileTextPosition || adminSettings.adTileTextPosition || 'center') : (adminSettings.adTileTextPosition || 'center')}
+          buttonPosition={useCustom ? (adminSettings.moreInfoAdButtonPosition || 'center') : useMobileBase ? (adminSettings.adTileMobileButtonPosition || adminSettings.adTileButtonPosition || 'center') : (adminSettings.adTileButtonPosition || 'center')}
+          showCloseButton={useCustom ? Boolean(adminSettings.moreInfoAdShowCloseButton) : useMobileBase ? Boolean(adminSettings.adTileMobileShowCloseButton ?? adminSettings.adTileShowCloseButton) : Boolean(adminSettings.adTileShowCloseButton)}
+          onNavigateInternal={(path) => {
+            onClose(true);
+            onNavigateInternal?.(path);
+          }}
+        />
+      </div>
+    );
+  };
 
   // Local watchlist state synced with watchlist prop for instantaneous responsive UI feedback
   const [localWatchlist, setLocalWatchlist] = useState<string[]>(watchlist || []);
@@ -125,17 +169,20 @@ export const DetailModal: React.FC<DetailModalProps> = ({
     initialVideoMode === 'episode' && initialFoundEpisode ? 'episode' : 'trailer'
   );
 
-  // Mobile layout detection: on mobile, desktop preview video is never loaded or played in background
-  const [isMobileLayout, setIsMobileLayout] = useState<boolean>(() =>
-    typeof window !== 'undefined' ? window.innerWidth <= 768 : false
-  );
+  // Mobile layout detection: preserves Mobile Layout in portrait AND landscape on phones
+  const [isMobileLayout, setIsMobileLayout] = useState<boolean>(() => detectIsMobileDevice());
 
   useEffect(() => {
     const handleResize = () => {
-      setIsMobileLayout(window.innerWidth <= 768);
+      setIsMobileLayout(detectIsMobileDevice());
     };
+    handleResize();
     window.addEventListener('resize', handleResize);
-    return () => window.removeEventListener('resize', handleResize);
+    window.addEventListener('orientationchange', handleResize);
+    return () => {
+      window.removeEventListener('resize', handleResize);
+      window.removeEventListener('orientationchange', handleResize);
+    };
   }, []);
 
   // Find initial trailer if provided in deep link
@@ -285,6 +332,7 @@ export const DetailModal: React.FC<DetailModalProps> = ({
   const [mobileTrailerDuration, setMobileTrailerDuration] = useState<number>(0);
   const [isMobileTrailerMuted, setIsMobileTrailerMuted] = useState<boolean>(isMuted);
   const [showPosterAfterPause, setShowPosterAfterPause] = useState<boolean>(false);
+  const [hasMobileVideoFrame, setHasMobileVideoFrame] = useState<boolean>(false);
   const mobileVideoRef = useRef<HTMLVideoElement>(null);
   const mobileSavedTimeRef = useRef<number>(0);
 
@@ -334,7 +382,9 @@ export const DetailModal: React.FC<DetailModalProps> = ({
     showBannerLayer: boolean;
     transitionMs: number;
   } | null>(null);
-  const [isMobileOpeningHidingContent, setIsMobileOpeningHidingContent] = useState<boolean>(false);
+  const [isMobileOpeningHidingContent, setIsMobileOpeningHidingContent] = useState<boolean>(() =>
+    Boolean(detectIsMobileDevice() && originMeta?.sourceFeedType === 'normal' && originMeta.element?.isConnected)
+  );
   const [mobileLowerContentStyle, setMobileLowerContentStyle] = useState<{
     opacity: number;
     transform: string;
@@ -375,12 +425,6 @@ export const DetailModal: React.FC<DetailModalProps> = ({
     const vw = typeof window !== 'undefined' ? window.innerWidth : 390;
     const targetH = Math.round(vw * (9 / 16));
     const bannerSrc = mobileBackdrop || desktopBackdrop;
-    const cardSrc =
-      originMeta?.posterUrl ||
-      show.posterVerticalUrl ||
-      show.posterUrl ||
-      show.posterLandscapeUrl ||
-      bannerSrc;
 
     if (isNormalFeedOrigin && originMeta?.element) {
       const originRect = originMeta.element.getBoundingClientRect();
@@ -388,7 +432,7 @@ export const DetailModal: React.FC<DetailModalProps> = ({
         setIsMobileOpeningHidingContent(true);
         setMobileLowerContentStyle({
           opacity: 0,
-          transform: 'translate3d(0, 32px, 0)',
+          transform: 'translate3d(0, 26px, 0)',
           transition: 'none'
         });
         setFlyingPosterState({
@@ -398,13 +442,14 @@ export const DetailModal: React.FC<DetailModalProps> = ({
           height: originRect.height,
           opacity: 1,
           borderRadius: '7px',
-          cardPosterUrl: cardSrc,
-          bannerPosterUrl: bannerSrc,
+          cardPosterUrl: bannerSrc,
+          bannerPosterUrl: '',
           showBannerLayer: false,
-          transitionMs: 320
+          transitionMs: 300
         });
 
         let innerRaf = 0;
+        let handoffRaf = 0;
         let midTimer: number | null = null;
         let doneTimer: number | null = null;
 
@@ -419,31 +464,32 @@ export const DetailModal: React.FC<DetailModalProps> = ({
                     width: vw,
                     height: targetH,
                     borderRadius: '0px',
-                    showBannerLayer: true,
-                    transitionMs: 320
+                    transitionMs: 300
                   }
                 : null
             );
             setMobileLowerContentStyle({
               opacity: 1,
               transform: 'translate3d(0, 0, 0)',
-              transition: 'opacity 180ms ease-out 160ms, transform 240ms cubic-bezier(0.22, 1, 0.36, 1) 140ms'
+              transition: 'opacity 180ms ease-out 130ms, transform 240ms cubic-bezier(0.22, 1, 0.36, 1) 110ms'
             });
           });
         });
 
         midTimer = window.setTimeout(() => {
           setIsMobileOpeningHidingContent(false);
-        }, 315);
-
-        doneTimer = window.setTimeout(() => {
-          setFlyingPosterState(null);
-          setMobileLowerContentStyle(null);
-        }, 355);
+          handoffRaf = requestAnimationFrame(() => {
+            doneTimer = window.setTimeout(() => {
+              setFlyingPosterState(null);
+              setMobileLowerContentStyle(null);
+            }, 32);
+          });
+        }, 305);
 
         return () => {
           cancelAnimationFrame(outerRaf);
           cancelAnimationFrame(innerRaf);
+          cancelAnimationFrame(handoffRaf);
           if (midTimer) window.clearTimeout(midTimer);
           if (doneTimer) window.clearTimeout(doneTimer);
         };
@@ -805,12 +851,14 @@ export const DetailModal: React.FC<DetailModalProps> = ({
   // Keyboard Escape and System Back (popstate) trigger exact animated collapse instead of instant unmount
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
+      if (isFullPlayerOpen) return;
       if (e.key === 'Escape') {
         e.preventDefault();
         triggerDesktopClose(false);
       }
     };
     const onSystemBack = (e: Event) => {
+      if (isFullPlayerOpen) return;
       e.preventDefault();
       if (isMobileLayout) {
         triggerMobileClose('back_button', true);
@@ -1020,6 +1068,7 @@ export const DetailModal: React.FC<DetailModalProps> = ({
     if (!currentVideoSrc) return;
     clearMobilePausePosterTimer();
     setShowPosterAfterPause(false);
+    setHasMobileVideoFrame(false);
     mobileSavedTimeRef.current = 0;
     setIsMobileTrailerEnded(false);
     setHasStartedTrailer(true);
@@ -1228,7 +1277,7 @@ export const DetailModal: React.FC<DetailModalProps> = ({
 
     const handleContainerScroll = () => {
       // Mobile: pause preview playback when user scrolls down, saving currentTime for manual resume
-      if (window.innerWidth <= 768) {
+      if (detectIsMobileDevice()) {
         if (container.scrollTop > 40 && mobileVideoRef.current && !mobileVideoRef.current.paused) {
           clearMobilePausePosterTimer();
           setShowPosterAfterPause(false);
@@ -1390,6 +1439,7 @@ export const DetailModal: React.FC<DetailModalProps> = ({
     isPausedByScrollRef.current = false;
     clearMobilePausePosterTimer();
     setShowPosterAfterPause(false);
+    setHasMobileVideoFrame(false);
     mobileSavedTimeRef.current = 0;
     setHasStartedTrailer(false);
     setIsMobileTrailerPlaying(false);
@@ -1627,6 +1677,7 @@ export const DetailModal: React.FC<DetailModalProps> = ({
       relShow.seasons[0].episodes.length > 0;
     setMobileActiveTab(hasEp ? 'episodes' : 'trailers');
     setHasStartedTrailer(false);
+    setHasMobileVideoFrame(false);
     setIsMobileTrailerPlaying(false);
     setIsMobileTrailerLoading(false);
     setIsMobileTrailerEnded(false);
@@ -1649,6 +1700,7 @@ export const DetailModal: React.FC<DetailModalProps> = ({
       show.seasons[0].episodes.length > 0;
     setMobileActiveTab(hasEp ? 'episodes' : 'trailers');
     setHasStartedTrailer(false);
+    setHasMobileVideoFrame(false);
     setIsMobileTrailerPlaying(false);
     setIsMobileTrailerLoading(false);
     setIsMobileTrailerEnded(false);
@@ -1927,29 +1979,47 @@ export const DetailModal: React.FC<DetailModalProps> = ({
       <div
         data-modal-open="true"
         ref={scrollContainerRef}
-      tabIndex={-1}
-      style={
-        isMobileLayout
-          ? { backgroundColor: 'rgba(0, 0, 0, 0)' }
-          : undefined
-      }
-      className={`fixed inset-0 z-50 overflow-y-auto overflow-x-hidden custom-scrollbar outline-none transition-colors duration-250 ${
-        isMobileLayout
-          ? 'bg-transparent'
-          : isClosingDesktop
-          ? 'bg-black/0'
-          : 'bg-black/50 animate-modal-backdrop'
-      }`}
-      onClick={(e) => {
-        if (e.target === e.currentTarget) triggerDesktopClose(false);
-      }}
-    >
-      <div className="min-h-full flex items-start justify-center py-0 md:py-8 px-0 md:px-4 pointer-events-none">
+        tabIndex={-1}
+        style={
+          isMobileLayout
+            ? {
+                backgroundColor:
+                  mobileCollapseTransform?.animType === 'slide_down'
+                    ? 'rgba(0, 0, 0, 0)'
+                    : mobileCollapseTransform || flyingPosterState
+                    ? 'rgba(0, 0, 0, 0)'
+                    : mobileDragY > 0
+                    ? `rgba(0, 0, 0, ${Math.max(0.08, 0.32 * (1 - mobileDragY / Math.max(1, window.innerHeight || 800)))})`
+                    : 'rgba(0, 0, 0, 0.32)',
+                transition: isMobileDragging
+                  ? 'none'
+                  : 'background-color 230ms cubic-bezier(0.22, 1, 0.36, 1)'
+              }
+            : undefined
+        }
+        className={`fixed inset-0 z-50 overflow-y-auto overflow-x-hidden custom-scrollbar outline-none transition-colors duration-250 ${
+          isMobileLayout
+            ? ''
+            : isClosingDesktop
+            ? 'bg-black/0'
+            : 'bg-black/35 animate-modal-backdrop'
+        }`}
+        onClick={(e) => {
+          if (e.target === e.currentTarget) triggerDesktopClose(false);
+        }}
+      >
+      <div
+        className={`min-h-full flex items-start justify-center pointer-events-none ${
+          isMobileLayout ? 'py-0 px-0' : 'py-0 md:py-8 px-0 md:px-4'
+        }`}
+      >
         <div
           ref={desktopCardRef}
-          className={`relative w-full md:max-w-[780px] ${
-            isMobileLayout ? 'bg-transparent' : 'bg-[#181818]'
-          } border-0 rounded-none md:rounded-2xl overflow-hidden shadow-2xl select-none pointer-events-auto min-h-screen md:min-h-0 pb-0 flex flex-col will-change-transform`}
+          className={`relative w-full ${
+            isMobileLayout
+              ? 'bg-transparent rounded-none min-h-screen'
+              : 'md:max-w-[780px] bg-[#181818] rounded-none md:rounded-2xl min-h-screen md:min-h-0'
+          } border-0 overflow-hidden shadow-2xl select-none pointer-events-auto pb-0 flex flex-col will-change-transform`}
           style={{
             boxShadow: isMobileLayout ? 'none' : '0 25px 60px -15px rgba(0,0,0,0.95)',
             ...(!isMobileLayout && desktopModalTransform
@@ -1962,8 +2032,9 @@ export const DetailModal: React.FC<DetailModalProps> = ({
           }}
           onClick={(e) => e.stopPropagation()}
         >
-          {/* ===================== DESKTOP & TABLET LAYOUT (100% UNCHANGED) ===================== */}
-          <div className="hidden md:block">
+          {/* ===================== DESKTOP & TABLET LAYOUT ===================== */}
+          {!isMobileLayout ? (
+          <div>
             {/* Floating Top-Right Controls (Close X Button) - Hidden when Cast or Blog view is active so no collision with their close buttons */}
             {!isCastViewOpen && !isBlogViewOpen && (
               <div className="absolute top-4 right-4 z-40 flex items-center gap-2">
@@ -2191,6 +2262,7 @@ export const DetailModal: React.FC<DetailModalProps> = ({
                   handleAutoplayStarted();
                 }}
                 onPlaying={() => {
+                  notifyPreviewStarted(`detail-modal::${show.id}`);
                   setIsVideoPlaying(true);
                   handleAutoplayStarted();
                 }}
@@ -2236,7 +2308,9 @@ export const DetailModal: React.FC<DetailModalProps> = ({
               <div className="absolute bottom-6 right-6 md:bottom-8 md:right-8 z-30">
                 <button
                   onClick={toggleSound}
-                  className="w-8 h-8 md:w-9 md:h-9 rounded-full bg-black/25 hover:bg-black/45 text-white border border-white/20 flex items-center justify-center transition-colors cursor-pointer backdrop-blur-none shadow-md"
+                  onPointerDown={(e) => e.stopPropagation()}
+                  onTouchStart={(e) => e.stopPropagation()}
+                  className="relative before:content-[''] before:absolute before:-inset-3 w-8 h-8 md:w-9 md:h-9 rounded-full bg-black/25 hover:bg-black/45 text-white border border-white/20 flex items-center justify-center transition-colors cursor-pointer backdrop-blur-none shadow-md"
                   aria-label="Toggle audio"
                 >
                   {isMuted ? <VolumeX className="w-4 h-4" /> : <Volume2 className="w-4 h-4" />}
@@ -2245,8 +2319,8 @@ export const DetailModal: React.FC<DetailModalProps> = ({
             )}
 
             {/* Bottom-Left: Title PNG Logo + Action Buttons (Play, Add to List, Like) */}
-            <div className="absolute bottom-5 left-6 md:bottom-7 md:left-10 z-30 max-w-xl flex flex-col items-start origin-bottom-left">
-              {/* Show Title PNG Logo: loads at max size, only shrinks and never grows */}
+            <div className="absolute bottom-5 left-6 right-6 md:bottom-7 md:left-10 md:right-10 z-30 flex flex-col items-start origin-bottom-left pointer-events-none">
+              {/* Show Title PNG Logo: Fixed Netflix 2.5:1 proportion (40% of modal hero width, max 370px) */}
               <div
                 ref={heroLogoRef}
                 style={{
@@ -2255,9 +2329,9 @@ export const DetailModal: React.FC<DetailModalProps> = ({
                   transition: isTitleShrunk ? 'transform 1500ms linear' : 'none',
                   willChange: 'transform'
                 }}
-                className="mb-3.5 self-start origin-bottom-left"
+                className="relative mb-3.5 w-[40%] max-w-[370px] aspect-[2.5/1] overflow-hidden shrink-0 self-start origin-bottom-left"
               >
-                <ShowTitleLogo show={show} />
+                <ShowTitleLogo show={show} fillContainer={true} align="left" />
               </div>
 
               {/* Watch Progress Indicator above Resume Button (Matching Image 3) */}
@@ -2283,7 +2357,7 @@ export const DetailModal: React.FC<DetailModalProps> = ({
               )}
 
               {/* Action Buttons Row */}
-              <div className="flex items-center gap-3">
+              <div className="flex items-center gap-3 pointer-events-auto">
                 {/* Big White Play / Resume Button: Immediately stops preview trailer in background */}
                 <button
                   id="modal-main-play-button"
@@ -2414,6 +2488,8 @@ export const DetailModal: React.FC<DetailModalProps> = ({
             </div>
           </div>
 
+          {renderMoreInfoAdForSection('hero')}
+
           {/* WHERE TO WATCH SECTION (Visible before episode section when enabled) */}
           {adminSettings.enableWhereToWatch && (show.whereToWatchEnabled !== false) && show.whereToWatch && show.whereToWatch.length > 0 && (
             <div className="px-6 md:px-10 py-6 bg-[#181818] border-b border-white/10">
@@ -2481,6 +2557,8 @@ export const DetailModal: React.FC<DetailModalProps> = ({
               </div>
             </div>
           )}
+
+          {renderMoreInfoAdForSection('where_to_watch')}
 
           {/* 3. EPISODES SECTION (Exact Copy of Screenshot 2) */}
           {show.type === 'series' && show.hasEpisodicContent !== false && seasons.length > 0 && (
@@ -2621,6 +2699,8 @@ export const DetailModal: React.FC<DetailModalProps> = ({
             </div>
           )}
 
+          {renderMoreInfoAdForSection('episodes')}
+
           {/* 4. TRAILERS & MORE SECTION (Placed BEFORE More Like This as requested) */}
           <div className="px-6 md:px-10 py-6 bg-[#181818] border-b border-white/10">
             <h3 className="text-xl md:text-2xl font-bold text-white mb-4 tracking-tight font-display">
@@ -2665,6 +2745,8 @@ export const DetailModal: React.FC<DetailModalProps> = ({
               ))}
             </div>
           </div>
+
+          {renderMoreInfoAdForSection('trailers')}
 
           {/* 5. MORE LIKE THIS SECTION (Exact UI matching screenshot, after Trailers & More) */}
           {matchingRelatedShows.length > 0 && (
@@ -2761,12 +2843,17 @@ export const DetailModal: React.FC<DetailModalProps> = ({
               )}
             </div>
           )}
+
+          {renderMoreInfoAdForSection('more_like_this')}
+          {renderMoreInfoAdForSection('cast')}
+          {renderMoreInfoAdForSection('about')}
               </>
             )}
+            {/* End desktop/tablet block */}
           </div>
-          </div> {/* End desktop/tablet hidden md:block */}
-
-          {/* ===================== MOBILE LAYOUT (REDESIGNED FOR MOBILE ONLY) ===================== */}
+          </div>
+          ) : (
+          /* ===================== MOBILE LAYOUT (PORTRAIT & LANDSCAPE) ===================== */
           <div
             ref={mobileModalContainerRef}
             onTouchStart={handleMobilePageTouchStart}
@@ -2781,8 +2868,6 @@ export const DetailModal: React.FC<DetailModalProps> = ({
                 : undefined,
               opacity: mobileCollapseTransform
                 ? mobileCollapseTransform.opacity
-                : isMobileOpeningHidingContent
-                ? 0
                 : 1,
               borderRadius: mobileCollapseTransform
                 ? mobileCollapseTransform.animType === 'slide_right'
@@ -2801,16 +2886,18 @@ export const DetailModal: React.FC<DetailModalProps> = ({
                 ? 'transform 230ms cubic-bezier(0.22, 1, 0.36, 1)'
                 : mobileCollapseTransform?.animType === 'fade_fast'
                 ? 'opacity 90ms ease-out'
-                : isMobileOpeningHidingContent
-                ? 'opacity 140ms ease-out 180ms'
                 : 'transform 240ms cubic-bezier(0.16, 1, 0.3, 1), border-radius 200ms ease, opacity 140ms ease-out'
             }}
-            className="block md:hidden bg-black min-h-[100dvh] pb-14 relative flex flex-col flex-1"
+            className="bg-black min-h-[100dvh] pb-14 relative flex flex-col flex-1"
           >
             {/* 1. Mobile Trailer Video Player Container (Starts at top of screen) */}
             <div
               ref={mobileHeroBannerRef}
               onClick={handleMobilePlayerTap}
+              style={{
+                opacity: isMobileOpeningHidingContent ? 0 : 1,
+                transition: 'none'
+              }}
               className="relative aspect-video w-full bg-black overflow-hidden select-none cursor-pointer shrink-0"
             >
               {/* Back button: unified clean white borderless chevron, triggers direct collapse/slide-right */}
@@ -2832,88 +2919,114 @@ export const DetailModal: React.FC<DetailModalProps> = ({
                     e.stopPropagation();
                     handleToggleMobileMute(e);
                   }}
-                  className="absolute top-3 right-3 z-30 w-8 h-8 rounded-full bg-black/35 hover:bg-black/55 border-0 text-white flex items-center justify-center cursor-pointer active:scale-95 transition-transform"
+                  onPointerDown={(e) => e.stopPropagation()}
+                  onTouchStart={(e) => e.stopPropagation()}
+                  className="absolute top-3 right-3 z-30 before:content-[''] before:absolute before:-inset-3 w-8 h-8 rounded-full bg-black/35 hover:bg-black/55 border-0 text-white flex items-center justify-center cursor-pointer active:scale-95 transition-transform"
                   aria-label="Toggle mute"
                 >
                   {isMobileTrailerMuted ? <VolumeX className="w-4 h-4" /> : <Volume2 className="w-4 h-4" />}
                 </button>
               )}
 
-              {/* Mobile Trailer Video Element */}
-              <video
-                ref={mobileVideoRef}
-                src={currentVideoSrc}
-                poster={modalBackdropSrc}
-                playsInline
-                muted={isMobileTrailerMuted}
-                onWaiting={() => setIsMobileTrailerLoading(true)}
-                onPlaying={() => {
-                  setIsMobileTrailerLoading(false);
-                  setIsMobileTrailerPlaying(true);
-                }}
-                onSeeking={() => setIsMobileTrailerLoading(true)}
-                onSeeked={() => setIsMobileTrailerLoading(false)}
-                onTimeUpdate={() => {
-                  if (mobileVideoRef.current) {
-                    mobileSavedTimeRef.current = mobileVideoRef.current.currentTime;
-                    setMobileTrailerCurrentTime(mobileVideoRef.current.currentTime);
-                    if (!mobileTrailerDuration && mobileVideoRef.current.duration) {
-                      setMobileTrailerDuration(mobileVideoRef.current.duration);
-                    }
-                  }
-                }}
-                onLoadedMetadata={() => {
-                  if (mobileVideoRef.current) {
-                    setMobileTrailerDuration(mobileVideoRef.current.duration);
-                  }
-                }}
-                onEnded={() => {
-                  clearMobileControlsTimer();
-                  clearMobilePausePosterTimer();
-                  setShowPosterAfterPause(false);
-                  mobileSavedTimeRef.current = 0;
-                  setIsMobileTrailerEnded(true);
-                  setIsMobileTrailerPlaying(false);
-                  setIsMobileTrailerControlsVisible(true);
-                  setIsMobileTrailerLoading(false);
-                }}
-                className={`w-full h-full object-cover transition-opacity duration-300 ${
-                  hasStartedTrailer && !isMobileTrailerEnded && !showPosterAfterPause ? 'opacity-100' : 'opacity-0'
-                }`}
-              />
+              {/* Mobile Trailer Video Element (500ms smooth crossfade with top poster image) */}
+              {(() => {
+                const isMobilePreviewVisible =
+                  hasStartedTrailer && hasMobileVideoFrame && !isMobileTrailerEnded && !showPosterAfterPause;
+                return (
+                  <>
+                    <video
+                      ref={mobileVideoRef}
+                      src={currentVideoSrc}
+                      poster={modalBackdropSrc}
+                      playsInline
+                      muted={isMobileTrailerMuted}
+                      onWaiting={() => setIsMobileTrailerLoading(true)}
+                      onPlaying={() => {
+                        notifyPreviewStarted(`detail-modal-mobile::${show.id}`);
+                        setHasMobileVideoFrame(true);
+                        setIsMobileTrailerLoading(false);
+                        setIsMobileTrailerPlaying(true);
+                      }}
+                      onSeeking={() => setIsMobileTrailerLoading(true)}
+                      onSeeked={() => setIsMobileTrailerLoading(false)}
+                      onTimeUpdate={() => {
+                        if (mobileVideoRef.current) {
+                          mobileSavedTimeRef.current = mobileVideoRef.current.currentTime;
+                          setMobileTrailerCurrentTime(mobileVideoRef.current.currentTime);
+                          if (!mobileTrailerDuration && mobileVideoRef.current.duration) {
+                            setMobileTrailerDuration(mobileVideoRef.current.duration);
+                          }
+                        }
+                      }}
+                      onLoadedMetadata={() => {
+                        if (mobileVideoRef.current) {
+                          setMobileTrailerDuration(mobileVideoRef.current.duration);
+                        }
+                      }}
+                      onEnded={() => {
+                        clearMobileControlsTimer();
+                        clearMobilePausePosterTimer();
+                        setShowPosterAfterPause(false);
+                        setHasMobileVideoFrame(false);
+                        mobileSavedTimeRef.current = 0;
+                        setIsMobileTrailerEnded(true);
+                        setIsMobileTrailerPlaying(false);
+                        setIsMobileTrailerControlsVisible(true);
+                        setIsMobileTrailerLoading(false);
+                      }}
+                      className={`w-full h-full object-cover transition-opacity duration-500 ease-in-out ${
+                        isMobilePreviewVisible ? 'opacity-100' : 'opacity-0'
+                      }`}
+                    />
 
-              {/* Poster Layer when preview has not started, after preview ended, or 2s after pausing */}
-              {(!hasStartedTrailer || isMobileTrailerEnded || showPosterAfterPause) && (
-                <div className={`absolute inset-0 w-full h-full z-10 pointer-events-none ${showPosterAfterPause ? 'animate-in fade-in duration-300' : ''}`}>
-                  <MediaImage
-                    src={modalBackdropSrc}
-                    fallbackTitle={show.title}
-                    fallbackClassName="w-full h-full bg-black flex items-center justify-center p-4 text-center select-none"
-                    className="w-full h-full object-cover"
-                  />
-                </div>
-              )}
+                    {/* Always-mounted Poster Layer for seamless 500ms fade-in / fade-out crossfade with preview video */}
+                    <div
+                      className={`absolute inset-0 w-full h-full z-10 pointer-events-none transition-opacity duration-500 ease-in-out ${
+                        isMobilePreviewVisible ? 'opacity-0' : 'opacity-100'
+                      }`}
+                    >
+                      <MediaImage
+                        src={modalBackdropSrc}
+                        fallbackTitle={show.title}
+                        fallbackClassName="w-full h-full bg-black flex items-center justify-center p-4 text-center select-none"
+                        className="w-full h-full object-cover"
+                      />
+                    </div>
+                  </>
+                );
+              })()}
 
-              {/* Persistent Seamless Bottom Merge Glare into pure black page base (taller upper feather, softer bottom density) */}
+              {/* Unified Seamless Bottom Merge Glare (full-bleed so it never clips with a divider edge) */}
               <div
-                className="absolute inset-x-0 bottom-0 h-28 pointer-events-none z-20"
+                className="absolute inset-0 pointer-events-none z-20"
                 style={{
                   background:
-                    'linear-gradient(to top, #000000 0%, rgba(0,0,0,0.72) 12%, rgba(0,0,0,0.44) 32%, rgba(0,0,0,0.22) 56%, rgba(0,0,0,0.07) 80%, transparent 100%)'
+                    'linear-gradient(to top, #000000 0%, rgba(0,0,0,0.72) 6%, rgba(0,0,0,0.44) 16%, rgba(0,0,0,0.20) 28%, rgba(0,0,0,0.06) 40%, transparent 52%)'
                 }}
               />
 
-              {/* Bottom-Left Title Logo (parallel to bottom-right Play button, bounded away from controls) */}
-              <div className="absolute bottom-2.5 left-4 z-30 pointer-events-none max-w-[calc(100%-78px)] flex items-end">
+              {/* Subtle Logo Continuity Glare: very light feather behind bottom-left logo, masked out at bottom edge so it never doubles down on bottom merge glare */}
+              <div
+                className="absolute inset-0 pointer-events-none z-20"
+                style={{
+                  background:
+                    'radial-gradient(ellipse 52% 42% at 20% 80%, rgba(0,0,0,0.24) 0%, rgba(0,0,0,0.11) 46%, rgba(0,0,0,0.03) 72%, transparent 100%)',
+                  maskImage: 'linear-gradient(to top, transparent 0%, rgba(0,0,0,0.22) 15%, black 38%, black 100%)',
+                  WebkitMaskImage: 'linear-gradient(to top, transparent 0%, rgba(0,0,0,0.22) 15%, black 38%, black 100%)'
+                }}
+              />
+
+              {/* Bottom-Left Title Logo: Fixed 2.5:1 proportion, no drop-shadow behind logo */}
+              <div className="absolute bottom-[5px] left-4 z-30 pointer-events-none w-[40%] aspect-[2.5/1] overflow-hidden flex items-end">
                 {show.titleLogoUrl ? (
                   <img
                     src={show.titleLogoUrl}
                     alt={show.title}
                     referrerPolicy="no-referrer"
-                    className="min-h-[34px] h-10 sm:h-12 max-h-12 max-w-[235px] sm:max-w-[280px] w-auto object-contain object-left drop-shadow-[0_2px_10px_rgba(0,0,0,0.9)] select-none"
+                    className="absolute inset-0 block w-full h-full max-w-full max-h-full object-contain object-bottom-left select-none"
                   />
                 ) : (
-                  <h1 className="text-xl sm:text-2xl font-black text-white font-display tracking-tight leading-tight line-clamp-2 drop-shadow-[0_2px_8px_rgba(0,0,0,0.9)]">
+                  <h1 className="text-xl sm:text-2xl font-black text-white font-display tracking-tight leading-tight line-clamp-2">
                     {show.title}
                   </h1>
                 )}
@@ -2921,7 +3034,7 @@ export const DetailModal: React.FC<DetailModalProps> = ({
 
               {/* Compact Bottom-Right Preview Control: Reduced opacity Play / Pause / Reload */}
               {currentVideoSrc && (
-                <div className="absolute bottom-3 right-3 z-30 flex items-center">
+                <div className="absolute bottom-[7px] right-3 z-30 flex items-center">
                   <button
                     onClick={(e) => {
                       e.stopPropagation();
@@ -2996,28 +3109,6 @@ export const DetailModal: React.FC<DetailModalProps> = ({
                 )}
               </div>
             </div>
-
-            {/* Watch Progress Line Indicator above Resume Button on Mobile */}
-            {watchProgress && (watchProgress.progressPercent > 0 || watchProgress.isNextEpisodePrompt) && (
-              <div className="w-full px-4 pt-1 pb-1 flex flex-col gap-1 select-none">
-                {watchProgress.episodeNumber && (
-                  <div className="text-white/90 text-xs font-semibold truncate">
-                    S{watchProgress.seasonNumber || 1}:E{watchProgress.episodeNumber} {watchProgress.episodeTitle ? `"${watchProgress.episodeTitle}"` : ''}
-                  </div>
-                )}
-                <div className="flex items-center gap-2.5">
-                  <div className="flex-1 h-[2.5px] bg-white/25 rounded-full overflow-hidden">
-                    <div
-                      className="h-full bg-[#e50914] rounded-full"
-                      style={{ width: `${Math.min(100, Math.max(0, watchProgress.progressPercent))}%` }}
-                    />
-                  </div>
-                  <span className="text-zinc-300 font-medium text-xs whitespace-nowrap leading-none">
-                    {formatProgressTime(watchProgress.currentTime, watchProgress.duration)}
-                  </span>
-                </div>
-              </div>
-            )}
 
             {/* 3. Action Buttons Row: Fixed gap & icon spacing so "Resume" never squeezes Like, My List, Share, Info */}
             <div className="w-full px-4 py-2.5 overflow-x-auto no-scrollbar touch-pan-x">
@@ -3114,6 +3205,28 @@ export const DetailModal: React.FC<DetailModalProps> = ({
               </div>
             </div>
 
+            {/* Watch Progress Line Indicator positioned below Action Button Strip on Mobile */}
+            {watchProgress && (watchProgress.progressPercent > 0 || watchProgress.isNextEpisodePrompt) && (
+              <div className="w-full px-4 pt-0.5 pb-2 flex flex-col gap-1 select-none">
+                {watchProgress.episodeNumber && (
+                  <div className="text-white/90 text-xs font-semibold truncate">
+                    S{watchProgress.seasonNumber || 1}:E{watchProgress.episodeNumber} {watchProgress.episodeTitle ? `"${watchProgress.episodeTitle}"` : ''}
+                  </div>
+                )}
+                <div className="flex items-center gap-2.5">
+                  <div className="flex-1 h-[2.5px] bg-white/25 rounded-full overflow-hidden">
+                    <div
+                      className="h-full bg-[#e50914] rounded-full"
+                      style={{ width: `${Math.min(100, Math.max(0, watchProgress.progressPercent))}%` }}
+                    />
+                  </div>
+                  <span className="text-zinc-300 font-medium text-xs whitespace-nowrap leading-none">
+                    {formatProgressTime(watchProgress.currentTime, watchProgress.duration)}
+                  </span>
+                </div>
+              </div>
+            )}
+
             {/* Where to Watch below Action Buttons Row for series with episode section turned off */}
             {hasWhereToWatch && show.type === 'series' && !hasEpisodes && show.whereToWatch && (
               <div className="px-4 pt-1 pb-2 space-y-2">
@@ -3144,6 +3257,9 @@ export const DetailModal: React.FC<DetailModalProps> = ({
                 </div>
               </div>
             )}
+
+            {renderMoreInfoAdForSection('hero')}
+            {renderMoreInfoAdForSection('where_to_watch')}
 
             {/* 4. Page Navigator / Tabs Strip */}
             <div className="px-4 flex items-center border-b border-white/10 mt-2">
@@ -3336,7 +3452,14 @@ export const DetailModal: React.FC<DetailModalProps> = ({
             </div>
             </div>
 
+            {renderMoreInfoAdForSection('episodes')}
+            {renderMoreInfoAdForSection('trailers')}
+            {renderMoreInfoAdForSection('more_like_this')}
+            {renderMoreInfoAdForSection('cast')}
+            {renderMoreInfoAdForSection('about')}
+
           </div>
+          )}
         </div>
       </div>
     </div>
@@ -3628,6 +3751,15 @@ export const DetailModal: React.FC<DetailModalProps> = ({
               transition: `opacity ${Math.round(flyingPosterState.transitionMs * 0.55)}ms ease ${flyingPosterState.showBannerLayer ? Math.round(flyingPosterState.transitionMs * 0.32) : 0}ms`
             }}
             className="absolute inset-0 w-full h-full object-cover"
+          />
+        )}
+        {isMobileOpeningHidingContent && (
+          <div
+            className="absolute inset-x-0 bottom-0 h-24 pointer-events-none"
+            style={{
+              background:
+                'linear-gradient(to top, #000000 0%, rgba(0,0,0,0.65) 18%, rgba(0,0,0,0.3) 50%, transparent 100%)'
+            }}
           />
         )}
       </div>

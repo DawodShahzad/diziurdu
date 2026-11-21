@@ -5,6 +5,8 @@ import { ShowTitleLogo } from './ShowTitleLogo';
 import { getActiveArtwork } from '../utils/artworkRotator';
 import { attachHlsVideo } from '../utils/hlsHelper';
 import { MediaImage } from './MediaImage';
+import { detectIsMobileDevice } from '../utils/deviceLayout';
+import { notifyPreviewStarted } from '../utils/previewResumeTracker';
 
 interface HeroRecommendationProps {
   show: Show;
@@ -54,26 +56,28 @@ export const HeroRecommendation: React.FC<HeroRecommendationProps> = ({
   const [isPreviewEnded, setIsPreviewEnded] = useState<boolean>(false);
   const [isIntersecting, setIsIntersecting] = useState<boolean>(false);
 
-  // Mobile layout detection:
-  const [windowWidth, setWindowWidth] = useState<number>(() =>
-    typeof window !== 'undefined' ? window.innerWidth : 1200
-  );
+  // Mobile layout detection (handles portrait & rotated landscape phones):
+  const [detectedMobile, setDetectedMobile] = useState<boolean>(() => detectIsMobileDevice());
 
   useEffect(() => {
-    const handleResize = () => setWindowWidth(window.innerWidth);
+    const handleResize = () => setDetectedMobile(detectIsMobileDevice());
     window.addEventListener('resize', handleResize);
-    return () => window.removeEventListener('resize', handleResize);
+    window.addEventListener('orientationchange', handleResize);
+    return () => {
+      window.removeEventListener('resize', handleResize);
+      window.removeEventListener('orientationchange', handleResize);
+    };
   }, []);
 
-  const isMobileLayout = isMobile !== undefined ? isMobile : windowWidth <= 768;
+  const isMobileLayout = isMobile !== undefined ? isMobile : detectedMobile;
   const isPosterNoPreviewMobile = isMobileLayout && mobileRecommendationStyle === 'poster_no_preview';
   const isLandscapeMobile = isMobileLayout && mobileRecommendationStyle === 'landscape';
   const isPortraitMobile = isMobileLayout && (mobileRecommendationStyle === 'portrait' || !mobileRecommendationStyle);
 
-  // Desktop zoom >= 150% detection (width <= 480px)
+  // Desktop zoom >= 150% detection (narrow desktop viewport <= 480px, excluding mobile phones)
   const checkIsZoomed = () => {
     if (typeof window === 'undefined') return false;
-    return window.innerWidth <= 480;
+    return !detectIsMobileDevice() && window.innerWidth <= 480;
   };
 
   const [isZoomedMode, setIsZoomedMode] = useState<boolean>(checkIsZoomed);
@@ -84,7 +88,11 @@ export const HeroRecommendation: React.FC<HeroRecommendationProps> = ({
     };
 
     window.addEventListener('resize', handleZoomCheck);
-    return () => window.removeEventListener('resize', handleZoomCheck);
+    window.addEventListener('orientationchange', handleZoomCheck);
+    return () => {
+      window.removeEventListener('resize', handleZoomCheck);
+      window.removeEventListener('orientationchange', handleZoomCheck);
+    };
   }, []);
 
   const wasPlayingBeforeTabSwitchRef = useRef<boolean>(false);
@@ -510,14 +518,14 @@ export const HeroRecommendation: React.FC<HeroRecommendationProps> = ({
 
             {/* Overlay Content: No original/featured, no top 10, increased PNG logo size, 2-line synopsis */}
             <div className="absolute bottom-5 left-4 right-4 z-20 flex flex-col items-start text-left gap-1.5 pointer-events-auto">
-              {/* Show Title PNG Logo (noticeably larger size) */}
-              <div className="my-1 max-w-[85vw] sm:max-w-[380px]">
+              {/* Show Title PNG Logo (Standard 2.5:1 logo using same 68% width proportion as 2:3 recommendation) */}
+              <div className="relative my-1 w-[68%] aspect-[2.5/1] overflow-hidden shrink-0 flex items-end">
                 {show.titleLogoUrl ? (
                   <img
                     src={show.titleLogoUrl}
                     alt={show.title}
                     referrerPolicy="no-referrer"
-                    className="h-24 sm:h-28 max-h-28 w-auto max-w-[85vw] sm:max-w-[380px] object-contain object-left drop-shadow-[0_6px_20px_rgba(0,0,0,0.95)]"
+                    className="absolute inset-0 block w-full h-full max-w-full max-h-full object-contain object-bottom-left drop-shadow-[0_6px_20px_rgba(0,0,0,0.95)]"
                   />
                 ) : (
                   <h3 className="text-3xl sm:text-4xl font-black text-white tracking-tight drop-shadow-md">
@@ -613,9 +621,9 @@ export const HeroRecommendation: React.FC<HeroRecommendationProps> = ({
 
             {/* Vertical Layout Content: Centered with PNG logo, metadata, and Play & My List pill buttons */}
             <div className="absolute bottom-4 left-4 right-4 sm:bottom-6 sm:left-6 sm:right-6 z-20 flex flex-col items-center text-center">
-              {/* Show Title PNG Logo */}
-              <div ref={logoRef} className="mb-2 sm:mb-3 max-w-[220px] sm:max-w-[280px]">
-                <ShowTitleLogo show={show} />
+              {/* Show Title PNG Logo: uses Central Logo (or Standard Logo fallback) at fixed 68% width matching Netflix 2:3 recommendation */}
+              <div ref={logoRef} className="relative mb-2 sm:mb-3 w-[68%] aspect-[2.5/1] overflow-hidden shrink-0 mx-auto">
+                <ShowTitleLogo show={show} useCentralLogo={true} fillContainer={true} align="center" />
               </div>
 
               {/* Metadata Line */}
@@ -710,13 +718,13 @@ export const HeroRecommendation: React.FC<HeroRecommendationProps> = ({
           <div
             ref={cardRef}
             onClick={() => {
-              if (isLandscapeMobile || (typeof window !== 'undefined' && window.innerWidth <= 768)) {
+              if (isLandscapeMobile || isMobileLayout) {
                 onOpenDetails(show, { sourceFeedType: 'other' });
               }
             }}
             className={`relative w-full ${
               isLandscapeMobile ? 'aspect-[16/9] max-w-full' : 'aspect-[2.22/1]'
-            } rounded-[14px] sm:rounded-[18px] md:rounded-[22px] overflow-hidden bg-black md:bg-[#121319] border-0 transition-shadow duration-1000 shadow-[0_30px_90px_-15px_rgba(0,0,0,0.98)] cursor-pointer sm:cursor-default`}
+            } rounded-[14px] sm:rounded-[18px] md:rounded-[22px] overflow-hidden bg-black md:bg-[#121319] border-0 transition-shadow duration-1000 shadow-[0_30px_90px_-15px_rgba(0,0,0,0.98)] ${isMobileLayout ? 'cursor-pointer' : 'cursor-default'}`}
             style={{
               boxShadow: `0 35px 95px -15px rgba(0,0,0,0.98), 0 15px 45px rgba(0,0,0,0.8), 0 0 60px ${ambientColor}65, 0 0 110px ${ambientColor}25`
             }}
@@ -758,6 +766,7 @@ export const HeroRecommendation: React.FC<HeroRecommendationProps> = ({
                   disablePictureInPicture
                   onContextMenu={(e) => e.preventDefault()}
                   onPlaying={() => {
+                    notifyPreviewStarted(`hero-rec::${show.id}`);
                     setIsVideoPlaying(true);
                     handleAutoplayStarted();
                   }}
@@ -809,13 +818,20 @@ export const HeroRecommendation: React.FC<HeroRecommendationProps> = ({
                 </button>
               </div>
             ) : shouldLoadPreview && !videoError && isVideoPlaying && !isPreviewEnded ? (
-              <div className="absolute top-4 right-5 sm:top-5 sm:right-6 md:top-6 md:right-8 z-20">
+              <div
+                className="absolute top-4 right-5 sm:top-5 sm:right-6 md:top-6 md:right-8 z-20"
+                onClick={(e) => e.stopPropagation()}
+                onPointerDown={(e) => e.stopPropagation()}
+                onTouchStart={(e) => e.stopPropagation()}
+              >
                 <button
                   onClick={(e) => {
                     e.stopPropagation();
                     toggleSound();
                   }}
-                  className="w-8 h-8 sm:w-8.5 sm:h-8.5 md:w-9 md:h-9 xl:w-9.5 xl:h-9.5 rounded-full bg-black/25 hover:bg-black/40 text-white border-0 flex items-center justify-center cursor-pointer shadow-md"
+                  onPointerDown={(e) => e.stopPropagation()}
+                  onTouchStart={(e) => e.stopPropagation()}
+                  className="relative before:content-[''] before:absolute before:-inset-3 w-8 h-8 sm:w-8.5 sm:h-8.5 md:w-9 md:h-9 xl:w-9.5 xl:h-9.5 rounded-full bg-black/25 hover:bg-black/40 text-white border-0 flex items-center justify-center cursor-pointer shadow-md"
                   aria-label="Toggle sound"
                 >
                   {isMuted ? (
@@ -856,21 +872,23 @@ export const HeroRecommendation: React.FC<HeroRecommendationProps> = ({
             )}
 
             {/* Bottom-Left Hero Content (Title PNG Logo, Metadata, and Play/More Info buttons) */}
-            <div className="absolute bottom-4 left-4 sm:bottom-7 sm:left-7 md:bottom-9 md:left-9 xl:bottom-10 xl:left-10 z-20 max-w-xl 2xl:max-w-2xl origin-bottom-left flex flex-col items-start">
-              {/* Show Title PNG Logo (slightly smaller in 16:9 mobile view as requested) */}
+            <div className="absolute bottom-4 left-4 right-4 sm:bottom-7 sm:left-7 sm:right-7 md:bottom-9 md:left-9 md:right-9 xl:bottom-10 xl:left-10 xl:right-10 z-20 origin-bottom-left flex flex-col items-start pointer-events-none">
+              {/* Show Title PNG Logo: Fixed Netflix 2.5:1 proportions (32% of desktop hero banner; 40% of 16:9 mobile card matching popout) */}
               <div
                 ref={logoRef}
                 style={{
-                  transform: isLandscapeMobile ? 'scale(0.8)' : isTitleShrunk ? 'scale(0.88)' : 'scale(1)',
+                  transform: !isLandscapeMobile && isTitleShrunk ? 'scale(0.88)' : 'scale(1)',
                   transformOrigin: 'bottom left',
-                  transition: isTitleShrunk ? 'transform 1500ms linear' : 'none',
+                  transition: !isLandscapeMobile && isTitleShrunk ? 'transform 1500ms linear' : 'none',
                   willChange: 'transform'
                 }}
-                className={`mb-2 sm:mb-3 md:mb-3.5 self-start origin-bottom-left ${
-                  isLandscapeMobile ? 'max-w-[170px]' : ''
+                className={`relative mb-2 sm:mb-3 md:mb-3.5 self-start origin-bottom-left aspect-[2.5/1] overflow-hidden shrink-0 ${
+                  isLandscapeMobile
+                    ? 'w-[40%]'
+                    : 'w-[32%] min-w-[240px] max-w-[440px]'
                 }`}
               >
-                <ShowTitleLogo show={show} />
+                <ShowTitleLogo show={show} fillContainer={true} align="left" />
               </div>
 
               {/* Metadata Line: On mobile layout, do NOT include year info or series/film info */}
@@ -896,7 +914,7 @@ export const HeroRecommendation: React.FC<HeroRecommendationProps> = ({
 
               {/* Two Pill Buttons: Play & More Info (hidden on 16:9 mobile recommendation - tap anywhere opens details) */}
               {!isLandscapeMobile && (
-                <div className="flex items-center gap-3 sm:gap-4">
+                <div className="flex items-center gap-3 sm:gap-4 pointer-events-auto">
                   <button
                     onClick={(e) => {
                       e.stopPropagation();

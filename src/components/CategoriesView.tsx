@@ -3,6 +3,7 @@ import { Show, CategoryItem } from '../types';
 import fullBackupData from '../full_backup.json';
 import { ChevronLeft, ChevronRight } from 'lucide-react';
 import { MediaImage } from './MediaImage';
+import { useDeviceLayout } from '../utils/deviceLayout';
 
 const INITIAL_CATEGORIES: CategoryItem[] = ((fullBackupData as any)?.categoriesList as CategoryItem[]) || [];
 export type { CategoryItem };
@@ -40,6 +41,7 @@ export const CategoriesView: React.FC<CategoriesViewProps> = ({
   initialCategory,
   mobileCategoriesStyle = 'grid'
 }) => {
+  const { isMobile } = useDeviceLayout();
   const [selectedCategory, setSelectedCategory] = useState<CategoryItem | null>(initialCategory || null);
   const categoryScrollPosRef = useRef<number>(0);
 
@@ -104,36 +106,65 @@ export const CategoriesView: React.FC<CategoriesViewProps> = ({
   return (
     <div
       className={`pb-36 w-full animate-in fade-in duration-300 ${
-        selectedCategory
-          ? 'pt-14 md:pt-36 lg:pt-40 px-2.5 sm:px-4 md:px-8 xl:px-12'
-          : 'pt-2 sm:pt-4 md:pt-36 lg:pt-40 px-3 sm:px-4 md:px-8 xl:px-12'
+        isMobile
+          ? selectedCategory
+            ? 'pt-14 px-2.5 sm:px-4'
+            : 'pt-2 sm:pt-4 px-3 sm:px-4'
+          : selectedCategory
+          ? 'pt-28 lg:pt-32 px-8 xl:px-12'
+          : 'pt-36 lg:pt-40 px-8 xl:px-12'
       }`}
     >
-      {/* If a category is selected: mobile shows Top 10 List Page style header & More Like This 3-column 2:3 grid */}
+      {/* If a category is selected: mobile & desktop show top header name & 2:3 poster grid */}
       {selectedCategory ? (
-        <div className="pt-2 md:pt-4">
+        <div className={isMobile ? 'pt-2' : 'pt-2'}>
           {/* Mobile Fixed Header matching Top 10 List Page */}
-          <div className="md:hidden fixed top-0 inset-x-0 z-50 h-14 bg-black px-4 flex items-center justify-between border-b border-white/10 select-none">
-            <div className="flex items-center gap-3 min-w-0">
+          {isMobile ? (
+            <div className="fixed top-0 inset-x-0 z-50 h-14 bg-black px-4 flex items-center justify-between border-b border-white/10 select-none">
+              <div className="flex items-center gap-3 min-w-0">
+                <button
+                  onClick={() => {
+                    setSelectedCategory(null);
+                    onCategorySelectionChange?.(null);
+                    window.scrollTo({ top: categoryScrollPosRef.current || 0, behavior: 'instant' });
+                  }}
+                  className="p-1 -ml-1.5 text-white hover:text-white/80 active:scale-90 transition-transform cursor-pointer shrink-0"
+                  aria-label="Back to categories"
+                >
+                  <ChevronLeft className="w-7 h-7 stroke-[2.2]" />
+                </button>
+                <h1 className="text-lg font-black text-white tracking-tight truncate">
+                  {selectedCategory.name}
+                </h1>
+              </div>
+            </div>
+          ) : (
+            <div className="flex items-center gap-3 mb-6 select-none">
               <button
                 onClick={() => {
                   setSelectedCategory(null);
                   onCategorySelectionChange?.(null);
                   window.scrollTo({ top: categoryScrollPosRef.current || 0, behavior: 'instant' });
                 }}
-                className="p-1 -ml-1.5 text-white hover:text-white/80 active:scale-90 transition-transform cursor-pointer shrink-0"
+                className="p-1.5 -ml-1.5 text-white/85 hover:text-white hover:bg-white/10 rounded-full active:scale-90 transition-all cursor-pointer shrink-0"
                 aria-label="Back to categories"
               >
                 <ChevronLeft className="w-7 h-7 stroke-[2.2]" />
               </button>
-              <h1 className="text-lg font-black text-white tracking-tight truncate">
+              <h1 className="text-2xl lg:text-3xl font-black text-white tracking-tight truncate">
                 {selectedCategory.name}
               </h1>
             </div>
-          </div>
+          )}
 
           {/* Posters Grid for Selected Category: exact match to Mobile DetailModal More Like This */}
-          <div className="grid grid-cols-3 gap-2 sm:gap-2.5 md:grid-cols-5 lg:grid-cols-6 md:gap-5">
+          <div
+            className={`grid ${
+              isMobile
+                ? 'grid-cols-3 gap-2 sm:gap-2.5'
+                : 'grid-cols-4 md:grid-cols-5 lg:grid-cols-6 gap-5'
+            }`}
+          >
             {getShowsForCategory(selectedCategory).map((show) => (
               <div
                 key={show.id}
@@ -144,7 +175,7 @@ export const CategoriesView: React.FC<CategoriesViewProps> = ({
                 <MediaImage
                   src={show.posterVerticalUrl || show.posterUrl || show.posterLandscapeUrl}
                   fallbackTitle={show.title}
-                  fallbackClassName="w-full h-full bg-[#111] md:bg-[#181818] flex items-center justify-center p-2.5 text-center select-none"
+                  fallbackClassName={`w-full h-full ${isMobile ? 'bg-[#111]' : 'bg-[#181818]'} flex items-center justify-center p-2.5 text-center select-none`}
                   className="w-full h-full object-cover group-hover:scale-105 transition-transform"
                 />
               </div>
@@ -160,8 +191,8 @@ export const CategoriesView: React.FC<CategoriesViewProps> = ({
         /* Main Categories View */
         <div className="w-full">
           {/* Mobile Stacked Landscape Cards Option (matching image_471696e6.png) */}
-          {mobileCategoriesStyle === 'stacked_cards' && (
-            <div className="md:hidden space-y-3 pb-4">
+          {isMobile && mobileCategoriesStyle === 'stacked_cards' && (
+            <div className="space-y-3 pb-4">
               {activeCategories.map((cat) => {
                 const matchedShows = getShowsForCategory(cat);
                 const subtitleText =
@@ -251,12 +282,13 @@ export const CategoriesView: React.FC<CategoriesViewProps> = ({
           )}
 
           {/* Grid Categories View (Desktop always; Mobile when mobileCategoriesStyle === 'grid') */}
+          {(!isMobile || mobileCategoriesStyle !== 'stacked_cards') && (
           <div
-            className={`${
-              mobileCategoriesStyle === 'stacked_cards'
-                ? 'hidden md:grid'
-                : 'grid grid-cols-2 sm:grid-cols-3'
-            } md:grid-cols-3 lg:grid-cols-4 gap-2.5 sm:gap-3 md:gap-4 lg:gap-5`}
+            className={`grid ${
+              isMobile
+                ? 'grid-cols-2 sm:grid-cols-3 gap-2.5 sm:gap-3'
+                : 'grid-cols-3 lg:grid-cols-4 gap-4 lg:gap-5'
+            }`}
           >
             {activeCategories.map((cat) => {
               return (
@@ -268,7 +300,9 @@ export const CategoriesView: React.FC<CategoriesViewProps> = ({
                       onSelectCategoryCard(cat);
                     }
                   }}
-                  className="group relative aspect-[2/3] md:aspect-[16/9] w-full rounded-2xl overflow-hidden bg-black md:bg-[#16171d] border border-zinc-400/[0.09] cursor-pointer shadow-md transition-all duration-200 active:scale-95 hover:border-zinc-300/30"
+                  className={`group relative ${
+                    isMobile ? 'aspect-[2/3] bg-black' : 'aspect-[16/9] bg-[#16171d]'
+                  } w-full rounded-2xl overflow-hidden border border-zinc-400/[0.09] cursor-pointer shadow-md transition-all duration-200 active:scale-95 hover:border-zinc-300/30`}
                 >
                   {/* Category Background Image */}
                   <MediaImage
@@ -300,6 +334,7 @@ export const CategoriesView: React.FC<CategoriesViewProps> = ({
               );
             })}
           </div>
+          )}
         </div>
       )}
     </div>

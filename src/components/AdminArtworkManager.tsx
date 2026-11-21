@@ -971,7 +971,7 @@ export const AdminArtworkManager: React.FC<AdminArtworkManagerProps> = ({
                 {/* Link & Time footer */}
                 <div className="px-2 pt-1.5 pb-1 flex items-center justify-between text-[11px] text-emerald-200">
                   <span className="truncate max-w-[280px] font-mono text-[10px] text-emerald-300 underline">
-                    https://diziurdu.dawoodshahzad75.workers.dev/share/{formData.slug || formData.id}
+                    https://diziurdu.dawoodshahzad75.workers.dev/watch/{formData.slug || formData.id}
                   </span>
                   <span className="text-[9.5px] text-emerald-300 font-mono shrink-0 flex items-center gap-1">
                     11:30 pm <Check className="w-3 h-3 text-cyan-300 inline" />
@@ -1054,38 +1054,84 @@ export const AdminArtworkManager: React.FC<AdminArtworkManagerProps> = ({
             <div>
               <div className="flex items-center gap-2">
                 <span className="px-2 py-0.5 rounded text-[10px] font-mono font-bold uppercase bg-amber-500/20 text-amber-300 border border-amber-500/30">
-                  PNG Clearart
+                  2.5:1 PNG (~650×260)
                 </span>
-                <h4 className="text-xs font-bold text-white tracking-tight">Show Title PNG Logo</h4>
+                <h4 className="text-xs font-bold text-white tracking-tight">Show Title PNG Logos</h4>
               </div>
               <p className="text-[11px] text-zinc-400 mt-0.5">
-                Transparent PNG logo displayed over desktop recommendation screen, single special feed banner, and Top 10 rank cards.
+                Standard 2.5:1 logo is used for Recommendation, More Info (Normal &amp; Full Size), Card Hover Popout, Single Special Feed, Stretch Feed, Mobile 16:9 &amp; No-Preview Poster. Central Logo is used for Mobile 2:3 Recommendation &amp; Modern Top 10 Rank cards.
               </p>
             </div>
             {formData.titleLogoUrl && (
               <button
                 type="button"
                 onClick={() => updateField('titleLogoUrl', '')}
-                className="text-[11px] text-zinc-500 hover:text-red-400 transition-colors cursor-pointer"
+                className="text-[11px] text-zinc-500 hover:text-red-400 transition-colors cursor-pointer shrink-0"
               >
-                Clear Logo
+                Clear Standard Logo
               </button>
             )}
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-12 gap-4 items-start">
-            <div className="md:col-span-7 space-y-3">
+            <div className="md:col-span-7 space-y-3.5">
               <div>
-                <label className="block text-[11px] text-zinc-300 font-semibold mb-1">
-                  Primary Title Logo PNG URL
-                </label>
+                <div className="flex items-center justify-between mb-1">
+                  <label className="block text-[11px] text-zinc-300 font-semibold">
+                    Standard Title Logo PNG URL <span className="text-amber-400 font-mono text-[10px]">(2.5:1 — ~650×260)</span>
+                  </label>
+                </div>
                 <input
                   type="text"
                   value={formData.titleLogoUrl || ''}
                   onChange={(e) => updateField('titleLogoUrl', e.target.value)}
-                  placeholder="https://... (Transparent PNG logo)"
+                  placeholder="https://... (2.5:1 transparent PNG logo, e.g. 650×260)"
                   className="w-full bg-zinc-800 border border-zinc-700 rounded-lg px-3 py-2 text-white outline-none focus:border-red-500 font-mono text-xs"
                 />
+              </div>
+
+              {/* Dedicated Central Logo Field for 2:3 Recommendation & Modern Rank Cards */}
+              <div className="p-3 rounded-lg bg-zinc-950/70 border border-zinc-800 space-y-2">
+                <div className="flex items-center justify-between gap-2 flex-wrap">
+                  <label className="block text-[11px] text-zinc-200 font-semibold">
+                    Central Logo <span className="text-zinc-400 font-normal text-[10px]">(2:3 Recommendation &amp; Modern Rank)</span>
+                  </label>
+                  <div className="flex items-center gap-2">
+                    {(!formData.centralLogoUrl || formData.centralLogoUrl === formData.titleLogoUrl) && formData.titleLogoUrl && (
+                      <span className="px-1.5 py-0.5 rounded text-[9.5px] font-semibold bg-emerald-500/15 text-emerald-300 border border-emerald-500/30">
+                        Using Standard Logo
+                      </span>
+                    )}
+                    {formData.titleLogoUrl && formData.centralLogoUrl !== formData.titleLogoUrl && (
+                      <button
+                        type="button"
+                        onClick={() => updateField('centralLogoUrl', formData.titleLogoUrl || '')}
+                        className="px-2 py-0.5 rounded text-[10px] font-semibold bg-zinc-800 hover:bg-zinc-700 text-zinc-200 border border-zinc-700 transition-colors cursor-pointer"
+                      >
+                        Use Standard Logo
+                      </button>
+                    )}
+                    {formData.centralLogoUrl && (
+                      <button
+                        type="button"
+                        onClick={() => updateField('centralLogoUrl', '')}
+                        className="text-[10px] text-zinc-500 hover:text-red-400 transition-colors cursor-pointer"
+                      >
+                        Reset
+                      </button>
+                    )}
+                  </div>
+                </div>
+                <input
+                  type="text"
+                  value={formData.centralLogoUrl || ''}
+                  onChange={(e) => updateField('centralLogoUrl', e.target.value)}
+                  placeholder="https://... (Leave blank to automatically use Standard Logo)"
+                  className="w-full bg-zinc-800 border border-zinc-700 rounded-lg px-3 py-2 text-white outline-none focus:border-red-500 font-mono text-xs"
+                />
+                <p className="text-[10px] text-zinc-500 leading-snug">
+                  Centered PNG logo for Mobile 2:3 Portrait Recommendation and Modern Top 10 Rank cards. Automatically falls back to Standard Logo if empty.
+                </p>
               </div>
 
               <div>
@@ -1102,32 +1148,62 @@ export const AdminArtworkManager: React.FC<AdminArtworkManagerProps> = ({
               </div>
             </div>
 
-            {/* Checkered Transparency Live Preview */}
-            <div className="md:col-span-5 flex flex-col items-center">
-              <span className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider mb-1 flex items-center gap-1">
-                <Eye className="w-3 h-3 text-emerald-400" />
-                <span>Transparency Checkered Preview</span>
-              </span>
+            {/* Checkered Transparency Live Previews (2.5:1 Standard + Central Logo) */}
+            <div className="md:col-span-5 flex flex-col gap-3">
+              <div className="flex flex-col items-center">
+                <span className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider mb-1 flex items-center gap-1">
+                  <Eye className="w-3 h-3 text-emerald-400" />
+                  <span>Standard Logo Preview (2.5:1)</span>
+                </span>
 
-              <div
-                className="w-full h-32 rounded-xl flex items-center justify-center p-3 border border-zinc-700 shadow-inner"
-                style={{
-                  backgroundImage: `linear-gradient(45deg, #18181b 25%, transparent 25%), linear-gradient(-45deg, #18181b 25%, transparent 25%), linear-gradient(45deg, transparent 75%, #18181b 75%), linear-gradient(-45deg, transparent 75%, #18181b 75%)`,
-                  backgroundSize: '16px 16px',
-                  backgroundPosition: '0 0, 0 8px, 8px -8px, -8px 0px',
-                  backgroundColor: '#09090b'
-                }}
-              >
-                {formData.titleLogoUrl ? (
-                  <img
-                    src={formData.titleLogoUrl}
-                    alt="Logo Preview"
-                    referrerPolicy="no-referrer"
-                    className="max-h-20 max-w-[85%] object-contain drop-shadow-[0_4px_12px_rgba(0,0,0,0.8)]"
-                  />
-                ) : (
-                  <span className="text-zinc-500 text-xs font-mono">No Logo PNG URL</span>
-                )}
+                <div
+                  className="relative w-full aspect-[2.5/1] rounded-xl overflow-hidden flex items-end justify-start border border-zinc-700 shadow-inner"
+                  style={{
+                    backgroundImage: `linear-gradient(45deg, #18181b 25%, transparent 25%), linear-gradient(-45deg, #18181b 25%, transparent 25%), linear-gradient(45deg, transparent 75%, #18181b 75%), linear-gradient(-45deg, transparent 75%, #18181b 75%)`,
+                    backgroundSize: '16px 16px',
+                    backgroundPosition: '0 0, 0 8px, 8px -8px, -8px 0px',
+                    backgroundColor: '#09090b'
+                  }}
+                >
+                  {formData.titleLogoUrl ? (
+                    <img
+                      src={formData.titleLogoUrl}
+                      alt="Standard Logo Preview"
+                      referrerPolicy="no-referrer"
+                      className="absolute inset-0 block w-full h-full max-w-full max-h-full object-contain object-bottom-left drop-shadow-[0_4px_12px_rgba(0,0,0,0.8)]"
+                    />
+                  ) : (
+                    <span className="m-auto text-zinc-500 text-xs font-mono">No Standard Logo URL</span>
+                  )}
+                </div>
+              </div>
+
+              <div className="flex flex-col items-center">
+                <span className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider mb-1 flex items-center gap-1">
+                  <Eye className="w-3 h-3 text-sky-400" />
+                  <span>Central Logo Preview (2:3 &amp; Rank)</span>
+                </span>
+
+                <div
+                  className="relative w-full aspect-[2.5/1] rounded-xl overflow-hidden flex items-end justify-center border border-zinc-700 shadow-inner"
+                  style={{
+                    backgroundImage: `linear-gradient(45deg, #18181b 25%, transparent 25%), linear-gradient(-45deg, #18181b 25%, transparent 25%), linear-gradient(45deg, transparent 75%, #18181b 75%), linear-gradient(-45deg, transparent 75%, #18181b 75%)`,
+                    backgroundSize: '16px 16px',
+                    backgroundPosition: '0 0, 0 8px, 8px -8px, -8px 0px',
+                    backgroundColor: '#09090b'
+                  }}
+                >
+                  {(formData.centralLogoUrl || formData.titleLogoUrl) ? (
+                    <img
+                      src={formData.centralLogoUrl || formData.titleLogoUrl}
+                      alt="Central Logo Preview"
+                      referrerPolicy="no-referrer"
+                      className="absolute inset-0 block w-full h-full max-w-full max-h-full object-contain object-bottom drop-shadow-[0_4px_12px_rgba(0,0,0,0.8)]"
+                    />
+                  ) : (
+                    <span className="m-auto text-zinc-500 text-xs font-mono">No Central Logo URL</span>
+                  )}
+                </div>
               </div>
             </div>
           </div>

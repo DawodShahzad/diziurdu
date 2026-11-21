@@ -6,6 +6,7 @@ import { ShowTitleLogo } from './ShowTitleLogo';
 import { attachHlsVideo } from '../utils/hlsHelper';
 import { WatchProgressItem } from '../utils/watchProgress';
 import { MediaImage } from './MediaImage';
+import { ModernRankNumber } from './ModernRankNumber';
 
 interface FeedStripProps {
   feed: FeedConfig;
@@ -41,6 +42,10 @@ interface FeedStripProps {
 // Guarantees that STRICTLY ONLY 1 ROW shows left/right navigation badges at a time, never ever 2 at a time.
 let globalActiveFeedId: string | null = null;
 const globalFeedListeners = new Set<(activeId: string | null) => void>();
+
+// Persistent session cache so once a feed row has loaded, moving back and forth between tabs/pages never flashes skeletons
+const loadedFeedRowIdsCache = new Set<string>();
+const loadedFeedCardIndicesCache = new Map<string, Set<number>>();
 
 export const setGlobalActiveFeedId = (feedId: string | null) => {
   if (globalActiveFeedId !== feedId) {
@@ -134,6 +139,7 @@ export const FeedStrip: React.FC<FeedStripProps> = ({
   const feedStripRef = useRef<HTMLDivElement>(null);
   const [isRowInViewport, setIsRowInViewport] = useState<boolean>(
     () =>
+      loadedFeedRowIdsCache.has(feed.id) ||
       feedIndex === 0 ||
       isContinueWatchingFeed ||
       isWatchlistFeed ||
@@ -162,22 +168,30 @@ export const FeedStrip: React.FC<FeedStripProps> = ({
       const thumbRect = thumbEl.getBoundingClientRect();
       const thumbTop = Math.round(thumbRect.top - parentRect.top);
       const thumbHeight = Math.round(thumbRect.height);
-      setNavButtonTop(thumbTop);
-      setNavButtonHeight(thumbHeight);
+      if (thumbHeight > 0) {
+        setNavButtonTop(thumbTop);
+        setNavButtonHeight(thumbHeight);
+      }
     }
   }, []);
 
   useEffect(() => {
     updateNavPosition();
+    const rafId = window.requestAnimationFrame(updateNavPosition);
     const sc = scrollContainerRef.current;
-    if (!sc) return;
+    if (!sc) return () => window.cancelAnimationFrame(rafId);
     const ro = new ResizeObserver(() => {
       updateNavPosition();
       updateScrollButtons();
     });
     ro.observe(sc);
+    const firstCard = (sc.querySelector('[data-card-thumb="true"]') ||
+      sc.querySelector('[data-top10-card="true"]') ||
+      sc.querySelector('[data-show-card="true"]')) as HTMLElement | null;
+    if (firstCard) ro.observe(firstCard);
     window.addEventListener('resize', updateNavPosition, { passive: true });
     return () => {
+      window.cancelAnimationFrame(rafId);
       ro.disconnect();
       window.removeEventListener('resize', updateNavPosition);
     };
@@ -368,10 +382,18 @@ export const FeedStrip: React.FC<FeedStripProps> = ({
   const [canScrollLeft, setCanScrollLeft] = useState<boolean>(false);
   const [canScrollRight, setCanScrollRight] = useState<boolean>(false);
 
-  // Progressive feed-by-feed vertical gating & horizontal in-view card gating
-  const [loadedCardIndices, setLoadedCardIndices] = useState<Set<number>>(
-    () => new Set([0, 1, 2, 3, 4, 5])
-  );
+  // Progressive feed-by-feed vertical gating & horizontal in-view card gating (cached once loaded)
+  const [loadedCardIndices, setLoadedCardIndices] = useState<Set<number>>(() => {
+    const cached = loadedFeedCardIndicesCache.get(feed.id);
+    if (cached && cached.size > 0) return new Set(cached);
+    return new Set([0, 1, 2, 3, 4, 5]);
+  });
+
+  useEffect(() => {
+    if (isRowInViewport) {
+      loadedFeedRowIdsCache.add(feed.id);
+    }
+  }, [isRowInViewport, feed.id]);
 
   useEffect(() => {
     const el = feedStripRef.current;
@@ -380,6 +402,7 @@ export const FeedStrip: React.FC<FeedStripProps> = ({
     const observer = new IntersectionObserver(
       (entries) => {
         if (entries.some((entry) => entry.isIntersecting)) {
+          loadedFeedRowIdsCache.add(feed.id);
           setIsRowInViewport(true);
           observer.disconnect();
         }
@@ -388,7 +411,7 @@ export const FeedStrip: React.FC<FeedStripProps> = ({
     );
     observer.observe(el);
     return () => observer.disconnect();
-  }, [isRowInViewport]);
+  }, [isRowInViewport, feed.id]);
 
   useEffect(() => {
     if (!isRowInViewport) return;
@@ -417,7 +440,11 @@ export const FeedStrip: React.FC<FeedStripProps> = ({
               }
             }
           });
-          return changed ? next : prev;
+          if (changed) {
+            loadedFeedCardIndicesCache.set(feed.id, new Set(next));
+            return next;
+          }
+          return prev;
         });
       },
       { root: container, rootMargin: '0px 140px 0px 140px', threshold: 0.01 }
@@ -1141,11 +1168,12 @@ export const FeedStrip: React.FC<FeedStripProps> = ({
                   aria-label="Scroll left"
                   style={{
                     top: navButtonTop !== null ? `${navButtonTop}px` : '8px',
-                    height: navButtonHeight !== null ? `${navButtonHeight}px` : 'calc(100% - 16px)'
+                    height: navButtonHeight !== null ? `${navButtonHeight}px` : 'calc(100% - 16px)',
+                    background: 'linear-gradient(to right, rgba(0, 0, 0, 0.72) 0%, rgba(0, 0, 0, 0.42) 45%, rgba(0, 0, 0, 0.14) 76%, rgba(0, 0, 0, 0) 100%)'
                   }}
-                  className="group/nav absolute left-0 z-40 w-11 sm:w-12 md:w-14 rounded-r-xl bg-black/35 text-white flex items-center justify-center cursor-pointer shadow-2xl border-0 select-none opacity-0 group-hover/strip:opacity-100 transition-opacity duration-200"
+                  className="group/nav absolute left-0 z-40 w-12 sm:w-14 md:w-16 rounded-none text-white flex items-center justify-start pl-1.5 sm:pl-2 cursor-pointer border-0 select-none opacity-0 group-hover/strip:opacity-100 transition-opacity duration-200"
                 >
-                  <ChevronLeft className="w-8 h-8 stroke-[2.5] group-active/nav:scale-75 transition-transform duration-100" />
+                  <ChevronLeft className="w-8 h-8 stroke-[2.5] drop-shadow-[0_2px_6px_rgba(0,0,0,0.7)] group-active/nav:scale-75 transition-transform duration-100" />
                 </button>
               )}
 
@@ -1159,11 +1187,12 @@ export const FeedStrip: React.FC<FeedStripProps> = ({
                   aria-label="Scroll right"
                   style={{
                     top: navButtonTop !== null ? `${navButtonTop}px` : '8px',
-                    height: navButtonHeight !== null ? `${navButtonHeight}px` : 'calc(100% - 16px)'
+                    height: navButtonHeight !== null ? `${navButtonHeight}px` : 'calc(100% - 16px)',
+                    background: 'linear-gradient(to left, rgba(0, 0, 0, 0.72) 0%, rgba(0, 0, 0, 0.42) 45%, rgba(0, 0, 0, 0.14) 76%, rgba(0, 0, 0, 0) 100%)'
                   }}
-                  className="group/nav absolute right-0 z-40 w-11 sm:w-12 md:w-14 rounded-l-xl bg-black/35 text-white flex items-center justify-center cursor-pointer shadow-2xl border-0 select-none opacity-0 group-hover/strip:opacity-100 transition-opacity duration-200"
+                  className="group/nav absolute right-0 z-40 w-12 sm:w-14 md:w-16 rounded-none text-white flex items-center justify-end pr-1.5 sm:pr-2 cursor-pointer border-0 select-none opacity-0 group-hover/strip:opacity-100 transition-opacity duration-200"
                 >
-                  <ChevronRight className="w-8 h-8 stroke-[2.5] group-active/nav:scale-75 transition-transform duration-100" />
+                  <ChevronRight className="w-8 h-8 stroke-[2.5] drop-shadow-[0_2px_6px_rgba(0,0,0,0.7)] group-active/nav:scale-75 transition-transform duration-100" />
                 </button>
               )}
 
@@ -1317,11 +1346,12 @@ export const FeedStrip: React.FC<FeedStripProps> = ({
                     aria-label="Scroll left"
                     style={{
                       top: navButtonTop !== null ? `${navButtonTop}px` : undefined,
-                      height: navButtonHeight !== null ? `${navButtonHeight}px` : undefined
+                      height: navButtonHeight !== null ? `${navButtonHeight}px` : undefined,
+                      background: 'linear-gradient(to right, rgba(0, 0, 0, 0.72) 0%, rgba(0, 0, 0, 0.42) 45%, rgba(0, 0, 0, 0.14) 76%, rgba(0, 0, 0, 0) 100%)'
                     }}
-                    className="group/nav absolute left-0 z-40 w-11 sm:w-12 md:w-14 rounded-r-xl rounded-l-none bg-black/35 text-white flex items-center justify-center cursor-pointer shadow-2xl border-0 select-none"
+                    className="group/nav absolute left-0 z-40 w-12 sm:w-14 md:w-16 rounded-none text-white flex items-center justify-start pl-1.5 sm:pl-2 cursor-pointer border-0 select-none"
                   >
-                    <ChevronLeft className="w-8 h-8 stroke-[2.5] group-active/nav:scale-75 transition-transform duration-100" />
+                    <ChevronLeft className="w-8 h-8 stroke-[2.5] drop-shadow-[0_2px_6px_rgba(0,0,0,0.7)] group-active/nav:scale-75 transition-transform duration-100" />
                   </button>
                 )}
 
@@ -1334,11 +1364,12 @@ export const FeedStrip: React.FC<FeedStripProps> = ({
                     aria-label="Scroll right"
                     style={{
                       top: navButtonTop !== null ? `${navButtonTop}px` : undefined,
-                      height: navButtonHeight !== null ? `${navButtonHeight}px` : undefined
+                      height: navButtonHeight !== null ? `${navButtonHeight}px` : undefined,
+                      background: 'linear-gradient(to left, rgba(0, 0, 0, 0.72) 0%, rgba(0, 0, 0, 0.42) 45%, rgba(0, 0, 0, 0.14) 76%, rgba(0, 0, 0, 0) 100%)'
                     }}
-                    className="group/nav absolute right-0 z-40 w-11 sm:w-12 md:w-14 rounded-l-xl rounded-r-none bg-black/35 text-white flex items-center justify-center cursor-pointer shadow-2xl border-0 select-none"
+                    className="group/nav absolute right-0 z-40 w-12 sm:w-14 md:w-16 rounded-none text-white flex items-center justify-end pr-1.5 sm:pr-2 cursor-pointer border-0 select-none"
                   >
-                    <ChevronRight className="w-8 h-8 stroke-[2.5] group-active/nav:scale-75 transition-transform duration-100" />
+                    <ChevronRight className="w-8 h-8 stroke-[2.5] drop-shadow-[0_2px_6px_rgba(0,0,0,0.7)] group-active/nav:scale-75 transition-transform duration-100" />
                   </button>
                 )}
               </>
@@ -1423,7 +1454,12 @@ export const FeedStrip: React.FC<FeedStripProps> = ({
 
                         {/* Top-Right Loading Spinner (after 1.5s poster while preview loads) -> Mute / Unmute Button once playing */}
                         {isActive && show.trailerUrl && isPosterCountdownDone && isStripInViewport && isMobileCardClearBetweenNavbars && !isModalOpen && !isPaused && (
-                          <div className="absolute top-2.5 right-2.5 z-30">
+                          <div
+                            className="absolute top-2.5 right-2.5 z-30"
+                            onClick={(e) => e.stopPropagation()}
+                            onPointerDown={(e) => e.stopPropagation()}
+                            onTouchStart={(e) => e.stopPropagation()}
+                          >
                             {isMobileVideoLoading || !isMobileVideoPlaying ? (
                               <div className="w-7 h-7 rounded-full bg-black/20 text-white flex items-center justify-center border border-white/10">
                                 <Loader2 className="w-3.5 h-3.5 animate-spin text-white" />
@@ -1441,7 +1477,9 @@ export const FeedStrip: React.FC<FeedStripProps> = ({
                                   }
                                   onToggleGlobalMute(nextMuted);
                                 }}
-                                className="w-7 h-7 rounded-full bg-black/20 hover:bg-black/40 text-white flex items-center justify-center cursor-pointer transition-colors"
+                                onPointerDown={(e) => e.stopPropagation()}
+                                onTouchStart={(e) => e.stopPropagation()}
+                                className="relative before:content-[''] before:absolute before:-inset-3 w-7 h-7 rounded-full bg-black/20 hover:bg-black/40 text-white flex items-center justify-center cursor-pointer transition-colors"
                                 aria-label="Toggle mute"
                               >
                                 {isGlobalMuted ? (
@@ -1586,11 +1624,12 @@ export const FeedStrip: React.FC<FeedStripProps> = ({
                   aria-label="Scroll left"
                   style={{
                     top: navButtonTop !== null ? `${navButtonTop}px` : undefined,
-                    height: navButtonHeight !== null ? `${navButtonHeight}px` : undefined
+                    height: navButtonHeight !== null ? `${navButtonHeight}px` : undefined,
+                    background: 'linear-gradient(to right, rgba(0, 0, 0, 0.72) 0%, rgba(0, 0, 0, 0.42) 45%, rgba(0, 0, 0, 0.14) 76%, rgba(0, 0, 0, 0) 100%)'
                   }}
-                  className="group/nav absolute left-0 z-40 w-11 sm:w-12 md:w-14 rounded-r-xl rounded-l-none bg-black/35 text-white flex items-center justify-center cursor-pointer border-0 select-none opacity-0 group-hover/modernstrip:opacity-100 transition-opacity duration-200"
+                  className="group/nav absolute left-0 z-40 w-12 sm:w-14 md:w-16 rounded-none text-white flex items-center justify-start pl-1.5 sm:pl-2 cursor-pointer border-0 select-none opacity-0 group-hover/modernstrip:opacity-100 transition-opacity duration-200"
                 >
-                  <ChevronLeft className="w-8 h-8 stroke-[2.5] group-active/nav:scale-75 transition-transform duration-100" />
+                  <ChevronLeft className="w-8 h-8 stroke-[2.5] drop-shadow-[0_2px_6px_rgba(0,0,0,0.7)] group-active/nav:scale-75 transition-transform duration-100" />
                 </button>
               )}
 
@@ -1603,11 +1642,12 @@ export const FeedStrip: React.FC<FeedStripProps> = ({
                   aria-label="Scroll right"
                   style={{
                     top: navButtonTop !== null ? `${navButtonTop}px` : undefined,
-                    height: navButtonHeight !== null ? `${navButtonHeight}px` : undefined
+                    height: navButtonHeight !== null ? `${navButtonHeight}px` : undefined,
+                    background: 'linear-gradient(to left, rgba(0, 0, 0, 0.72) 0%, rgba(0, 0, 0, 0.42) 45%, rgba(0, 0, 0, 0.14) 76%, rgba(0, 0, 0, 0) 100%)'
                   }}
-                  className="group/nav absolute right-0 z-40 w-11 sm:w-12 md:w-14 rounded-l-xl rounded-r-none bg-black/35 text-white flex items-center justify-center cursor-pointer border-0 select-none opacity-0 group-hover/modernstrip:opacity-100 transition-opacity duration-200"
+                  className="group/nav absolute right-0 z-40 w-12 sm:w-14 md:w-16 rounded-none text-white flex items-center justify-end pr-1.5 sm:pr-2 cursor-pointer border-0 select-none opacity-0 group-hover/modernstrip:opacity-100 transition-opacity duration-200"
                 >
-                  <ChevronRight className="w-8 h-8 stroke-[2.5] group-active/nav:scale-75 transition-transform duration-100" />
+                  <ChevronRight className="w-8 h-8 stroke-[2.5] drop-shadow-[0_2px_6px_rgba(0,0,0,0.7)] group-active/nav:scale-75 transition-transform duration-100" />
                 </button>
               )}
             </>
@@ -1646,51 +1686,17 @@ export const FeedStrip: React.FC<FeedStripProps> = ({
                   {/* Outlined Rank Number on Left (only in 'modern' mode) */}
                   {!isInsideCardStyle && (
                     <div className="relative z-0 pointer-events-none select-none shrink-0 flex items-center justify-end leading-none w-10 sm:w-12 md:w-15 lg:w-18 overflow-visible">
-                      {rankNum === 10 ? (
-                        <svg
-                          viewBox="0 0 135 140"
-                          className="w-[74px] sm:w-[90px] md:w-[112px] lg:w-[132px] h-[95px] sm:h-[115px] md:h-[145px] lg:h-[168px] overflow-visible -mr-1.5 sm:-mr-2.5"
-                          aria-label="10"
-                        >
-                          <text
-                            x="44"
-                            y="124"
-                            fontSize="140"
-                            fontWeight="900"
-                            fontFamily="Inter, system-ui, -apple-system, sans-serif"
-                            fill="#141414"
-                            stroke="rgba(255, 255, 255, 0.42)"
-                            strokeWidth="3.5"
-                            paintOrder="stroke fill"
-                          >
-                            0
-                          </text>
-                          <text
-                            x="2"
-                            y="124"
-                            fontSize="140"
-                            fontWeight="900"
-                            fontFamily="Inter, system-ui, -apple-system, sans-serif"
-                            fill="#141414"
-                            stroke="rgba(255, 255, 255, 0.42)"
-                            strokeWidth="3.5"
-                            paintOrder="stroke fill"
-                          >
-                            1
-                          </text>
-                        </svg>
-                      ) : (
-                        <span
-                          className="text-8xl sm:text-9xl md:text-[125px] lg:text-[145px] xl:text-[155px] font-black font-sans tracking-tighter"
-                          style={{
-                            WebkitTextStroke: '2px rgba(255, 255, 255, 0.42)',
-                            color: 'transparent',
-                            lineHeight: 0.85
-                          }}
-                        >
-                          {rankStr}
-                        </span>
-                      )}
+                      <ModernRankNumber
+                        rank={rankNum}
+                        fillColor={isMobile ? '#000000' : '#141414'}
+                        strokeColor="rgba(255, 255, 255, 0.44)"
+                        strokeWidth={4.5}
+                        className={`${
+                          rankNum >= 10
+                            ? 'w-[74px] sm:w-[90px] md:w-[112px] lg:w-[132px] -mr-1.5 sm:-mr-2.5'
+                            : 'w-[54px] sm:w-[68px] md:w-[86px] lg:w-[100px] -mr-1 sm:-mr-1.5'
+                        } h-[95px] sm:h-[115px] md:h-[145px] lg:h-[168px]`}
+                      />
                     </div>
                   )}
 
@@ -1700,15 +1706,19 @@ export const FeedStrip: React.FC<FeedStripProps> = ({
                     onClick={(e) => onOpenDetails(show, { element: e.currentTarget, sourceFeedType: 'other', posterUrl: posterArtwork })}
                     className={`${
                       isInsideCardStyle ? 'ml-0' : '-ml-2 sm:-ml-2.5 md:-ml-3 lg:-ml-3.5'
-                    } relative z-10 flex-1 aspect-[2/3] shrink-0 rounded-xl overflow-visible cursor-pointer transition-transform duration-300 ease-out group-hover/top10item:scale-[1.05]`}
+                    } relative z-10 flex-1 aspect-[2/3] shrink-0 rounded-xl overflow-visible cursor-pointer transition-transform duration-300 ease-out ${
+                      !isMobile ? 'group-hover/top10item:scale-[1.05]' : ''
+                    }`}
                   >
                     {/* Glowing Ambiance Halo on Hover */}
-                    <div
-                      className="hidden md:block absolute -inset-y-8 -inset-x-6 rounded-3xl pointer-events-none -z-10 blur-2xl opacity-0 group-hover/top10item:opacity-100 transition-opacity duration-300"
-                      style={{
-                        background: `radial-gradient(circle at 50% 50%, ${ambientColor}88 0%, ${ambientColor}40 45%, ${ambientColor}10 70%, transparent 85%)`
-                      }}
-                    />
+                    {!isMobile && (
+                      <div
+                        className="absolute -inset-y-8 -inset-x-6 rounded-3xl pointer-events-none -z-10 blur-2xl opacity-0 group-hover/top10item:opacity-100 transition-opacity duration-300"
+                        style={{
+                          background: `radial-gradient(circle at 50% 50%, ${ambientColor}88 0%, ${ambientColor}40 45%, ${ambientColor}10 70%, transparent 85%)`
+                        }}
+                      />
+                    )}
 
                     {/* Card Inner Wrapper with rounded-xl corners (NO border) */}
                     <div className="relative w-full h-full rounded-xl overflow-hidden bg-[#14151b] border-0 outline-none shadow-xl">
@@ -1723,7 +1733,9 @@ export const FeedStrip: React.FC<FeedStripProps> = ({
 
                       {/* 3rd Style ('inside_card'): Solid vertical-gradient rank number top-left INSIDE card (hides on desktop hover) */}
                       {isInsideCardStyle && (
-                        <div className="absolute top-2 left-3 z-20 pointer-events-none select-none transition-opacity duration-200 md:group-hover/top10item:opacity-0">
+                        <div className={`absolute top-2 left-3 z-20 pointer-events-none select-none transition-opacity duration-200 ${
+                          !isMobile ? 'group-hover/top10item:opacity-0' : ''
+                        }`}>
                           <span
                             className="text-3xl sm:text-4xl md:text-[42px] font-black leading-none tracking-tight inline-block"
                             style={{
@@ -1742,16 +1754,20 @@ export const FeedStrip: React.FC<FeedStripProps> = ({
                       {/* Bottom Dark Gradient Scrim */}
                       <div className="absolute inset-x-0 bottom-0 h-32 bg-gradient-to-t from-black/95 via-black/50 to-transparent pointer-events-none z-10" />
 
-                      {/* PNG Logo at Bottom Center:
+                      {/* Central PNG Logo at Bottom Center (uses Central Logo with fallback to Standard Logo):
                           Smoothly translates up on desktop hover */}
-                      <div className="absolute inset-x-2 bottom-3.5 z-20 flex flex-col items-center justify-end pointer-events-none transition-transform duration-300 ease-out md:group-hover/top10item:-translate-y-12">
-                        {show.titleLogoUrl ? (
-                          <img
-                            src={show.titleLogoUrl}
-                            alt={show.title}
-                            referrerPolicy="no-referrer"
-                            className="h-10 sm:h-12 md:h-12 w-auto max-h-14 max-w-[85%] object-contain drop-shadow-[0_2px_8px_rgba(0,0,0,0.85)]"
-                          />
+                      <div className={`absolute inset-x-2 bottom-3.5 z-20 flex flex-col items-center justify-end pointer-events-none transition-transform duration-300 ease-out ${
+                        !isMobile ? 'group-hover/top10item:-translate-y-12' : ''
+                      }`}>
+                        {(show.centralLogoUrl || show.titleLogoUrl) ? (
+                          <div className="relative w-[78%] aspect-[2.5/1] overflow-hidden shrink-0">
+                            <img
+                              src={show.centralLogoUrl || show.titleLogoUrl}
+                              alt={show.title}
+                              referrerPolicy="no-referrer"
+                              className="absolute inset-0 block w-full h-full max-w-full max-h-full object-contain object-bottom drop-shadow-[0_2px_8px_rgba(0,0,0,0.85)]"
+                            />
+                          </div>
                         ) : (
                           <span className="text-white font-extrabold text-xs sm:text-sm text-center tracking-tight drop-shadow-md px-1">
                             {show.title}
@@ -1762,7 +1778,8 @@ export const FeedStrip: React.FC<FeedStripProps> = ({
                       {/* Action Buttons on Desktop Hover (Image 4 Card 2):
                           - White Pill Button: ▶ Play
                           - Circular Button: (+) or (✓) */}
-                      <div className="hidden md:flex absolute inset-x-2 bottom-3 z-30 items-center justify-center gap-2 opacity-0 group-hover/top10item:opacity-100 transition-opacity duration-200 pointer-events-auto">
+                      {!isMobile && (
+                      <div className="flex absolute inset-x-2 bottom-3 z-30 items-center justify-center gap-2 opacity-0 group-hover/top10item:opacity-100 transition-opacity duration-200 pointer-events-auto">
                         {/* Play Pill Button */}
                         <button
                           onClick={(e) => {
@@ -1794,6 +1811,7 @@ export const FeedStrip: React.FC<FeedStripProps> = ({
                           )}
                         </button>
                       </div>
+                      )}
                     </div>
                   </div>
                 </div>
@@ -1866,11 +1884,12 @@ export const FeedStrip: React.FC<FeedStripProps> = ({
                   aria-label="Scroll left"
                   style={{
                     top: navButtonTop !== null ? `${navButtonTop}px` : '0px',
-                    height: navButtonHeight !== null ? `${navButtonHeight}px` : '100%'
+                    height: navButtonHeight !== null ? `${navButtonHeight}px` : '100%',
+                    background: 'linear-gradient(to right, rgba(0, 0, 0, 0.72) 0%, rgba(0, 0, 0, 0.42) 45%, rgba(0, 0, 0, 0.14) 76%, rgba(0, 0, 0, 0) 100%)'
                   }}
-                  className="group/nav absolute left-0 z-40 w-11 sm:w-12 md:w-14 rounded-r-xl rounded-l-none bg-black/35 text-white flex items-center justify-center cursor-pointer border-0 select-none"
+                  className="group/nav absolute left-0 z-40 w-12 sm:w-14 md:w-16 rounded-none text-white flex items-center justify-start pl-1.5 sm:pl-2 cursor-pointer border-0 select-none"
                 >
-                  <ChevronLeft className="w-8 h-8 stroke-[2.5] group-active/nav:scale-75 transition-transform duration-100" />
+                  <ChevronLeft className="w-8 h-8 stroke-[2.5] drop-shadow-[0_2px_6px_rgba(0,0,0,0.7)] group-active/nav:scale-75 transition-transform duration-100" />
                 </button>
               )}
 
@@ -1883,11 +1902,12 @@ export const FeedStrip: React.FC<FeedStripProps> = ({
                   aria-label="Scroll right"
                   style={{
                     top: navButtonTop !== null ? `${navButtonTop}px` : '0px',
-                    height: navButtonHeight !== null ? `${navButtonHeight}px` : '100%'
+                    height: navButtonHeight !== null ? `${navButtonHeight}px` : '100%',
+                    background: 'linear-gradient(to left, rgba(0, 0, 0, 0.72) 0%, rgba(0, 0, 0, 0.42) 45%, rgba(0, 0, 0, 0.14) 76%, rgba(0, 0, 0, 0) 100%)'
                   }}
-                  className="group/nav absolute right-0 z-40 w-11 sm:w-12 md:w-14 rounded-l-xl rounded-r-none bg-black/35 text-white flex items-center justify-center cursor-pointer border-0 select-none"
+                  className="group/nav absolute right-0 z-40 w-12 sm:w-14 md:w-16 rounded-none text-white flex items-center justify-end pr-1.5 sm:pr-2 cursor-pointer border-0 select-none"
                 >
-                  <ChevronRight className="w-8 h-8 stroke-[2.5] group-active/nav:scale-75 transition-transform duration-100" />
+                  <ChevronRight className="w-8 h-8 stroke-[2.5] drop-shadow-[0_2px_6px_rgba(0,0,0,0.7)] group-active/nav:scale-75 transition-transform duration-100" />
                 </button>
               )}
             </>

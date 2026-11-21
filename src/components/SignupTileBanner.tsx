@@ -12,18 +12,20 @@ interface SignupTileBannerProps {
   platformName?: string;
   customLogoUrl?: string;
   useCustomLogo?: boolean;
+  containerMode?: 'contained' | 'full_bleed';
   onActionClick: () => void;
 }
 
 export const SignupTileBanner: React.FC<SignupTileBannerProps> = ({
   shows,
   title,
-  subtitle = 'Stream thousands of hours of exclusive Turkish Originals & dubbed epics.',
+  subtitle = '',
   buttonText = 'Sign Up to Watch',
   imageUrl,
   platformName = 'Dizi Urdu',
   customLogoUrl,
   useCustomLogo = false,
+  containerMode = 'contained',
   onActionClick
 }) => {
   const collagePosters = useMemo(() => {
@@ -38,25 +40,29 @@ export const SignupTileBanner: React.FC<SignupTileBannerProps> = ({
     return filled;
   }, [shows]);
 
+  const isFullBleed = containerMode === 'full_bleed';
+  const trimmedTitle = title ? title.trim() : '';
+  const trimmedSubtitle = subtitle ? subtitle.trim() : '';
+  const trimmedButtonText = buttonText ? buttonText.trim() : '';
+
   return (
-    <section className="w-full px-2.5 sm:px-4 md:px-8 xl:px-12 my-6 sm:my-8 select-none">
+    <section
+      className={`w-full my-6 sm:my-8 select-none ${
+        isFullBleed ? 'px-0' : 'px-2.5 sm:px-4 md:px-8 xl:px-12'
+      }`}
+    >
       <div
-        onClick={onActionClick}
-        role="button"
-        tabIndex={0}
-        onKeyDown={(e) => {
-          if (e.key === 'Enter' || e.key === ' ') {
-            e.preventDefault();
-            onActionClick();
-          }
-        }}
-        className="relative w-full min-h-[210px] sm:min-h-[245px] md:min-h-[275px] rounded-2xl md:rounded-[22px] overflow-hidden bg-[#18181b] border border-white/10 shadow-[0_20px_50px_rgba(0,0,0,0.65)] flex items-center cursor-pointer group"
+        className={`relative w-full min-h-[210px] sm:min-h-[245px] md:min-h-[275px] overflow-hidden flex items-center ${
+          isFullBleed
+            ? 'rounded-none border-0 shadow-none bg-black'
+            : 'rounded-2xl md:rounded-[22px] border border-white/10 shadow-[0_20px_50px_rgba(0,0,0,0.65)] bg-[#18181b]'
+        }`}
       >
         {/* Background Artwork: Either Admin Custom Banner Image or Automatic Catalog Collage (no hover zoom) */}
         {imageUrl && imageUrl.trim() ? (
           <MediaImage
             src={imageUrl.trim()}
-            fallbackTitle={title || platformName}
+            fallbackTitle={trimmedTitle || platformName}
             className="absolute inset-0 w-full h-full object-cover object-center"
           />
         ) : collagePosters.length > 0 ? (
@@ -84,9 +90,27 @@ export const SignupTileBanner: React.FC<SignupTileBannerProps> = ({
           </div>
         ) : null}
 
+        {/* Top & Bottom subtle merging glare when image is selected (not too tall) */}
+        {imageUrl && imageUrl.trim() && (
+          <>
+            <div
+              className="absolute inset-x-0 top-0 h-10 sm:h-14 pointer-events-none z-[1]"
+              style={{
+                background: 'linear-gradient(to bottom, rgba(0,0,0,0.72) 0%, rgba(0,0,0,0.28) 55%, transparent 100%)'
+              }}
+            />
+            <div
+              className="absolute inset-x-0 bottom-0 h-10 sm:h-14 pointer-events-none z-[1]"
+              style={{
+                background: 'linear-gradient(to top, rgba(0,0,0,0.78) 0%, rgba(0,0,0,0.32) 55%, transparent 100%)'
+              }}
+            />
+          </>
+        )}
+
         {/* Left Dark Readability Scrim & Warm Ambient Highlight matching Apple TV tile */}
         <div
-          className="absolute inset-0 pointer-events-none"
+          className="absolute inset-0 pointer-events-none z-[2]"
           style={{
             background: imageUrl?.trim()
               ? 'linear-gradient(to right, rgba(16,16,19,0.96) 0%, rgba(16,16,19,0.85) 36%, rgba(16,16,19,0.3) 68%, transparent 100%)'
@@ -94,12 +118,16 @@ export const SignupTileBanner: React.FC<SignupTileBannerProps> = ({
           }}
         />
         <div
-          className="absolute -left-16 top-1/2 -translate-y-1/2 w-72 h-72 rounded-full blur-[90px] opacity-25 pointer-events-none"
+          className="absolute -left-16 top-1/2 -translate-y-1/2 w-72 h-72 rounded-full blur-[90px] opacity-25 pointer-events-none z-[2]"
           style={{ background: 'radial-gradient(circle, #ef4444 0%, #b45309 55%, transparent 80%)' }}
         />
 
-        {/* Foreground Copy & Rounded White CTA Button */}
-        <div className="relative z-10 px-6 sm:px-10 md:px-12 py-7 sm:py-9 max-w-[340px] sm:max-w-[430px] flex flex-col items-start text-left">
+        {/* Foreground Copy & Rounded White CTA Button (only button is clickable) */}
+        <div
+          className={`relative z-10 py-7 sm:py-9 max-w-[340px] sm:max-w-[430px] flex flex-col items-start text-left ${
+            isFullBleed ? 'px-5 sm:px-10 md:px-14' : 'px-6 sm:px-10 md:px-12'
+          }`}
+        >
           <div className="mb-3">
             {useCustomLogo && customLogoUrl ? (
               <img
@@ -113,27 +141,24 @@ export const SignupTileBanner: React.FC<SignupTileBannerProps> = ({
             )}
           </div>
 
-          {title && title.trim() && (
+          {trimmedTitle && (
             <h3 className="text-base sm:text-lg md:text-xl font-semibold text-white tracking-tight leading-snug mb-1">
-              {title}
+              {trimmedTitle}
             </h3>
           )}
 
-          {subtitle && subtitle.trim() && (
+          {trimmedSubtitle && (
             <p className="text-sm sm:text-[15.5px] font-semibold text-zinc-100 leading-snug">
-              {subtitle}
+              {trimmedSubtitle}
             </p>
           )}
 
           <button
             type="button"
-            onClick={(e) => {
-              e.stopPropagation();
-              onActionClick();
-            }}
+            onClick={onActionClick}
             className="mt-4 sm:mt-5 px-6 sm:px-7 py-2.5 rounded-full bg-zinc-100 hover:bg-white text-black font-bold text-xs sm:text-sm shadow-lg active:scale-95 transition-all cursor-pointer"
           >
-            {buttonText || 'Sign Up to Watch'}
+            {trimmedButtonText || 'Sign Up to Watch'}
           </button>
         </div>
       </div>

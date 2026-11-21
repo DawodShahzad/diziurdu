@@ -8,6 +8,13 @@ import { attachHlsVideo, isHlsSource } from '../utils/hlsHelper';
 import { WatchProgressItem, formatProgressTime } from '../utils/watchProgress';
 import { ResumeButtonProgress } from './ResumeButtonProgress';
 import { MediaImage } from './MediaImage';
+import { ModernRankNumber } from './ModernRankNumber';
+import {
+  recordCardPreviewTime,
+  notifyPreviewStarted,
+  clearCardPreviewTime,
+  getResumableCardPreviewTime
+} from '../utils/previewResumeTracker';
 
 interface ShowCardProps {
   show: Show;
@@ -240,6 +247,7 @@ export const ShowCard: React.FC<ShowCardProps> = ({
   const popoutFixedPosRef = useRef<{ top: number; left: number }>({ top: 0, left: 0 });
   const popoutAnchorTopRef = useRef<number>(0);
   const popoutTopOffsetRef = useRef<number>(0);
+  const popoutLeftOffsetRef = useRef<number>(0);
   const popoutEmergeRafRef = useRef<{ outer: number | null; inner: number | null }>({ outer: null, inner: null });
   const [popoutMotionStyle, setPopoutMotionStyle] = useState<{
     transform: string;
@@ -296,8 +304,53 @@ export const ShowCard: React.FC<ShowCardProps> = ({
   const longPressTimerRef = useRef<number | null>(null);
   const isLongPressActiveRef = useRef<boolean>(false);
   const cardInstanceId = useRef<string>(`card-${Math.random().toString(36).slice(2, 9)}`).current;
+  const previewCardKey = useMemo(
+    () => `${cardInstanceId}::${show.id}::${popoutVideoSrc}`,
+    [cardInstanceId, show.id, popoutVideoSrc]
+  );
+  const hasAppliedResumeSeekRef = useRef<boolean>(false);
   const isHoveredRef = useRef<boolean>(false);
   const isCollapsingStretchRef = useRef<boolean>(false);
+
+  const applyResumeSeekIfAvailable = useCallback(
+    (video: HTMLVideoElement | null) => {
+      if (!video || hasAppliedResumeSeekRef.current) return;
+      const resumeSec = getResumableCardPreviewTime(previewCardKey);
+      if (resumeSec > 0.25) {
+        if (video.readyState >= 1) {
+          const maxTarget =
+            Number.isFinite(video.duration) && video.duration > 1
+              ? Math.max(0, video.duration - 0.5)
+              : resumeSec;
+          const target = Math.min(resumeSec, maxTarget);
+          if (target > 0.25) {
+            try {
+              video.currentTime = target;
+            } catch {}
+          }
+          hasAppliedResumeSeekRef.current = true;
+        }
+      } else {
+        hasAppliedResumeSeekRef.current = true;
+      }
+    },
+    [previewCardKey]
+  );
+
+  const saveCurrentPreviewTime = useCallback(
+    (video: HTMLVideoElement | null) => {
+      if (!video) return;
+      const cur = video.currentTime;
+      if (
+        Number.isFinite(cur) &&
+        cur > 0.25 &&
+        (!Number.isFinite(video.duration) || cur < video.duration - 0.5)
+      ) {
+        recordCardPreviewTime(previewCardKey, cur);
+      }
+    },
+    [previewCardKey]
+  );
 
   const cancelStretchHover = useCallback(() => {
     if (stretchHoverTimerRef.current) {
@@ -374,42 +427,56 @@ export const ShowCard: React.FC<ShowCardProps> = ({
 
   // Video attachment effect supporting .m3u8 HLS and direct video playback
   useEffect(() => {
-    if (disableVideoPreview || (!isHovered && !isClosingPopout) || !popoutVideoSrc) {
+    if (disableVideoPreview || !shouldLoadVideo || (!isHovered && !isClosingPopout) || !popoutVideoSrc) {
       setIsVideoPlaying(false);
       return;
     }
     const video = popoutVideoRef.current || stretchVideoRef.current;
     if (!video) return;
 
+    hasAppliedResumeSeekRef.current = false;
+
     if (isHlsSource(popoutVideoSrc)) {
       const cleanup = attachHlsVideo(video, popoutVideoSrc, {
         autoPlay: true,
         muted: isMuted,
-        onLoaded: () => setIsVideoPlaying(true)
+        onLoaded: () => {
+          applyResumeSeekIfAvailable(video);
+          setIsVideoPlaying(true);
+        }
       });
 
       return () => {
+        saveCurrentPreviewTime(video);
         setIsVideoPlaying(false);
         if (cleanup) cleanup();
       };
     } else {
       video.muted = isMuted;
+      applyResumeSeekIfAvailable(video);
       const playPromise = video.play();
       if (playPromise !== undefined) {
         playPromise
-          .then(() => setIsVideoPlaying(true))
+          .then(() => {
+            applyResumeSeekIfAvailable(video);
+            setIsVideoPlaying(true);
+          })
           .catch(() => {
             video.muted = true;
             video.play()
-              .then(() => setIsVideoPlaying(true))
+              .then(() => {
+                applyResumeSeekIfAvailable(video);
+                setIsVideoPlaying(true);
+              })
               .catch(() => {});
           });
       }
       return () => {
+        saveCurrentPreviewTime(video);
         setIsVideoPlaying(false);
       };
     }
-  }, [isHovered, popoutVideoSrc]);
+  }, [isHovered, shouldLoadVideo, popoutVideoSrc, disableVideoPreview, applyResumeSeekIfAvailable, saveCurrentPreviewTime]);
 
   // Sync mute state on popout/stretch preview without restarting video playback
   useEffect(() => {
@@ -586,6 +653,8 @@ export const ShowCard: React.FC<ShowCardProps> = ({
     if (isGlobalPageScrolling) return;
     if (!baseCardRef.current) return;
     if (isOnlyEdgeUnderNavigation()) return;
+    // Never replay emergence animation if this card's popout is already open
+    if (isHoveredRef.current && !isClosingPopout) return;
 
     if (popoutCloseTimerRef.current) {
       window.clearTimeout(popoutCloseTimerRef.current);
@@ -613,9 +682,12 @@ export const ShowCard: React.FC<ShowCardProps> = ({
         : Math.round((targetWidth / 454) * 390);
     setPopoutWidth(targetWidth);
 
-    // Measure card thumbnail rect in viewport coordinates for fixed portal positioning over Navbar
+    // Measure card thumbnail rect in viewport coordinates, then convert to document coordinates
+    // so the portaled absolute popout moves in 100% GPU-compositor lockstep during vertical scroll (0ms lag).
     const rect = baseCardRef.current.getBoundingClientRect();
     const screenWidth = typeof window !== 'undefined' ? window.innerWidth : 1280;
+    const scrollX = typeof window !== 'undefined' ? window.scrollX || window.pageXOffset || 0 : 0;
+    const scrollY = typeof window !== 'undefined' ? window.scrollY || window.pageYOffset || 0 : 0;
     const thumbEl =
       (baseCardRef.current.querySelector('[data-card-thumb="true"]') as HTMLElement) ||
       (baseCardRef.current.querySelector('.aspect-video') as HTMLElement) ||
@@ -624,10 +696,10 @@ export const ShowCard: React.FC<ShowCardProps> = ({
     popoutAnchorTopRef.current = thumbRect.top;
 
     // Center popout vertically over the base thumbnail; float cleanly above Navbar when near top
-    const rawFixedTop = Math.round(thumbRect.top + (thumbRect.height - targetHeight) / 2);
-    const fixedTop = Math.max(12, rawFixedTop);
-    popoutTopOffsetRef.current = fixedTop - thumbRect.top;
-    const topOffset = Math.round(fixedTop - rect.top);
+    const rawViewportTop = Math.round(thumbRect.top + (thumbRect.height - targetHeight) / 2);
+    const viewportTop = Math.max(12, rawViewportTop);
+    popoutTopOffsetRef.current = viewportTop - thumbRect.top;
+    const topOffset = Math.round(viewportTop - rect.top);
     setPopoutTop(topOffset);
 
     // Calculate alignment relative to the scroll container's visible bounds
@@ -643,29 +715,32 @@ export const ShowCard: React.FC<ShowCardProps> = ({
     const leftLimit = leftBoundary + 16;
     const rightLimit = rightBoundary - 16;
 
-    let fixedLeft = 0;
+    let viewportLeft = 0;
     if (isFirst || cardCenter - halfWidth < leftLimit || thumbRect.left < leftLimit) {
       setPopoutAlign('left');
-      fixedLeft = Math.max(12, Math.round(Math.max(leftBoundary, thumbRect.left)));
-      setPopoutLeftOffset(Math.max(0, Math.round(fixedLeft - rect.left)));
+      viewportLeft = Math.max(12, Math.round(Math.max(leftBoundary, thumbRect.left)));
+      setPopoutLeftOffset(Math.max(0, Math.round(viewportLeft - rect.left)));
     } else if (isLast || cardCenter + halfWidth > rightLimit || thumbRect.right > rightLimit) {
       setPopoutAlign('right');
       const clampedRight = Math.max(12, Math.round(screenWidth - Math.min(rightBoundary, thumbRect.right)));
-      fixedLeft = Math.max(12, Math.round(screenWidth - clampedRight - targetWidth));
+      viewportLeft = Math.max(12, Math.round(screenWidth - clampedRight - targetWidth));
       setPopoutLeftOffset(0);
     } else {
       setPopoutAlign('center');
-      fixedLeft = Math.max(12, Math.round(cardCenter - halfWidth));
+      viewportLeft = Math.max(12, Math.round(cardCenter - halfWidth));
       setPopoutLeftOffset(Math.max(0, Math.round(thumbRect.left - rect.left)));
     }
 
-    popoutFixedPosRef.current = { top: fixedTop, left: fixedLeft };
-    setPopoutFixedPos({ top: fixedTop, left: fixedLeft });
+    popoutLeftOffsetRef.current = viewportLeft - thumbRect.left;
+    const docTop = viewportTop + scrollY;
+    const docLeft = viewportLeft + scrollX;
+    popoutFixedPosRef.current = { top: docTop, left: docLeft };
+    setPopoutFixedPos({ top: docTop, left: docLeft });
 
     // Start FLIP emergence from the exact underlying card thumbnail rectangle (top-left origin = zero offset drift)
     const initScale = Math.max(0.35, Math.min(0.96, thumbRect.width / Math.max(1, targetWidth)));
-    const initDx = Math.round(thumbRect.left - fixedLeft);
-    const initDy = Math.round(thumbRect.top - fixedTop);
+    const initDx = Math.round(thumbRect.left - viewportLeft);
+    const initDy = Math.round(thumbRect.top - viewportTop);
     setPopoutMotionStyle({
       transform: `translate3d(${initDx}px, ${initDy}px, 0) scale(${initScale.toFixed(4)})`,
       opacity: 0.65,
@@ -685,6 +760,8 @@ export const ShowCard: React.FC<ShowCardProps> = ({
       });
     });
 
+    isHoveredRef.current = true;
+    hasAppliedResumeSeekRef.current = false;
     setIsHovered(true);
     setIsPopoutPosterPhase(true);
     setShouldLoadVideo(false);
@@ -728,13 +805,13 @@ export const ShowCard: React.FC<ShowCardProps> = ({
         stretchCollapseTimerRef.current = null;
       }
 
-      // Immediately stop and reset preview video
+      // Save playback position before pausing so immediate re-hover resumes where left off
+      saveCurrentPreviewTime(stretchVideoRef.current);
       setShouldLoadVideo(false);
       setIsVideoPlaying(false);
       if (stretchVideoRef.current) {
         try {
           stretchVideoRef.current.pause();
-          stretchVideoRef.current.currentTime = 0;
         } catch {}
       }
 
@@ -795,7 +872,7 @@ export const ShowCard: React.FC<ShowCardProps> = ({
       setExpandedWidth(null);
       onHoverPreviewEnd?.();
     },
-    [cancelStretchHover, cardInstanceId, onHoverPreviewEnd]
+    [cancelStretchHover, cardInstanceId, onHoverPreviewEnd, saveCurrentPreviewTime]
   );
 
   useEffect(() => {
@@ -933,6 +1010,8 @@ export const ShowCard: React.FC<ShowCardProps> = ({
 
   const closePopout = (immediate = false) => {
     if (isStretchable) return;
+    // Do not restart an in-flight collapse animation on duplicate mousemove/mouseleave events
+    if (!immediate && popoutCloseTimerRef.current) return;
 
     if (hoverTimer.current) {
       window.clearTimeout(hoverTimer.current);
@@ -958,20 +1037,21 @@ export const ShowCard: React.FC<ShowCardProps> = ({
     if (popoutEmergeRafRef.current.inner) cancelAnimationFrame(popoutEmergeRafRef.current.inner);
     setIsEmergingPopout(false);
 
-    // Stop video preview immediately and reset to poster phase so re-hover strictly starts from poster
+    // Save playback progress before pausing so re-hovering this same card resumes where it left off
+    saveCurrentPreviewTime(popoutVideoRef.current);
     setShouldLoadVideo(false);
     setIsVideoPlaying(false);
     setIsPopoutPosterPhase(true);
     if (popoutVideoRef.current) {
       try {
         popoutVideoRef.current.pause();
-        popoutVideoRef.current.currentTime = 0;
       } catch {}
     }
 
     onPopoutViewClose?.();
 
     if (immediate || !isHovered) {
+      isHoveredRef.current = false;
       setIsHovered(false);
       setIsClosingPopout(false);
       setIsEmergingPopout(false);
@@ -980,7 +1060,7 @@ export const ShowCard: React.FC<ShowCardProps> = ({
       return;
     }
 
-    // Measure exact live base card coordinates relative to current un-transformed fixedLeft/fixedTop (origin 0,0)
+    // Measure exact live base card coordinates relative to current document-anchored popout position
     let endScale = 0.68;
     let endDx = 0;
     let endDy = 36;
@@ -990,10 +1070,14 @@ export const ShowCard: React.FC<ShowCardProps> = ({
         (baseCardRef.current.querySelector('.aspect-video') as HTMLElement) ||
         baseCardRef.current;
       const thumbRect = thumbEl.getBoundingClientRect();
+      const scrollX = typeof window !== 'undefined' ? window.scrollX || window.pageXOffset || 0 : 0;
+      const scrollY = typeof window !== 'undefined' ? window.scrollY || window.pageYOffset || 0 : 0;
+      const curViewportLeft = popoutFixedPosRef.current.left - scrollX;
+      const curViewportTop = popoutFixedPosRef.current.top - scrollY;
       if (thumbRect.width > 10) {
         endScale = Math.max(0.35, Math.min(0.98, thumbRect.width / Math.max(1, popoutWidth)));
-        endDx = Math.round(thumbRect.left - popoutFixedPosRef.current.left);
-        endDy = Math.round(thumbRect.top - popoutFixedPosRef.current.top);
+        endDx = Math.round(thumbRect.left - curViewportLeft);
+        endDy = Math.round(thumbRect.top - curViewportTop);
       }
     }
 
@@ -1007,6 +1091,7 @@ export const ShowCard: React.FC<ShowCardProps> = ({
     });
 
     popoutCloseTimerRef.current = window.setTimeout(() => {
+      isHoveredRef.current = false;
       setIsHovered(false);
       setIsClosingPopout(false);
       setIsEmergingPopout(false);
@@ -1024,7 +1109,7 @@ export const ShowCard: React.FC<ShowCardProps> = ({
     if (!isHovered && !isClosingPopout) return;
 
     const handleCheckPointerAway = (e: MouseEvent) => {
-      if (!isHovered) return;
+      if (!isHovered || isClosingPopout) return;
 
       if (isStretchable) {
         const feedStrip = baseCardRef.current?.closest('[data-feed-strip="true"]');
@@ -1084,25 +1169,32 @@ export const ShowCard: React.FC<ShowCardProps> = ({
     };
   }, [isHovered, isClosingPopout, isStretchable, cancelStretchHover, triggerStretchCollapse]);
 
-  // Track any scroll direction (vertical + horizontal) while popout is open,
-  // collapsing ONLY when popout leaves stationary cursor pointer or goes >= 50% past edges.
+  // Track any scroll direction (vertical + horizontal) instantaneously with zero React-render lag.
+  // Popout moves 1:1 with its base card and collapses cleanly when >= 50% crosses left/right/vertical screen edges
+  // or when the card scrolls away from the stationary cursor pointer.
   useEffect(() => {
     if (!isHovered && !isClosingPopout && !isCollapsingStretch) return;
 
-    const checkEdgeOrPointerCollapse = () => {
-      if (!isHovered || !baseCardRef.current) return;
+    const getScrollContainer = (): HTMLElement | null => {
+      if (!baseCardRef.current) return null;
+      const direct = baseCardRef.current.closest('.overflow-x-auto') as HTMLElement | null;
+      if (direct) return direct;
+      const feedStrip = baseCardRef.current.closest('[data-feed-strip="true"]');
+      return (feedStrip?.querySelector('.overflow-x-auto') as HTMLElement | null) || null;
+    };
+
+    const syncPositionAndCheckCollapse = (checkCollapse: boolean) => {
+      if (!baseCardRef.current) return;
       const screenWidth = typeof window !== 'undefined' ? window.innerWidth : 1280;
       const screenHeight = typeof window !== 'undefined' ? window.innerHeight : 720;
 
-      const feedStrip = baseCardRef.current.closest('[data-feed-strip="true"]');
-      const scrollContainer = feedStrip?.querySelector('.overflow-x-auto');
+      const scrollContainer = getScrollContainer();
       const containerRect = scrollContainer ? scrollContainer.getBoundingClientRect() : null;
-
       const leftBound = containerRect ? Math.max(0, containerRect.left) : 0;
       const rightBound = containerRect ? Math.min(screenWidth, containerRect.right) : screenWidth;
 
       if (isStretchable) {
-        if (mousePosRef.current && mousePosRef.current.x >= 0 && mousePosRef.current.y >= 0) {
+        if (checkCollapse && isHovered && mousePosRef.current && mousePosRef.current.x >= 0 && mousePosRef.current.y >= 0) {
           const { x, y } = mousePosRef.current;
           const cardEl = stretchCardInnerRef.current || baseCardRef.current;
           const sRect = cardEl.getBoundingClientRect();
@@ -1119,58 +1211,85 @@ export const ShowCard: React.FC<ShowCardProps> = ({
         (baseCardRef.current.querySelector('.aspect-video') as HTMLElement) ||
         baseCardRef.current;
       const thumbRect = thumbEl.getBoundingClientRect();
+      const scrollX = typeof window !== 'undefined' ? window.scrollX || window.pageXOffset || 0 : 0;
+      const scrollY = typeof window !== 'undefined' ? window.scrollY || window.pageYOffset || 0 : 0;
+
+      // Live viewport coordinates for edge/pointer checks, and document coordinates for 0ms GPU-locked absolute positioning
+      const nextViewportTop = thumbRect.top + popoutTopOffsetRef.current;
+      const nextViewportLeft = thumbRect.left + popoutLeftOffsetRef.current;
+      const nextDocTop = nextViewportTop + scrollY;
+      const nextDocLeft = nextViewportLeft + scrollX;
+
+      if (
+        Math.abs(popoutFixedPosRef.current.top - nextDocTop) > 0.25 ||
+        Math.abs(popoutFixedPosRef.current.left - nextDocLeft) > 0.25
+      ) {
+        popoutFixedPosRef.current = { top: nextDocTop, left: nextDocLeft };
+        if (popoutRef.current) {
+          popoutRef.current.style.top = `${nextDocTop}px`;
+          popoutRef.current.style.left = `${nextDocLeft}px`;
+        }
+      }
+
+      if (!checkCollapse || !isHovered || isClosingPopout) return;
+
       const baseRect = baseCardRef.current.getBoundingClientRect();
       const popRect = popoutRef.current?.getBoundingClientRect();
+      const popH =
+        popRect?.height ||
+        (popoutStyle === 'immersive_fade'
+          ? Math.round(popoutWidth * (9 / 16))
+          : Math.round((popoutWidth / 454) * 390));
 
-      const nextTop = Math.round(thumbRect.top + popoutTopOffsetRef.current);
-      const popH = popRect?.height || (popoutStyle === 'immersive_fade' ? Math.round(popoutWidth * (9 / 16)) : Math.round((popoutWidth / 454) * 390));
-      let projLeft = 0;
-      if (popoutAlign === 'left') {
-        projLeft = Math.max(12, Math.round(Math.max(leftBound, thumbRect.left)));
-      } else if (popoutAlign === 'right') {
-        const clampedRight = Math.max(12, Math.round(screenWidth - Math.min(rightBound, thumbRect.right)));
-        projLeft = Math.max(12, Math.round(screenWidth - clampedRight - popoutWidth));
-      } else {
-        const cardCenter = Math.round(thumbRect.left + thumbRect.width / 2);
-        projLeft = Math.max(12, Math.round(cardCenter - popoutWidth / 2));
+      // 1. 50% Edge Collapse: collapse immediately when >= 50% goes past left/right edge of screen (or row/vertical viewport)
+      const screenVisLeft = Math.max(0, nextViewportLeft);
+      const screenVisRight = Math.min(screenWidth, nextViewportLeft + popoutWidth);
+      const screenVisWidth = Math.max(0, screenVisRight - screenVisLeft);
+
+      const containerVisLeft = Math.max(leftBound, nextViewportLeft);
+      const containerVisRight = Math.min(rightBound, nextViewportLeft + popoutWidth);
+      const containerVisWidth = Math.max(0, containerVisRight - containerVisLeft);
+
+      const vTop = Math.max(0, nextViewportTop);
+      const vBottom = Math.min(screenHeight, nextViewportTop + popH);
+      const vHeight = Math.max(0, vBottom - vTop);
+
+      if (
+        screenVisWidth < popoutWidth * 0.5 ||
+        containerVisWidth < popoutWidth * 0.5 ||
+        vHeight < popH * 0.5
+      ) {
+        closePopout();
+        return;
       }
-      popoutFixedPosRef.current = { top: nextTop, left: projLeft };
-      setPopoutFixedPos({ top: nextTop, left: projLeft });
 
-      // 1. Stationary pointer check on scroll:
-      // Popout tracks card across vertical and horizontal scroll and ONLY collapses if it leaves cursor pointer.
+      // 2. Stationary pointer check on scroll: collapse if popout moves completely off stationary cursor
       if (mousePosRef.current && mousePosRef.current.x >= 0 && mousePosRef.current.y >= 0) {
         const { x, y } = mousePosRef.current;
         const inBase = x >= baseRect.left && x <= baseRect.right && y >= baseRect.top && y <= baseRect.bottom;
         const inProjectedPopout =
-          x >= projLeft &&
-          x <= projLeft + popoutWidth &&
-          y >= nextTop &&
-          y <= nextTop + popH;
-        const inPopout = popRect && x >= popRect.left && x <= popRect.right && y >= popRect.top && y <= popRect.bottom;
+          x >= nextViewportLeft &&
+          x <= nextViewportLeft + popoutWidth &&
+          y >= nextViewportTop &&
+          y <= nextViewportTop + popH;
+        const inPopout =
+          popRect &&
+          x >= popRect.left &&
+          x <= popRect.right &&
+          y >= popRect.top &&
+          y <= popRect.bottom;
 
         if (!inBase && !inProjectedPopout && !inPopout) {
           closePopout();
-          return;
         }
-      }
-
-      // 2. 50% Edge Collapse (horizontal container bounds or vertical viewport bounds)
-      const vLeft = Math.max(leftBound, projLeft);
-      const vRight = Math.min(rightBound, projLeft + popoutWidth);
-      const vWidth = Math.max(0, vRight - vLeft);
-
-      const vTop = Math.max(0, nextTop);
-      const vBottom = Math.min(screenHeight, nextTop + popH);
-      const vHeight = Math.max(0, vBottom - vTop);
-
-      if (vWidth < popoutWidth * 0.5 || vHeight < popH * 0.5) {
-        closePopout();
       }
     };
 
-    const feedStrip = baseCardRef.current?.closest('[data-feed-strip="true"]');
-    const scrollContainer = feedStrip?.querySelector('.overflow-x-auto') as HTMLElement | null;
+    const handleScrollEvent = () => {
+      syncPositionAndCheckCollapse(true);
+    };
+
+    const scrollContainer = getScrollContainer();
 
     // Forward horizontal wheel/trackpad scroll through the fixed portaled popout to the row beneath it
     const handlePopoutWheel = (e: WheelEvent) => {
@@ -1184,29 +1303,41 @@ export const ShowCard: React.FC<ShowCardProps> = ({
       if (Math.abs(horizDelta) > 0.5) {
         e.preventDefault();
         scrollContainer.scrollLeft += horizDelta;
+        syncPositionAndCheckCollapse(true);
         triggerGlobalScroll();
       }
     };
 
+    // Continuous per-frame DOM sync while hovered/closing so smooth scroll, wheel inertia, and row arrows have 0ms lag
+    let rafId = 0;
+    const rafTick = () => {
+      syncPositionAndCheckCollapse(true);
+      rafId = window.requestAnimationFrame(rafTick);
+    };
+    if (!isStretchable) {
+      rafId = window.requestAnimationFrame(rafTick);
+    }
+
     const popoutEl = popoutRef.current;
-    window.addEventListener('scroll', checkEdgeOrPointerCollapse, { passive: true, capture: true });
+    window.addEventListener('scroll', handleScrollEvent, { passive: true, capture: true });
     if (scrollContainer) {
-      scrollContainer.addEventListener('scroll', checkEdgeOrPointerCollapse, { passive: true });
+      scrollContainer.addEventListener('scroll', handleScrollEvent, { passive: true });
     }
     if (popoutEl && !isStretchable) {
       popoutEl.addEventListener('wheel', handlePopoutWheel, { passive: false });
     }
 
     return () => {
-      window.removeEventListener('scroll', checkEdgeOrPointerCollapse, { capture: true });
+      if (rafId) window.cancelAnimationFrame(rafId);
+      window.removeEventListener('scroll', handleScrollEvent, { capture: true });
       if (scrollContainer) {
-        scrollContainer.removeEventListener('scroll', checkEdgeOrPointerCollapse);
+        scrollContainer.removeEventListener('scroll', handleScrollEvent);
       }
       if (popoutEl) {
         popoutEl.removeEventListener('wheel', handlePopoutWheel);
       }
     };
-  }, [isHovered, isClosingPopout, isCollapsingStretch, isStretchable, popoutAlign, popoutWidth, popoutStyle, triggerStretchCollapse]);
+  }, [isHovered, isClosingPopout, isCollapsingStretch, isStretchable, popoutWidth, popoutStyle, triggerStretchCollapse]);
 
   const handleMouseEnter = (e: React.MouseEvent) => {
     if (isGlobalPageScrolling) return;
@@ -1222,6 +1353,11 @@ export const ShowCard: React.FC<ShowCardProps> = ({
     if (popoutCloseTimerRef.current) {
       window.clearTimeout(popoutCloseTimerRef.current);
       popoutCloseTimerRef.current = null;
+      if (hoverTimer.current) {
+        window.clearTimeout(hoverTimer.current);
+        hoverTimer.current = null;
+      }
+      isHoveredRef.current = true;
       setIsClosingPopout(false);
       setIsHovered(true);
       setPopoutMotionStyle({
@@ -1230,6 +1366,22 @@ export const ShowCard: React.FC<ShowCardProps> = ({
         borderRadius: '12px',
         transition: 'transform 220ms cubic-bezier(0.22, 1, 0.36, 1), opacity 160ms ease-out'
       });
+
+      // Re-arm preview timer cleanly without scheduling a duplicate popout emergence
+      if (popoutPosterTimerRef.current) window.clearTimeout(popoutPosterTimerRef.current);
+      if (!disableVideoPreview) {
+        setIsPopoutPosterPhase(true);
+        setShouldLoadVideo(false);
+        setIsVideoPlaying(false);
+        popoutPosterTimerRef.current = window.setTimeout(() => {
+          setIsPopoutPosterPhase(false);
+          setShouldLoadVideo(true);
+        }, 1000);
+      }
+
+      onHoverPreviewStart?.();
+      onPopoutViewOpen?.();
+      return;
     }
 
     if (stretchCollapseTimerRef.current) {
@@ -1271,20 +1423,25 @@ export const ShowCard: React.FC<ShowCardProps> = ({
       return;
     }
 
-    // Normal feed card: always reset to poster phase so video is never shown prematurely on re-hover
+    // If popout is already open for this card, never trigger a second popout animation
+    if (isHoveredRef.current && !isClosingPopout) {
+      return;
+    }
+
+    // Normal feed card: reset to poster phase before opening popout (saved resume time is kept in previewResumeTracker)
     setIsPopoutPosterPhase(true);
     setShouldLoadVideo(false);
     setIsVideoPlaying(false);
     if (popoutVideoRef.current) {
       try {
         popoutVideoRef.current.pause();
-        popoutVideoRef.current.currentTime = 0;
       } catch {}
     }
 
     // Normal feed card: wait 0.5 second before opening popout view
     if (hoverTimer.current) window.clearTimeout(hoverTimer.current);
     hoverTimer.current = window.setTimeout(() => {
+      hoverTimer.current = null;
       openPopout();
     }, 500);
   };
@@ -1324,6 +1481,12 @@ export const ShowCard: React.FC<ShowCardProps> = ({
         // If moving left or right (into spaces between titles within the row), DO NOT collapse!
         return;
       }
+    }
+
+    // Do not close if pointer moved directly onto the portaled popout card
+    const related = e.relatedTarget as Node | null;
+    if (related && popoutRef.current && popoutRef.current.contains(related)) {
+      return;
     }
 
     closePopout();
@@ -1481,19 +1644,22 @@ export const ShowCard: React.FC<ShowCardProps> = ({
         }}
       >
         <div className={`flex items-center ${cardSize === 'full' ? 'w-full' : ''}`}>
-          {/* Top 10 Rank Number if configured */}
+          {/* Top 10 Rank Number if configured (exact silver-gray outline, dark fill, smooth right fade behind card) */}
           {rankNumber !== undefined && (
-            <div className="relative -mr-3 sm:-mr-4 md:-mr-6 z-10 pointer-events-none select-none">
-              <span
-                className="text-6xl sm:text-7xl md:text-8xl font-black font-display tracking-tighter"
-                style={{
-                  color: '#101411',
-                  WebkitTextStroke: '3px #52525b',
-                  textShadow: '0 10px 20px rgba(0,0,0,0.8)'
-                }}
-              >
-                {rankNumber}
-              </span>
+            <div className="relative -mr-3 sm:-mr-4 md:-mr-5 z-0 pointer-events-none select-none flex items-center">
+              <ModernRankNumber
+                rank={rankNumber}
+                fillColor="#111111"
+                strokeColor="#8c8c8c"
+                strokeWidth={3.8}
+                strokeLinejoin="miter"
+                fadeRight={true}
+                className={`${
+                  rankNumber >= 10
+                    ? 'w-[80px] sm:w-[98px] md:w-[122px]'
+                    : 'w-[56px] sm:w-[70px] md:w-[88px]'
+                } h-[88px] sm:h-[112px] md:h-[138px]`}
+              />
             </div>
           )}
 
@@ -1569,9 +1735,13 @@ export const ShowCard: React.FC<ShowCardProps> = ({
                     controlsList="nodownload nofullscreen noremoteplayback"
                     disablePictureInPicture
                     onContextMenu={(e) => e.preventDefault()}
+                    onLoadedMetadata={() => {
+                      applyResumeSeekIfAvailable(stretchVideoRef.current);
+                    }}
                     onCanPlay={() => {
                       const v = stretchVideoRef.current;
                       if (v) {
+                        applyResumeSeekIfAvailable(v);
                         v.muted = isMuted;
                         const p = v.play();
                         if (p !== undefined) {
@@ -1586,6 +1756,7 @@ export const ShowCard: React.FC<ShowCardProps> = ({
                     onLoadedData={() => {
                       const v = stretchVideoRef.current;
                       if (v) {
+                        applyResumeSeekIfAvailable(v);
                         v.muted = isMuted;
                         const p = v.play();
                         if (p !== undefined) {
@@ -1597,8 +1768,18 @@ export const ShowCard: React.FC<ShowCardProps> = ({
                       }
                       setIsVideoPlaying(true);
                     }}
-                    onPlaying={() => setIsVideoPlaying(true)}
+                    onPlaying={() => {
+                      notifyPreviewStarted(previewCardKey);
+                      setIsVideoPlaying(true);
+                    }}
+                    onTimeUpdate={() => {
+                      const v = stretchVideoRef.current;
+                      if (v && !v.paused && v.currentTime > 0.25) {
+                        recordCardPreviewTime(previewCardKey, v.currentTime);
+                      }
+                    }}
                     onEnded={() => {
+                      clearCardPreviewTime(previewCardKey);
                       setIsVideoPlaying(false);
                       setShouldLoadVideo(false);
                     }}
@@ -1620,9 +1801,14 @@ export const ShowCard: React.FC<ShowCardProps> = ({
 
                 {/* Bottom-left Content */}
                 <div className="absolute left-3.5 bottom-3.5 right-14 z-20 flex flex-col items-start select-none">
-                  {/* Title Logo overlay: PNG logo in bottom-left at 250% increased size */}
-                  <div className="mb-2 pointer-events-none transition-opacity duration-300">
-                    <ShowTitleLogo show={show} className="max-h-[65px] sm:max-h-[72px] md:max-h-[80px] max-w-[260px] sm:max-w-[300px] w-auto h-auto object-contain drop-shadow-md" />
+                  {/* Fixed Netflix 2.5:1 Title Logo overlay (40% of 16:9 expanded card width minus 10px) */}
+                  <div
+                    style={{
+                      width: expandedWidth ? `${Math.max(80, Math.round(expandedWidth * 0.4) - 10)}px` : 'calc(40% - 10px)'
+                    }}
+                    className="relative aspect-[2.5/1] overflow-hidden shrink-0 mb-2 pointer-events-none transition-opacity duration-300"
+                  >
+                    <ShowTitleLogo show={show} fillContainer={true} align="left" className="drop-shadow-md" />
                   </div>
 
                   {/* Action Buttons: Play / Resume with progress underline, Add to List, Info (matching image_f72bd3ca.png) */}
@@ -1678,7 +1864,9 @@ export const ShowCard: React.FC<ShowCardProps> = ({
                 {isStretchable && isHovered && isVideoPlaying && shouldLoadVideo && (
                   <button
                     onClick={toggleSound}
-                    className="absolute bottom-3.5 right-3.5 z-30 w-8 h-8 rounded-full bg-black/20 hover:bg-black/40 text-white border border-white/15 flex items-center justify-center cursor-pointer transition-colors"
+                    onPointerDown={(e) => e.stopPropagation()}
+                    onTouchStart={(e) => e.stopPropagation()}
+                    className="absolute bottom-3.5 right-3.5 z-30 before:content-[''] before:absolute before:-inset-3 w-8 h-8 rounded-full bg-black/20 hover:bg-black/40 text-white border border-white/15 flex items-center justify-center cursor-pointer transition-colors"
                     aria-label="Toggle mute"
                   >
                     {isMuted ? <VolumeX className="w-4 h-4" /> : <Volume2 className="w-4 h-4" />}
@@ -1702,7 +1890,7 @@ export const ShowCard: React.FC<ShowCardProps> = ({
             </div>
           ) : aspectRatio === '9:16' ? (
             /* Feed Card in 1:2 aspect ratio (on mobile & tablet for stretchable feed) */
-            <div data-card-thumb="true" className="relative w-[calc((100vw-32px)/2.14)] sm:w-[185px] md:w-[218px] aspect-[1/2] rounded-[6px] overflow-hidden bg-[#181818] border-0 shadow-none transition-all duration-300">
+            <div data-card-thumb="true" className="relative z-10 w-[calc((100vw-32px)/2.14)] sm:w-[185px] md:w-[218px] aspect-[1/2] rounded-[6px] overflow-hidden bg-[#181818] border-0 shadow-none transition-all duration-300">
               <MediaImage
                 src={verticalPosterSrc}
                 fallbackTitle={show.title}
@@ -1722,11 +1910,13 @@ export const ShowCard: React.FC<ShowCardProps> = ({
             </div>
           ) : aspectRatio === '2:3' ? (
             /* 2. Feed Card in 2:3 aspect ratio - shows 3 full cards + edge of 4th card in mobile layout */
-            <div data-card-thumb="true" className={`relative ${
+            <div data-card-thumb="true" className={`relative z-10 ${
               biggerCards
                 ? 'w-[calc((100vw-24px)/2.25)] sm:w-[185px] md:w-[220px]'
                 : 'w-[calc((100vw-24px)/3.22)] sm:w-[155px] md:w-[185px]'
-            } aspect-[2/3] rounded-[6px] overflow-hidden bg-[#181818] border-0 shadow-none transition-all duration-300`}>
+            } aspect-[2/3] rounded-[6px] overflow-hidden bg-[#181818] border-0 ${
+              rankNumber !== undefined ? 'shadow-[-14px_0_26px_rgba(0,0,0,0.9)]' : 'shadow-none'
+            } transition-all duration-300`}>
               <MediaImage
                 src={verticalPosterSrc}
                 fallbackTitle={show.title}
@@ -1823,7 +2013,7 @@ export const ShowCard: React.FC<ShowCardProps> = ({
             </div>
           ) : (
             /* 4. Default Desktop Card: 16:9 aspect ratio */
-            <div className={`flex flex-col ${
+            <div className={`relative z-10 flex flex-col ${
               cardSize === 'full' || cardSize === 'special'
                 ? 'w-full'
                 : cardSize === 'small'
@@ -1848,13 +2038,13 @@ export const ShowCard: React.FC<ShowCardProps> = ({
                 {showOverlayLogoOnCard && (
                   <>
                     <div className="absolute inset-x-0 bottom-0 h-16 bg-gradient-to-t from-black/80 via-black/30 to-transparent pointer-events-none z-10" />
-                    <div className="absolute bottom-2.5 left-3 right-16 z-20 pointer-events-none flex items-end">
+                    <div className="absolute bottom-2.5 left-3 z-20 pointer-events-none w-[40%] aspect-[2.5/1] overflow-hidden flex items-end">
                       {show.titleLogoUrl ? (
                         <img
                           src={show.titleLogoUrl}
                           alt={show.title}
                           referrerPolicy="no-referrer"
-                          className="max-h-7 sm:max-h-8 max-w-[140px] w-auto object-contain object-left drop-shadow-[0_2px_6px_rgba(0,0,0,0.9)]"
+                          className="absolute inset-0 block w-full h-full max-w-full max-h-full object-contain object-bottom-left drop-shadow-[0_2px_6px_rgba(0,0,0,0.9)]"
                         />
                       ) : (
                         <span className="text-white font-black text-xs sm:text-sm uppercase tracking-tight drop-shadow-[0_2px_6px_rgba(0,0,0,0.95)] line-clamp-1">
@@ -1898,8 +2088,8 @@ export const ShowCard: React.FC<ShowCardProps> = ({
         </div>
 
         {/* 
-          EXPANDED PREVIEW CARD (Portaled to document.body at position: fixed z-[120]):
-          Only the active popout floats cleanly over Top Navbar; strips themselves never rise above Navbar.
+          EXPANDED PREVIEW CARD (Portaled to document.body at position: absolute z-[120]):
+          Moves in 100% GPU-composited lockstep with vertical scroll (zero vertical lag) and floats cleanly over Top Navbar.
           Supports 'classic', 'overlay_red', and 'immersive_fade' styles.
         */}
         {!disablePopout && (isHovered || isClosingPopout) && typeof document !== 'undefined' && createPortal(
@@ -1907,7 +2097,7 @@ export const ShowCard: React.FC<ShowCardProps> = ({
             ref={popoutRef}
             onMouseMove={resetInactivityTimer}
             onClick={handleCardClick}
-            className={`preview-popup fixed z-[120] overflow-hidden outline-none cursor-pointer select-none origin-top-left isolate ${
+            className={`preview-popup absolute z-[120] overflow-hidden outline-none cursor-pointer select-none origin-top-left isolate ${
               isClosingPopout ? 'pointer-events-none' : 'pointer-events-auto'
             } ${
               popoutStyle === 'overlay_red'
@@ -1918,8 +2108,8 @@ export const ShowCard: React.FC<ShowCardProps> = ({
             }`}
             style={{
               zIndex: 120,
-              top: `${popoutFixedPos.top}px`,
-              left: `${popoutFixedPos.left}px`,
+              top: `${popoutFixedPosRef.current.top}px`,
+              left: `${popoutFixedPosRef.current.left}px`,
               width: `${popoutWidth}px`,
               transformOrigin: '0 0',
               transform: popoutMotionStyle.transform,
@@ -1958,9 +2148,13 @@ export const ShowCard: React.FC<ShowCardProps> = ({
                   controlsList="nodownload nofullscreen noremoteplayback"
                   disablePictureInPicture
                   onContextMenu={(e) => e.preventDefault()}
+                  onLoadedMetadata={() => {
+                    applyResumeSeekIfAvailable(popoutVideoRef.current);
+                  }}
                   onCanPlay={() => {
                     const v = popoutVideoRef.current;
                     if (v) {
+                      applyResumeSeekIfAvailable(v);
                       v.muted = isMuted;
                       const p = v.play();
                       if (p !== undefined) {
@@ -1975,6 +2169,7 @@ export const ShowCard: React.FC<ShowCardProps> = ({
                   onLoadedData={() => {
                     const v = popoutVideoRef.current;
                     if (v) {
+                      applyResumeSeekIfAvailable(v);
                       v.muted = isMuted;
                       const p = v.play();
                       if (p !== undefined) {
@@ -1986,8 +2181,18 @@ export const ShowCard: React.FC<ShowCardProps> = ({
                     }
                     setIsVideoPlaying(true);
                   }}
-                  onPlaying={() => setIsVideoPlaying(true)}
+                  onPlaying={() => {
+                    notifyPreviewStarted(previewCardKey);
+                    setIsVideoPlaying(true);
+                  }}
+                  onTimeUpdate={() => {
+                    const v = popoutVideoRef.current;
+                    if (v && !v.paused && v.currentTime > 0.25) {
+                      recordCardPreviewTime(previewCardKey, v.currentTime);
+                    }
+                  }}
                   onEnded={() => {
+                    clearCardPreviewTime(previewCardKey);
                     setIsVideoPlaying(false);
                     setShouldLoadVideo(false);
                     setIsPopoutPosterPhase(true);
@@ -2039,7 +2244,8 @@ export const ShowCard: React.FC<ShowCardProps> = ({
 
                   {isPreviewActivelyPlaying && (
                     <div
-                      className={`absolute bottom-2.5 left-3 z-20 pointer-events-none transition-opacity duration-300 overflow-hidden flex items-end max-w-[65%] max-h-14 ${
+                      style={{ width: `${Math.round(popoutWidth * 0.4)}px` }}
+                      className={`absolute bottom-2.5 left-3 z-20 pointer-events-none transition-opacity duration-300 aspect-[2.5/1] overflow-hidden flex items-end ${
                         arePreviewOverlaysHidden ? 'opacity-0' : 'opacity-100'
                       }`}
                     >
@@ -2048,10 +2254,10 @@ export const ShowCard: React.FC<ShowCardProps> = ({
                           src={show.titleLogoUrl}
                           alt={show.title}
                           referrerPolicy="no-referrer"
-                          className="max-h-12 sm:max-h-14 max-w-[190px] w-auto h-auto min-h-[38px] object-contain object-left-bottom select-none"
+                          className="absolute inset-0 block w-full h-full max-w-full max-h-full object-contain object-bottom-left select-none"
                         />
                       ) : (
-                        <ShowTitleLogo show={show} isSmall={true} />
+                        <ShowTitleLogo show={show} isSmall={true} fillContainer={true} align="left" />
                       )}
                     </div>
                   )}
@@ -2059,7 +2265,9 @@ export const ShowCard: React.FC<ShowCardProps> = ({
                   {isPreviewActivelyPlaying && (
                     <button
                       onClick={toggleSound}
-                      className={`absolute bottom-2.5 right-2.5 w-7.5 h-7.5 rounded-full bg-black/20 hover:bg-black/40 text-white flex items-center justify-center transition-all duration-300 cursor-pointer z-20 border-0 ${
+                      onPointerDown={(e) => e.stopPropagation()}
+                      onTouchStart={(e) => e.stopPropagation()}
+                      className={`absolute bottom-2.5 right-2.5 before:content-[''] before:absolute before:-inset-3 w-7.5 h-7.5 rounded-full bg-black/20 hover:bg-black/40 text-white flex items-center justify-center transition-all duration-300 cursor-pointer z-20 border-0 ${
                         arePreviewOverlaysHidden ? 'opacity-0 pointer-events-none' : 'opacity-100 pointer-events-auto'
                       }`}
                       aria-label="Toggle sound"
@@ -2086,7 +2294,9 @@ export const ShowCard: React.FC<ShowCardProps> = ({
                     {isPreviewActivelyPlaying && (
                       <button
                         onClick={toggleSound}
-                        className="w-7.5 h-7.5 rounded-full bg-black/20 hover:bg-black/40 text-white flex items-center justify-center cursor-pointer border-0 transition-colors"
+                        onPointerDown={(e) => e.stopPropagation()}
+                        onTouchStart={(e) => e.stopPropagation()}
+                        className="relative before:content-[''] before:absolute before:-inset-3 w-7.5 h-7.5 rounded-full bg-black/20 hover:bg-black/40 text-white flex items-center justify-center cursor-pointer border-0 transition-colors"
                         aria-label="Toggle sound"
                       >
                         {isMuted ? <VolumeX className="w-3.5 h-3.5" /> : <Volume2 className="w-3.5 h-3.5" />}
@@ -2154,7 +2364,9 @@ export const ShowCard: React.FC<ShowCardProps> = ({
                     {isPreviewActivelyPlaying && (
                       <button
                         onClick={toggleSound}
-                        className={`absolute top-3 right-3 z-20 w-8 h-8 rounded-full bg-black/20 hover:bg-black/40 text-white flex items-center justify-center cursor-pointer border-0 transition-all duration-300 ${
+                        onPointerDown={(e) => e.stopPropagation()}
+                        onTouchStart={(e) => e.stopPropagation()}
+                        className={`absolute top-3 right-3 z-20 before:content-[''] before:absolute before:-inset-3 w-8 h-8 rounded-full bg-black/20 hover:bg-black/40 text-white flex items-center justify-center cursor-pointer border-0 transition-all duration-300 ${
                           isImmersiveIdle ? 'opacity-0 pointer-events-none' : 'opacity-100 pointer-events-auto'
                         }`}
                         aria-label="Toggle sound"
@@ -2167,8 +2379,9 @@ export const ShowCard: React.FC<ShowCardProps> = ({
                     <div className="absolute inset-x-0 bottom-2.5 px-3.5 z-20 flex items-end justify-between gap-2">
                       <div className="flex flex-col items-start min-w-0 pointer-events-none">
                         <div
-                          className="transition-all duration-400 ease-out"
+                          className="relative aspect-[2.5/1] overflow-hidden shrink-0 flex items-end transition-all duration-400 ease-out"
                           style={{
+                            width: `${Math.round(popoutWidth * 0.4)}px`,
                             opacity: isImmersiveStarted ? 1 : 0,
                             transform: isImmersiveIdle ? 'translate3d(0, 16px, 0)' : 'translate3d(0, 0, 0)'
                           }}
@@ -2178,10 +2391,10 @@ export const ShowCard: React.FC<ShowCardProps> = ({
                               src={show.titleLogoUrl}
                               alt={show.title}
                               referrerPolicy="no-referrer"
-                              className="max-h-12 max-w-[190px] w-auto object-contain object-left-bottom select-none"
+                              className="absolute inset-0 block w-full h-full max-w-full max-h-full object-contain object-bottom-left select-none"
                             />
                           ) : (
-                            <ShowTitleLogo show={show} isSmall={true} />
+                            <ShowTitleLogo show={show} isSmall={true} fillContainer={true} align="left" />
                           )}
                         </div>
 
@@ -2284,16 +2497,19 @@ export const ShowCard: React.FC<ShowCardProps> = ({
               >
                 {/* Seam Row: Left PNG Logo + Right Circular Play, Like, Add to List */}
                 <div className="-mt-7 relative z-30 flex items-center justify-between gap-2 pb-1">
-                  <div className="min-w-0 flex items-center">
+                  <div
+                    style={{ width: `${Math.round(popoutWidth * 0.4)}px` }}
+                    className="relative aspect-[2.5/1] overflow-hidden shrink-0 flex items-end"
+                  >
                     {show.titleLogoUrl ? (
                       <img
                         src={show.titleLogoUrl}
                         alt={show.title}
                         referrerPolicy="no-referrer"
-                        className="max-h-12 max-w-[185px] w-auto object-contain object-left drop-shadow-[0_2px_10px_rgba(0,0,0,0.85)]"
+                        className="absolute inset-0 block w-full h-full max-w-full max-h-full object-contain object-bottom-left drop-shadow-[0_2px_10px_rgba(0,0,0,0.85)]"
                       />
                     ) : (
-                      <ShowTitleLogo show={show} isSmall={true} />
+                      <ShowTitleLogo show={show} isSmall={true} fillContainer={true} align="left" />
                     )}
                   </div>
 

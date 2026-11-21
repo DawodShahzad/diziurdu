@@ -1,7 +1,8 @@
 import React, { useState, useMemo, useEffect, useRef } from 'react';
-import { Show } from '../types';
+import { Show, AdminSettings } from '../types';
 import { Search, ChevronLeft, ChevronRight, Play, Plus, Check, X } from 'lucide-react';
 import { MediaImage } from './MediaImage';
+import { SearchAdCard } from './SearchAdCard';
 
 interface MobileSearchModalProps {
   isOpen: boolean;
@@ -13,6 +14,8 @@ interface MobileSearchModalProps {
   onPlayShow: (show: Show) => void;
   initialQuery?: string;
   onQueryChange?: (q: string) => void;
+  adminSettings?: AdminSettings;
+  onNavigateInternal?: (path: string) => void;
 }
 
 export const MobileSearchModal: React.FC<MobileSearchModalProps> = ({
@@ -24,10 +27,13 @@ export const MobileSearchModal: React.FC<MobileSearchModalProps> = ({
   onOpenDetails,
   onPlayShow,
   initialQuery = '',
-  onQueryChange
+  onQueryChange,
+  adminSettings,
+  onNavigateInternal
 }) => {
   const [query, setQuery] = useState<string>(initialQuery);
   const [committedExactQuery, setCommittedExactQuery] = useState<string>('');
+  const [randomSearchAdIdx, setRandomSearchAdIdx] = useState<number>(() => Math.floor(Math.random() * 6));
   const inputRef = useRef<HTMLInputElement>(null);
   const scrollYRef = useRef<number>(0);
 
@@ -39,6 +45,7 @@ export const MobileSearchModal: React.FC<MobileSearchModalProps> = ({
 
   useEffect(() => {
     if (isOpen) {
+      setRandomSearchAdIdx(Math.floor(Math.random() * 6));
       setTimeout(() => inputRef.current?.focus(), 150);
 
       scrollYRef.current = window.scrollY;
@@ -315,33 +322,82 @@ export const MobileSearchModal: React.FC<MobileSearchModalProps> = ({
               Recommended For You
             </h4>
             <div className="space-y-2.5">
-              {shows.slice(0, 5).map((show) => (
-                <div
-                  key={show.id}
-                  onClick={() => {
-                    onClose();
-                    onOpenDetails(show);
-                  }}
-                  className="flex items-center gap-3 p-2 rounded-xl bg-white/[0.04] hover:bg-white/[0.08] cursor-pointer transition-all active:scale-[0.99]"
-                >
-                  <div className="w-24 h-14 rounded-md overflow-hidden shrink-0 bg-zinc-900">
-                    <MediaImage
-                      src={show.posterLandscapeUrl || show.backdropUrl}
-                      fallbackTitle={show.title}
-                      fallbackClassName="w-full h-full bg-[#181818] flex items-center justify-center p-1.5 text-center select-none"
-                      fallbackTextClassName="text-white/95 font-semibold text-[11px] leading-tight line-clamp-2 break-words font-sans"
-                      className="w-full h-full object-cover"
+              {(() => {
+                const recShows = shows.slice(0, 5);
+                const canShowSearchAd = Boolean(
+                  adminSettings?.searchAdEnabled &&
+                    (adminSettings.searchAdLayouts || ['desktop', 'laptop', 'tablet', 'mobile']).includes('mobile') &&
+                    (adminSettings.searchAdTitle?.trim() ||
+                      adminSettings.searchAdImageUrl?.trim() ||
+                      adminSettings.searchAdSubtitle?.trim())
+                );
+                const adPos = canShowSearchAd ? Math.min(recShows.length, randomSearchAdIdx) : -1;
+                const items: React.ReactNode[] = [];
+                recShows.forEach((show, idx) => {
+                  if (idx === adPos) {
+                    items.push(
+                      <SearchAdCard
+                        key="mobile-search-rec-ad"
+                        variant="mobile_row"
+                        imageUrl={adminSettings?.searchAdImageUrl}
+                        badgeText={adminSettings?.searchAdBadgeText || 'Ad'}
+                        title={adminSettings?.searchAdTitle}
+                        subtitle={adminSettings?.searchAdSubtitle}
+                        buttonUrl={adminSettings?.searchAdButtonUrl}
+                        onNavigateInternal={(path) => {
+                          onClose();
+                          onNavigateInternal?.(path);
+                        }}
+                      />
+                    );
+                  }
+                  items.push(
+                    <div
+                      key={show.id}
+                      onClick={() => {
+                        onClose();
+                        onOpenDetails(show);
+                      }}
+                      className="flex items-center gap-3 p-2 rounded-xl bg-white/[0.04] hover:bg-white/[0.08] cursor-pointer transition-all active:scale-[0.99]"
+                    >
+                      <div className="w-24 h-14 rounded-md overflow-hidden shrink-0 bg-zinc-900">
+                        <MediaImage
+                          src={show.posterLandscapeUrl || show.backdropUrl}
+                          fallbackTitle={show.title}
+                          fallbackClassName="w-full h-full bg-[#181818] flex items-center justify-center p-1.5 text-center select-none"
+                          fallbackTextClassName="text-white/95 font-semibold text-[11px] leading-tight line-clamp-2 break-words font-sans"
+                          className="w-full h-full object-cover"
+                        />
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <p className="text-sm font-semibold text-white truncate">{show.title}</p>
+                        <p className="text-xs text-zinc-400 mt-0.5">
+                          {show.releaseYear.split('-')[0]} • {show.genres[0] || 'Drama'}
+                        </p>
+                      </div>
+                      <ChevronRight className="w-4 h-4 text-zinc-500 mr-1" />
+                    </div>
+                  );
+                });
+                if (canShowSearchAd && adPos >= recShows.length) {
+                  items.push(
+                    <SearchAdCard
+                      key="mobile-search-rec-ad"
+                      variant="mobile_row"
+                      imageUrl={adminSettings?.searchAdImageUrl}
+                      badgeText={adminSettings?.searchAdBadgeText || 'Ad'}
+                      title={adminSettings?.searchAdTitle}
+                      subtitle={adminSettings?.searchAdSubtitle}
+                      buttonUrl={adminSettings?.searchAdButtonUrl}
+                      onNavigateInternal={(path) => {
+                        onClose();
+                        onNavigateInternal?.(path);
+                      }}
                     />
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <p className="text-sm font-semibold text-white truncate">{show.title}</p>
-                    <p className="text-xs text-zinc-400 mt-0.5">
-                      {show.releaseYear.split('-')[0]} • {show.genres[0] || 'Drama'}
-                    </p>
-                  </div>
-                  <ChevronRight className="w-4 h-4 text-zinc-500 mr-1" />
-                </div>
-              ))}
+                  );
+                }
+                return items;
+              })()}
             </div>
           </div>
         ) : exactSpotlightShow ? (
@@ -367,12 +423,14 @@ export const MobileSearchModal: React.FC<MobileSearchModalProps> = ({
                 <div className="absolute bottom-3 left-3.5 right-3.5 z-10 flex items-end justify-between gap-3">
                   <div className="min-w-0 flex-1">
                     {exactSpotlightShow.titleLogoUrl ? (
-                      <img
-                        src={exactSpotlightShow.titleLogoUrl}
-                        alt={exactSpotlightShow.title}
-                        referrerPolicy="no-referrer"
-                        className="max-h-10 max-w-[180px] w-auto h-auto object-contain object-left-bottom mb-1.5"
-                      />
+                      <div className="relative w-[52%] max-w-[190px] aspect-[2.5/1] overflow-hidden shrink-0 mb-1.5">
+                        <img
+                          src={exactSpotlightShow.titleLogoUrl}
+                          alt={exactSpotlightShow.title}
+                          referrerPolicy="no-referrer"
+                          className="absolute inset-0 block w-full h-full max-w-full max-h-full object-contain object-bottom-left"
+                        />
+                      </div>
                     ) : (
                       <h3 className="text-white font-extrabold text-base tracking-tight mb-1 truncate">
                         {exactSpotlightShow.title}

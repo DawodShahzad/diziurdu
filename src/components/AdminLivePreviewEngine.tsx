@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { Show } from '../types';
 import { Monitor, Smartphone, Layers, Play, Plus, Check, Volume2, Info, Star, Share2 } from 'lucide-react';
+import { ModernRankNumber } from './ModernRankNumber';
 
 interface AdminLivePreviewEngineProps {
   formData: Show;
@@ -114,16 +115,13 @@ export const AdminLivePreviewEngine: React.FC<AdminLivePreviewEngineProps> = ({ 
               <div className="relative flex items-center select-none group/top10preview cursor-pointer">
                 {/* 80% Exposed Outlined Rank Number */}
                 <div className="relative z-0 pointer-events-none select-none shrink-0 flex items-center justify-end leading-none w-14 sm:w-18 overflow-visible">
-                  <span
-                    className="text-8xl sm:text-9xl md:text-[140px] font-black font-sans tracking-tighter"
-                    style={{
-                      WebkitTextStroke: '2px rgba(255, 255, 255, 0.45)',
-                      color: 'transparent',
-                      lineHeight: 0.85
-                    }}
-                  >
-                    1
-                  </span>
+                  <ModernRankNumber
+                    rank={1}
+                    fillColor="#0b0d14"
+                    strokeColor="rgba(255, 255, 255, 0.45)"
+                    strokeWidth={4.5}
+                    className="w-[74px] sm:w-[92px] h-[106px] sm:h-[132px] -mr-2"
+                  />
                 </div>
 
                 {/* 2:3 Poster Card */}
@@ -578,7 +576,7 @@ export const AdminLivePreviewEngine: React.FC<AdminLivePreviewEngineProps> = ({ 
 
               <div className="px-2 pt-1.5 pb-1 flex items-center justify-between text-[11px] text-emerald-200">
                 <span className="truncate max-w-[280px] font-mono text-[10px] text-emerald-300 underline">
-                  https://diziurdu.dawoodshahzad75.workers.dev/share/{formData.slug || formData.id}
+                  https://diziurdu.dawoodshahzad75.workers.dev/watch/{formData.slug || formData.id}
                 </span>
                 <span className="text-[9.5px] text-emerald-300 font-mono shrink-0 flex items-center gap-1">
                   11:30 pm <Check className="w-3 h-3 text-cyan-300 inline" />

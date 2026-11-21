@@ -20,6 +20,7 @@ import {
   RotateCcw,
   Menu
 } from 'lucide-react';
+import { useDeviceLayout } from '../utils/deviceLayout';
 
 interface NavbarProps {
   watchlistCount: number;
@@ -57,6 +58,7 @@ interface NavbarProps {
   shows?: Show[];
   onOpenCreateAccount?: () => void;
   onShareBack?: () => void;
+  hideNavbarOnFullSizeMoreInfo?: boolean;
 }
 
 export const Navbar: React.FC<NavbarProps> = ({
@@ -94,23 +96,32 @@ export const Navbar: React.FC<NavbarProps> = ({
   desktopNavbarStyle = 'classic',
   shows = [],
   onOpenCreateAccount,
-  onShareBack
+  onShareBack,
+  hideNavbarOnFullSizeMoreInfo = false
 }) => {
   type ActiveMenu = 'none' | 'search' | 'notifications' | 'profile' | 'more';
   const [activeMenu, setActiveMenu] = useState<ActiveMenu>('none');
   const [floatingExpand, setFloatingExpand] = useState<'none' | 'menu' | 'search' | 'profile'>('none');
+  const floatingExpandRef = useRef<'none' | 'menu' | 'search' | 'profile'>('none');
+  const lastScrollYRef = useRef<number>(0);
   const [floatingSearchDraft, setFloatingSearchDraft] = useState<string>(searchQuery || '');
+  const floatingSearchDraftRef = useRef<string>(searchQuery || '');
+  const searchQueryRef = useRef<string>(searchQuery || '');
   const [isScrolled, setIsScrolled] = useState<boolean>(false);
-  const [windowWidth, setWindowWidth] = useState<number>(() =>
-    typeof window !== 'undefined' ? window.innerWidth : 1200
-  );
+  const { isMobile: isMobileDevice, width: windowWidth } = useDeviceLayout();
   const floatingBarRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-    const handleResize = () => setWindowWidth(window.innerWidth);
-    window.addEventListener('resize', handleResize);
-    return () => window.removeEventListener('resize', handleResize);
-  }, []);
+    floatingExpandRef.current = floatingExpand;
+  }, [floatingExpand]);
+
+  useEffect(() => {
+    floatingSearchDraftRef.current = floatingSearchDraft;
+  }, [floatingSearchDraft]);
+
+  useEffect(() => {
+    searchQueryRef.current = searchQuery || '';
+  }, [searchQuery]);
 
   // Standard page tabs (Home, Series, Movies, Categories, My list)
   const ALL_PAGES = [
@@ -243,6 +254,18 @@ export const Navbar: React.FC<NavbarProps> = ({
         ? (document.querySelector('[data-share-overlay-scroll="true"]') as HTMLElement | null)
         : null;
       const currentY = isSharePage && shareScroller ? shareScroller.scrollTop : window.scrollY;
+      if (
+        desktopNavbarStyle === 'floating_glass' &&
+        Math.abs(currentY - lastScrollYRef.current) > 4 &&
+        (floatingExpandRef.current === 'menu' ||
+          floatingExpandRef.current === 'profile' ||
+          (floatingExpandRef.current === 'search' &&
+            !floatingSearchDraftRef.current.trim() &&
+            !searchQueryRef.current.trim()))
+      ) {
+        setFloatingExpand('none');
+      }
+      lastScrollYRef.current = currentY;
       setScrollY(currentY);
       // Smoothly activate solid background when scrolling beyond 20px threshold
       setIsScrolled(currentY > 20);
@@ -303,6 +326,32 @@ export const Navbar: React.FC<NavbarProps> = ({
       setFloatingExpand('none');
     }
   }, [isSharePage]);
+
+  // Disable background scrolling when floating navbar search has text entered
+  useEffect(() => {
+    const hasSearchText = Boolean(floatingSearchDraft.trim() || searchQuery.trim());
+    const shouldLockScroll =
+      !isMobileDevice &&
+      desktopNavbarStyle === 'floating_glass' &&
+      floatingExpand === 'search' &&
+      hasSearchText;
+    if (!shouldLockScroll) return;
+
+    const prevBodyOverflow = document.body.style.overflow;
+    const prevHtmlOverflow = document.documentElement.style.overflow;
+    const shareScroller = document.querySelector('[data-share-overlay-scroll="true"]') as HTMLElement | null;
+    const prevShareOverflow = shareScroller ? shareScroller.style.overflowY : '';
+
+    document.body.style.overflow = 'hidden';
+    document.documentElement.style.overflow = 'hidden';
+    if (shareScroller) shareScroller.style.overflowY = 'hidden';
+
+    return () => {
+      document.body.style.overflow = prevBodyOverflow;
+      document.documentElement.style.overflow = prevHtmlOverflow;
+      if (shareScroller) shareScroller.style.overflowY = prevShareOverflow;
+    };
+  }, [isMobileDevice, desktopNavbarStyle, floatingExpand, floatingSearchDraft, searchQuery]);
 
   // Floating navbar inline live suggestions (3-4) and matching cards (4)
   const { floatingMatchedSuggestions, floatingMatchedShows } = useMemo(() => {
@@ -374,26 +423,25 @@ export const Navbar: React.FC<NavbarProps> = ({
     setActiveMenu('none');
   };
 
+  const isMinimalScrollableShareHeader = Boolean(
+    !isMobileDevice && isSharePage && hideNavbarOnFullSizeMoreInfo
+  );
+
   return (
     <header
       style={{
-        top: isOffline && windowWidth > 768 ? '52px' : '0px'
+        top: isOffline && !isMobileDevice ? '52px' : '0px'
       }}
-      className="fixed left-0 right-0 z-50 border-none select-none transition-[top] duration-200"
+      className={`${
+        isMinimalScrollableShareHeader ? 'absolute' : 'fixed'
+      } left-0 right-0 z-50 border-none select-none transition-[top] duration-200`}
     >
-      {/* Background for Desktop & Mobile: hidden on floating_glass desktop, and transparent at top on classic share page until scrolled */}
-      {(!isSharePage || desktopNavbarStyle === 'classic') && (
-        <div
-          className={`absolute inset-0 pointer-events-none -z-10 overflow-hidden ${
-            hideMobileLogoBar
-              ? desktopNavbarStyle === 'floating_glass'
-                ? 'hidden'
-                : 'hidden md:block'
-              : desktopNavbarStyle === 'floating_glass'
-              ? 'md:hidden'
-              : ''
-          }`}
-        >
+      {/* Background for Desktop & Mobile: hidden on floating_glass desktop, hidden when Full Size More Info navbar is turned off */}
+      {!isMinimalScrollableShareHeader &&
+        (!isSharePage || desktopNavbarStyle === 'classic') &&
+        ((isMobileDevice && !hideMobileLogoBar) ||
+          (!isMobileDevice && desktopNavbarStyle !== 'floating_glass')) && (
+        <div className="absolute inset-0 pointer-events-none -z-10 overflow-hidden">
           {/* Subtle resting top gradient (omitted at scroll 0 on share page) */}
           <div
             style={{
@@ -414,13 +462,14 @@ export const Navbar: React.FC<NavbarProps> = ({
       {/* ========================================================================= */}
       {/* MOBILE TOP NAVIGATION (Compact height, logo position strictly constant on scroll) */}
       {/* ========================================================================= */}
-      {!hideMobileLogoBar && (
+      {isMobileDevice && !hideMobileLogoBar && (
         <div
           data-mobile-top-navbar="true"
-          className="md:hidden relative w-full px-4 h-12 flex items-center justify-between"
+          className="relative w-full px-4 h-12 flex items-center justify-between"
         >
           {/* Top Bar: Brand Logo on left with NO shadow beneath */}
           <button
+            data-brand-logo-target="true"
             onClick={() => {
               onSearchChange('');
               onSelectCategory('all');
@@ -446,31 +495,77 @@ export const Navbar: React.FC<NavbarProps> = ({
       {/* ========================================================================= */}
       {/* DESKTOP TOP NAVIGATION                                                    */}
       {/* ========================================================================= */}
-      {desktopNavbarStyle === 'floating_glass' ? (
+      {!isMobileDevice && (isMinimalScrollableShareHeader ? (
+        <div className="flex w-full px-4 md:px-8 xl:px-12 py-3.5 items-center justify-start bg-transparent">
+          <div className="flex items-center gap-4">
+            {desktopNavbarStyle !== 'floating_glass' && (
+              <button
+                onClick={() => onOpenHamburgerDrawer?.()}
+                className="p-1.5 -ml-1.5 text-white hover:text-white/80 active:scale-90 transition-transform cursor-pointer drop-shadow-[0_1px_2px_rgba(0,0,0,0.28)]"
+                aria-label="Open menu"
+              >
+                <Menu className="w-6 h-6 text-white" />
+              </button>
+            )}
+            <button
+              onClick={() => {
+                onSearchChange('');
+                onSelectCategory('all');
+                setActiveMenu('none');
+              }}
+              className="flex items-center gap-1 group cursor-pointer text-left shrink-0 max-w-[95px] sm:max-w-[110px] md:max-w-[125px] drop-shadow-[0_1px_2px_rgba(0,0,0,0.18)]"
+              aria-label="Dizi Home"
+            >
+              {useCustomLogo && customLogoUrl ? (
+                <img
+                  src={customLogoUrl}
+                  alt="Brand Logo"
+                  referrerPolicy="no-referrer"
+                  className="h-6.5 sm:h-7.5 md:h-8.5 w-auto max-w-[92px] sm:max-w-[108px] md:max-w-[120px] object-contain"
+                />
+              ) : (
+                <DiziLogo variant="red" size="md" className="max-w-[92px] sm:max-w-[108px] md:max-w-[120px] h-7 sm:h-[32px] md:h-[35px]" />
+              )}
+            </button>
+          </div>
+        </div>
+      ) : desktopNavbarStyle === 'floating_glass' ? (
         <div
-          className={`hidden md:flex justify-center w-full pointer-events-none transition-all duration-300 ease-out ${
+          className={`flex justify-center w-full pointer-events-none transition-[padding] duration-300 ease-out ${
             isScrolled ? 'pt-[9px] px-4' : 'pt-0 px-0'
           }`}
         >
           <div
             ref={floatingBarRef}
-            className={`pointer-events-auto relative flex flex-col transition-all duration-300 ease-out origin-top ${
+            className={`pointer-events-auto relative isolate flex flex-col transition-[width,padding,border-radius] duration-300 ease-out ${
               isScrolled
-                ? 'w-[60%] min-w-[560px] max-w-[960px] px-5 scale-[0.96] overflow-hidden'
-                : 'w-full px-4 md:px-8 xl:px-12 scale-100 overflow-visible'
+                ? 'w-[58%] min-w-[540px] max-w-[920px] px-5 overflow-hidden'
+                : 'w-full px-4 md:px-8 xl:px-12 overflow-visible'
             } ${
               isScrolled
                 ? floatingExpand !== 'none'
-                  ? 'rounded-[24px] bg-black/90 backdrop-blur-sm border border-white/15 shadow-[0_18px_48px_rgba(0,0,0,0.75)]'
-                  : 'rounded-[28px] bg-black/45 backdrop-blur-xl border border-white/15 shadow-[0_12px_40px_rgba(0,0,0,0.55)]'
-                : 'rounded-none bg-transparent backdrop-blur-none border border-transparent shadow-none'
+                  ? 'rounded-[24px]'
+                  : 'rounded-[28px]'
+                : 'rounded-none'
             }`}
           >
+            {/* Dedicated Frosted Glass Backdrop Layer (isolated from foreground so icons, logo, search & profile remain 100% sharp) */}
+            <div
+              aria-hidden="true"
+              className={`pointer-events-none absolute inset-0 z-0 transition-[background-color,border-color,box-shadow,border-radius,backdrop-filter] duration-300 ease-out ${
+                isScrolled
+                  ? floatingExpand !== 'none'
+                    ? 'rounded-[24px] bg-black/90 backdrop-blur-sm border border-white/15 shadow-[0_18px_48px_rgba(0,0,0,0.75)]'
+                    : 'rounded-[28px] bg-black/45 backdrop-blur-xl border border-white/15 shadow-[0_12px_40px_rgba(0,0,0,0.55)]'
+                  : 'rounded-none bg-transparent backdrop-blur-none border border-transparent shadow-none'
+              }`}
+            />
+
             {/* Primary Single-Row Header inside Floating Bar */}
             <div
               data-desktop-navbar-bar="true"
-              className={`relative flex items-center justify-between w-full shrink-0 transition-all duration-300 ${
-                isScrolled ? 'h-13.5' : 'h-16'
+              className={`relative z-10 flex items-center justify-between w-full shrink-0 transition-[height] duration-300 ${
+                isScrolled ? 'h-[52px]' : 'h-16'
               }`}
             >
               {/* Left: Back only on Full Size More Info, else Search->Back, Menu/Profile->Cross, Subpage->Back+Label, Home->Hamburger + Inline Links at top */}
@@ -589,6 +684,7 @@ export const Navbar: React.FC<NavbarProps> = ({
 
               {/* Center: Platform Logo */}
               <button
+                data-brand-logo-target="true"
                 onClick={() => {
                   setFloatingExpand('none');
                   setFloatingSearchDraft('');
@@ -742,18 +838,20 @@ export const Navbar: React.FC<NavbarProps> = ({
                       <div className="absolute -top-1.5 right-3 w-3 h-3 bg-[#141414] border-t border-l border-[#333333] rotate-45 z-10" />
 
                       <div className="space-y-0.5">
-                        <div
-                          onClick={() => {
-                            onProfileMenuAction?.();
-                            onSearchChange('');
-                            onOpenAccount?.();
-                            setFloatingExpand('none');
-                          }}
-                          className="flex items-center gap-3.5 px-4.5 py-2.5 text-zinc-200 hover:text-white hover:bg-white/5 cursor-pointer transition-colors"
-                        >
-                          <User className="w-5 h-5 text-zinc-300 shrink-0" />
-                          <span className="font-medium">Account</span>
-                        </div>
+                        {isLoggedIn && (
+                          <div
+                            onClick={() => {
+                              onProfileMenuAction?.();
+                              onSearchChange('');
+                              onOpenAccount?.();
+                              setFloatingExpand('none');
+                            }}
+                            className="flex items-center gap-3.5 px-4.5 py-2.5 text-zinc-200 hover:text-white hover:bg-white/5 cursor-pointer transition-colors"
+                          >
+                            <User className="w-5 h-5 text-zinc-300 shrink-0" />
+                            <span className="font-medium">Account</span>
+                          </div>
+                        )}
 
                         <div
                           onClick={() => {
@@ -832,7 +930,7 @@ export const Navbar: React.FC<NavbarProps> = ({
 
             {/* Scrolled Pill Expanded Section 1: Hamburger Horizontal Menu */}
             {isScrolled && !isSharePage && floatingExpand === 'menu' && (
-              <div className="w-full pt-1.5 pb-4 border-t border-white/10 flex items-center justify-center gap-2 sm:gap-4 flex-wrap animate-in fade-in duration-150">
+              <div className="relative z-10 w-full pt-1.5 pb-4 border-t border-white/10 flex items-center justify-center gap-2 sm:gap-4 flex-wrap animate-in fade-in duration-150">
                 {(
                   [
                     { id: 'series' as const, label: 'Series' },
@@ -870,7 +968,7 @@ export const Navbar: React.FC<NavbarProps> = ({
             {isScrolled && floatingExpand === 'search' && (
               <div
                 onClick={(e) => e.stopPropagation()}
-                className="w-full pt-2 pb-5 border-t border-white/10 space-y-4 animate-in fade-in duration-150"
+                className="relative z-10 w-full pt-2 pb-5 border-t border-white/10 space-y-4 animate-in fade-in duration-150"
               >
                 <div className="flex items-center h-11 px-4 rounded-full border border-white/25 bg-black/25 focus-within:border-white/50 transition-colors">
                   <Search className="w-4.5 h-4.5 text-zinc-300 mr-3 shrink-0" />
@@ -948,22 +1046,24 @@ export const Navbar: React.FC<NavbarProps> = ({
               </div>
             )}
 
-            {/* Scrolled Pill Expanded Section 3: Profile Horizontal Row (single row, normal size, Sign In / Sign Out only) */}
+            {/* Scrolled Pill Expanded Section 3: Profile Horizontal Row (single row, hides Account when signed out) */}
             {isScrolled && floatingExpand === 'profile' && (
-              <div className="w-full pt-2.5 pb-4 border-t border-white/10 flex items-center justify-center gap-2 md:gap-3 lg:gap-5 flex-nowrap whitespace-nowrap animate-in fade-in duration-150">
-                <button
-                  type="button"
-                  onClick={() => {
-                    onProfileMenuAction?.();
-                    onSearchChange('');
-                    onOpenAccount?.();
-                    setFloatingExpand('none');
-                  }}
-                  className="flex items-center gap-2 px-3.5 py-2 rounded-full text-[14px] lg:text-[15px] font-semibold text-zinc-200 hover:text-white hover:bg-white/15 transition-colors cursor-pointer shrink-0"
-                >
-                  <User className="w-[17px] h-[17px] shrink-0" />
-                  <span>Account</span>
-                </button>
+              <div className="relative z-10 w-full pt-2.5 pb-4 border-t border-white/10 flex items-center justify-center gap-2 md:gap-3 lg:gap-5 flex-nowrap whitespace-nowrap animate-in fade-in duration-150">
+                {isLoggedIn && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      onProfileMenuAction?.();
+                      onSearchChange('');
+                      onOpenAccount?.();
+                      setFloatingExpand('none');
+                    }}
+                    className="flex items-center gap-2 px-3.5 py-2 rounded-full text-[14px] lg:text-[15px] font-semibold text-zinc-200 hover:text-white hover:bg-white/15 transition-colors cursor-pointer shrink-0"
+                  >
+                    <User className="w-[17px] h-[17px] shrink-0" />
+                    <span>Account</span>
+                  </button>
+                )}
                 <button
                   type="button"
                   onClick={() => {
@@ -990,6 +1090,24 @@ export const Navbar: React.FC<NavbarProps> = ({
                   <Plus className="w-[17px] h-[17px] shrink-0" />
                   <span>Request Content</span>
                 </button>
+                {!isLoggedIn && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      onProfileMenuAction?.();
+                      if (onOpenCreateAccount) {
+                        onOpenCreateAccount();
+                      } else {
+                        onToggleAuth?.();
+                      }
+                      setFloatingExpand('none');
+                    }}
+                    className="flex items-center gap-2 px-3.5 py-2 rounded-full text-[14px] lg:text-[15px] font-semibold text-white bg-white/10 hover:bg-white/20 transition-colors cursor-pointer shrink-0"
+                  >
+                    <User className="w-[17px] h-[17px] shrink-0" />
+                    <span>Create Account</span>
+                  </button>
+                )}
                 <button
                   type="button"
                   onClick={() => {
@@ -1007,7 +1125,7 @@ export const Navbar: React.FC<NavbarProps> = ({
           </div>
         </div>
       ) : isSharePage ? (
-        <div className="hidden md:flex w-full px-4 md:px-8 xl:px-12 py-3.5 items-center justify-between bg-transparent">
+        <div className="flex w-full px-4 md:px-8 xl:px-12 py-3.5 items-center justify-between bg-transparent">
           <div className="flex items-center gap-4">
             <button
               onClick={() => onOpenHamburgerDrawer?.()}
@@ -1039,13 +1157,14 @@ export const Navbar: React.FC<NavbarProps> = ({
           </div>
         </div>
       ) : (
-      <div className="hidden md:flex w-full px-4 md:px-8 xl:px-12 py-3.5 items-center justify-between">
+      <div className="flex w-full px-4 md:px-8 xl:px-12 py-3.5 items-center justify-between">
           <>
             {/* Left: Brand Logo & Navigation */}
             <div className="flex items-center gap-4 lg:gap-8">
           {/* Logo with actual Dizi brand logo */}
           {/* Brand Logo with constrained max-width */}
           <button
+            data-brand-logo-target="true"
             onClick={() => {
               onSearchChange('');
               onSelectCategory('all');
@@ -1427,19 +1546,21 @@ export const Navbar: React.FC<NavbarProps> = ({
                 <div className="absolute -top-1.5 right-3 w-3 h-3 bg-[#141414] border-t border-l border-[#333333] rotate-45 z-10" />
 
                 <div className="space-y-0.5">
-                  {/* Account (opens full page edit profile / account setting) */}
-                  <div
-                    onClick={() => {
-                      onProfileMenuAction?.();
-                      onSearchChange('');
-                      if (onOpenAccount) onOpenAccount();
-                      setActiveMenu('none');
-                    }}
-                    className="flex items-center gap-3.5 px-4.5 py-2.5 text-zinc-200 hover:text-white hover:bg-white/5 cursor-pointer transition-colors"
-                  >
-                    <User className="w-5 h-5 text-zinc-300 shrink-0" />
-                    <span className="font-medium">Account</span>
-                  </div>
+                  {/* Account (opens full page edit profile / account setting — hidden when signed out) */}
+                  {isLoggedIn && (
+                    <div
+                      onClick={() => {
+                        onProfileMenuAction?.();
+                        onSearchChange('');
+                        if (onOpenAccount) onOpenAccount();
+                        setActiveMenu('none');
+                      }}
+                      className="flex items-center gap-3.5 px-4.5 py-2.5 text-zinc-200 hover:text-white hover:bg-white/5 cursor-pointer transition-colors"
+                    >
+                      <User className="w-5 h-5 text-zinc-300 shrink-0" />
+                      <span className="font-medium">Account</span>
+                    </div>
+                  )}
 
                   {/* App Settings */}
                   <div
@@ -1522,7 +1643,7 @@ export const Navbar: React.FC<NavbarProps> = ({
         </div>
         </>
       </div>
-      )}
+      ))}
     </header>
   );
 };

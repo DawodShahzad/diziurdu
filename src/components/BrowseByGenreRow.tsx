@@ -2,6 +2,7 @@ import React, { useRef, useState, useEffect } from 'react';
 import { ChevronLeft, ChevronRight } from 'lucide-react';
 import { CategoryItem, Show, ManagedGenreItem } from '../types';
 import { MediaImage } from './MediaImage';
+import { useDeviceLayout } from '../utils/deviceLayout';
 
 export interface GenreItem {
   id: string;
@@ -96,6 +97,9 @@ interface BrowseByGenreRowProps {
   className?: string;
 }
 
+let hasBrowseByGenreLoaded = false;
+const cachedGenreLoadedIndices = new Set<number>([0, 1, 2, 3, 4, 5]);
+
 export const BrowseByGenreRow: React.FC<BrowseByGenreRowProps> = ({
   categories = [],
   managedGenres,
@@ -104,10 +108,12 @@ export const BrowseByGenreRow: React.FC<BrowseByGenreRowProps> = ({
 }) => {
   const rowSectionRef = useRef<HTMLElement>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
+  const { isMobile } = useDeviceLayout();
   const [canScrollLeft, setCanScrollLeft] = useState(false);
   const [canScrollRight, setCanScrollRight] = useState(true);
-  const [isRowInView, setIsRowInView] = useState(false);
-  const [loadedCardIndices, setLoadedCardIndices] = useState<Set<number>>(() => new Set([0, 1, 2, 3, 4, 5]));
+  const [navBox, setNavBox] = useState<{ top: number; height: number } | null>(null);
+  const [isRowInView, setIsRowInView] = useState(hasBrowseByGenreLoaded);
+  const [loadedCardIndices, setLoadedCardIndices] = useState<Set<number>>(() => new Set(cachedGenreLoadedIndices));
 
   // Use admin-managed genre cards if configured, otherwise fallback to default genres + category artwork
   const displayGenres = React.useMemo(() => {
@@ -158,6 +164,7 @@ export const BrowseByGenreRow: React.FC<BrowseByGenreRowProps> = ({
     const obs = new IntersectionObserver(
       (entries) => {
         if (entries.some((e) => e.isIntersecting)) {
+          hasBrowseByGenreLoaded = true;
           setIsRowInView(true);
           obs.disconnect();
         }
@@ -198,11 +205,26 @@ export const BrowseByGenreRow: React.FC<BrowseByGenreRowProps> = ({
     return () => obs.disconnect();
   }, [isRowInView, displayGenres.length]);
 
+  const updateNavBox = () => {
+    const el = scrollRef.current;
+    const parentEl = el?.parentElement;
+    if (!el || !parentEl) return;
+    const cardEl = el.querySelector('[data-genre-idx]') as HTMLElement | null;
+    if (!cardEl) return;
+    const parentRect = parentEl.getBoundingClientRect();
+    const cardRect = cardEl.getBoundingClientRect();
+    const height = Math.round(cardRect.height);
+    if (height > 0) {
+      setNavBox({ top: Math.round(cardRect.top - parentRect.top), height });
+    }
+  };
+
   const checkScroll = () => {
     if (!scrollRef.current) return;
     const { scrollLeft, scrollWidth, clientWidth } = scrollRef.current;
     setCanScrollLeft(scrollLeft > 10);
     setCanScrollRight(scrollLeft + clientWidth < scrollWidth - 10);
+    updateNavBox();
   };
 
   useEffect(() => {
@@ -224,11 +246,16 @@ export const BrowseByGenreRow: React.FC<BrowseByGenreRowProps> = ({
       }
     };
 
+    const ro = new ResizeObserver(checkScroll);
+    ro.observe(el);
+    const firstCard = el.querySelector('[data-genre-idx]') as HTMLElement | null;
+    if (firstCard) ro.observe(firstCard);
     el.addEventListener('scroll', checkScroll, { passive: true });
     el.addEventListener('wheel', handleWheel, { passive: false });
     window.addEventListener('resize', checkScroll);
     return () => {
       cancelAnimationFrame(rafId);
+      ro.disconnect();
       el.removeEventListener('scroll', checkScroll);
       el.removeEventListener('wheel', handleWheel);
       window.removeEventListener('resize', checkScroll);
@@ -258,11 +285,11 @@ export const BrowseByGenreRow: React.FC<BrowseByGenreRowProps> = ({
       </div>
 
       {!isRowInView ? (
-        <div className="flex items-center gap-2.5 sm:gap-3.5 md:gap-4 overflow-hidden px-4 md:px-8 xl:px-12 py-1">
+        <div className="flex items-center gap-2 sm:gap-3.5 md:gap-4 overflow-hidden px-3 sm:px-4 md:px-8 xl:px-12 py-1">
           {Array.from({ length: 6 }).map((_, i) => (
             <div
               key={`genre-skel-${i}`}
-              className="aspect-square w-[calc((100vw-2.5rem)/2.38)] sm:w-[calc((100vw-4rem)/3.8)] md:w-[calc((100vw-6rem)/5.5)] lg:w-[calc((100vw-7rem)/6.4)] max-w-[220px] shrink-0 rounded-2xl skeleton-wave"
+              className="aspect-square w-[calc((100vw-2rem)/3.22)] sm:w-[calc((100vw-4rem)/3.8)] md:w-[calc((100vw-6rem)/5.5)] lg:w-[calc((100vw-7rem)/6.4)] max-w-[220px] shrink-0 rounded-lg md:rounded-xl skeleton-wave"
               style={{ animationDelay: `${i * 150}ms` }}
             />
           ))}
@@ -271,27 +298,32 @@ export const BrowseByGenreRow: React.FC<BrowseByGenreRowProps> = ({
       /* Row Container with arrows */
       <div className="relative w-full">
         {/* Left Arrow Button */}
-        {canScrollLeft && (
+        {!isMobile && canScrollLeft && (
           <button
             onClick={() => handleScroll('left')}
-            className="hidden md:flex group/nav absolute left-0 top-1 bottom-1 z-30 w-11 sm:w-12 md:w-14 rounded-r-xl rounded-l-none bg-black/35 text-white items-center justify-center cursor-pointer shadow-xl select-none opacity-0 group-hover/row:opacity-100 transition-opacity duration-200"
+            style={{
+              top: navBox ? `${navBox.top}px` : '4px',
+              height: navBox ? `${navBox.height}px` : 'calc(100% - 8px)',
+              background: 'linear-gradient(to right, rgba(0, 0, 0, 0.72) 0%, rgba(0, 0, 0, 0.42) 45%, rgba(0, 0, 0, 0.14) 76%, rgba(0, 0, 0, 0) 100%)'
+            }}
+            className="flex group/nav absolute left-0 z-30 w-12 sm:w-14 md:w-16 rounded-none text-white items-center justify-start pl-1.5 sm:pl-2 cursor-pointer border-0 select-none opacity-0 group-hover/row:opacity-100 transition-opacity duration-200"
             aria-label="Scroll left"
           >
-            <ChevronLeft className="w-8 h-8 stroke-[2.5] group-active/nav:scale-75 transition-transform duration-100" />
+            <ChevronLeft className="w-8 h-8 stroke-[2.5] drop-shadow-[0_2px_6px_rgba(0,0,0,0.7)] group-active/nav:scale-75 transition-transform duration-100" />
           </button>
         )}
 
         {/* Scrollable square cards row */}
         <div
           ref={scrollRef}
-          className="flex items-center gap-2.5 sm:gap-3.5 md:gap-4 overflow-x-auto no-scrollbar px-4 md:px-8 xl:px-12 py-1 scroll-smooth"
+          className="flex items-center gap-2 sm:gap-3.5 md:gap-4 overflow-x-auto no-scrollbar px-3 sm:px-4 md:px-8 xl:px-12 py-1 scroll-smooth"
         >
           {displayGenres.map((genre, gIdx) => (
             <div
               key={genre.id}
               data-genre-idx={gIdx}
               onClick={() => onSelectGenre(genre)}
-              className="relative aspect-square w-[calc((100vw-2.5rem)/2.38)] sm:w-[calc((100vw-4rem)/3.8)] md:w-[calc((100vw-6rem)/5.5)] lg:w-[calc((100vw-7rem)/6.4)] max-w-[220px] shrink-0 rounded-2xl overflow-hidden bg-[#181818] cursor-pointer shadow-lg active:scale-95 group/card"
+              className="relative aspect-square w-[calc((100vw-2rem)/3.22)] sm:w-[calc((100vw-4rem)/3.8)] md:w-[calc((100vw-6rem)/5.5)] lg:w-[calc((100vw-7rem)/6.4)] max-w-[220px] shrink-0 rounded-lg md:rounded-xl overflow-hidden bg-[#181818] cursor-pointer shadow-lg active:scale-95 group/card"
             >
               {/* Genre artwork image (no zoom-in effect) */}
               <MediaImage
@@ -317,13 +349,18 @@ export const BrowseByGenreRow: React.FC<BrowseByGenreRowProps> = ({
         </div>
 
         {/* Right Arrow Button */}
-        {canScrollRight && (
+        {!isMobile && canScrollRight && (
           <button
             onClick={() => handleScroll('right')}
-            className="hidden md:flex group/nav absolute right-0 top-1 bottom-1 z-30 w-11 sm:w-12 md:w-14 rounded-l-xl rounded-r-none bg-black/35 text-white items-center justify-center cursor-pointer shadow-xl select-none opacity-0 group-hover/row:opacity-100 transition-opacity duration-200"
+            style={{
+              top: navBox ? `${navBox.top}px` : '4px',
+              height: navBox ? `${navBox.height}px` : 'calc(100% - 8px)',
+              background: 'linear-gradient(to left, rgba(0, 0, 0, 0.72) 0%, rgba(0, 0, 0, 0.42) 45%, rgba(0, 0, 0, 0.14) 76%, rgba(0, 0, 0, 0) 100%)'
+            }}
+            className="flex group/nav absolute right-0 z-30 w-12 sm:w-14 md:w-16 rounded-none text-white items-center justify-end pr-1.5 sm:pr-2 cursor-pointer border-0 select-none opacity-0 group-hover/row:opacity-100 transition-opacity duration-200"
             aria-label="Scroll right"
           >
-            <ChevronRight className="w-8 h-8 stroke-[2.5] group-active/nav:scale-75 transition-transform duration-100" />
+            <ChevronRight className="w-8 h-8 stroke-[2.5] drop-shadow-[0_2px_6px_rgba(0,0,0,0.7)] group-active/nav:scale-75 transition-transform duration-100" />
           </button>
         )}
       </div>

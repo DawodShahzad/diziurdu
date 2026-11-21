@@ -22,8 +22,9 @@ export interface CustomPlayerProps {
   autoPlay?: boolean;
   initialCurrentTime?: number;
   onProgressUpdate?: (currentTime: number, duration: number) => void;
-  onClose?: () => void;
+  onClose?: (skipHistoryBack?: boolean) => void;
   onEnded?: () => void;
+  isFullscreenDesign?: boolean;
 }
 
 type StreamQuality = '1080p' | '720p' | '480p' | 'Auto';
@@ -42,7 +43,8 @@ export const CustomPlayer: React.FC<CustomPlayerProps> = ({
   initialCurrentTime = 0,
   onProgressUpdate,
   onClose,
-  onEnded
+  onEnded,
+  isFullscreenDesign = false
 }) => {
   const videoRef = useRef<HTMLVideoElement>(null);
   const previewVideoRef = useRef<HTMLVideoElement>(null);
@@ -88,6 +90,42 @@ export const CustomPlayer: React.FC<CustomPlayerProps> = ({
   // Inactivity timer for 2 seconds
   const hideControlsTimer = useRef<number | null>(null);
   const isPointerOverControlsRef = useRef<boolean>(false);
+  const [isClosing, setIsClosing] = useState<boolean>(false);
+  const isClosingRef = useRef<boolean>(false);
+  const closeTimerRef = useRef<number | null>(null);
+
+  const triggerAnimatedClose = useCallback((skipHistoryBack = false) => {
+    if (isClosingRef.current) return;
+    isClosingRef.current = true;
+    setIsClosing(true);
+    if (document.fullscreenElement) {
+      document.exitFullscreen?.().catch(() => {});
+      setIsFullscreen(false);
+    }
+    try {
+      if (videoRef.current && !videoRef.current.paused) {
+        videoRef.current.pause();
+      }
+    } catch {}
+    closeTimerRef.current = window.setTimeout(() => {
+      onClose?.(skipHistoryBack);
+    }, 265);
+  }, [onClose]);
+
+  useEffect(() => {
+    return () => {
+      if (closeTimerRef.current) window.clearTimeout(closeTimerRef.current);
+    };
+  }, []);
+
+  useEffect(() => {
+    const onSystemBack = (e: Event) => {
+      e.preventDefault();
+      triggerAnimatedClose(true);
+    };
+    window.addEventListener('dizi-player-system-back', onSystemBack);
+    return () => window.removeEventListener('dizi-player-system-back', onSystemBack);
+  }, [triggerAnimatedClose]);
 
   const showCenterIcon = useCallback((type: CenterIconType) => {
     setCenterIcon(type);
@@ -329,6 +367,20 @@ export const CustomPlayer: React.FC<CustomPlayerProps> = ({
     };
   }, [onEnded, onProgressUpdate, initialCurrentTime]);
 
+  useEffect(() => {
+    const prevBodyOverflow = document.body.style.overflow;
+    const prevHtmlOverflow = document.documentElement.style.overflow;
+    const prevScrollbarGutter = document.documentElement.style.scrollbarGutter;
+    document.body.style.overflow = 'hidden';
+    document.documentElement.style.overflow = 'hidden';
+    document.documentElement.style.scrollbarGutter = 'auto';
+    return () => {
+      document.body.style.overflow = prevBodyOverflow;
+      document.documentElement.style.overflow = prevHtmlOverflow;
+      document.documentElement.style.scrollbarGutter = prevScrollbarGutter;
+    };
+  }, []);
+
   const togglePlay = useCallback(() => {
     if (!videoRef.current) return;
     if (isPlaying) {
@@ -460,7 +512,7 @@ export const CustomPlayer: React.FC<CustomPlayerProps> = ({
           setIsFullscreen(false);
         }
         if (onClose) {
-          onClose();
+          triggerAnimatedClose(false);
         }
       }
     };
@@ -475,7 +527,8 @@ export const CustomPlayer: React.FC<CustomPlayerProps> = ({
     toggleFullscreen,
     decreasePlaybackRate,
     increasePlaybackRate,
-    onClose
+    onClose,
+    triggerAnimatedClose
   ]);
 
   // Quality switcher with real-time video rendering buffer / resolution effect
@@ -513,6 +566,7 @@ export const CustomPlayer: React.FC<CustomPlayerProps> = ({
 
   const resetHideTimer = useCallback(() => {
     if (hideControlsTimer.current) window.clearTimeout(hideControlsTimer.current);
+    const delayMs = isFullscreen ? 5000 : 2000;
     if (!isPointerOverControlsRef.current && !isDraggingRef.current) {
       hideControlsTimer.current = window.setTimeout(() => {
         if (!isPointerOverControlsRef.current && !isDraggingRef.current) {
@@ -520,9 +574,9 @@ export const CustomPlayer: React.FC<CustomPlayerProps> = ({
           setShowQualityMenu(false);
           setShowSpeedMenu(false);
         }
-      }, 2000);
+      }, delayMs);
     }
-  }, []);
+  }, [isFullscreen]);
 
   // When pointer hovers/moves:
   // - Show controls and show pointer cursor
@@ -591,18 +645,37 @@ export const CustomPlayer: React.FC<CustomPlayerProps> = ({
 
   return (
     <div
-      ref={containerRef}
-      onMouseMove={handleMouseMove}
-      onMouseLeave={() => {
-        if (!isDraggingRef.current) {
-          setShowControls(false);
-        }
+      className="fixed inset-0 z-[200] overflow-hidden select-none"
+      style={{
+        backgroundColor: isClosing
+          ? 'rgba(0, 0, 0, 0)'
+          : isFullscreenDesign
+          ? 'rgba(0, 0, 0, 0.25)'
+          : 'rgba(0, 0, 0, 0.34)',
+        transition: 'background-color 260ms cubic-bezier(0.22, 1, 0.36, 1)'
       }}
-      data-no-tooltip="true"
-      className={`relative w-full h-full min-h-[360px] bg-black overflow-hidden group select-none shadow-2xl flex flex-col justify-between font-sans ${
-        showControls ? 'cursor-default' : 'cursor-none'
-      }`}
     >
+      <div
+        ref={containerRef}
+        onMouseMove={handleMouseMove}
+        onMouseLeave={() => {
+          if (!isDraggingRef.current) {
+            setShowControls(false);
+          }
+        }}
+        data-no-tooltip="true"
+        style={{
+          transform: isClosing
+            ? isFullscreenDesign
+              ? 'translate3d(100vw, 0, 0)'
+              : 'translate3d(0, 100%, 0)'
+            : 'translate3d(0, 0, 0)',
+          transition: 'transform 260ms cubic-bezier(0.22, 1, 0.36, 1)'
+        }}
+        className={`relative w-full h-full min-h-[360px] bg-black overflow-hidden group select-none shadow-2xl flex flex-col justify-between font-sans ${
+          showControls ? 'cursor-default' : 'cursor-none'
+        }`}
+      >
       {/* Background Video Element - Protected against direct download / right click - always set to fit */}
       <video
         ref={videoRef}
@@ -749,7 +822,7 @@ export const CustomPlayer: React.FC<CustomPlayerProps> = ({
         <div>
           {onClose && (
             <button
-              onClick={onClose}
+              onClick={() => triggerAnimatedClose(false)}
               data-no-tooltip="true"
               className="text-white hover:text-white/80 transition-transform active:scale-90 cursor-pointer p-1 -ml-1"
               aria-label="Back"
@@ -1079,6 +1152,7 @@ export const CustomPlayer: React.FC<CustomPlayerProps> = ({
             </button>
           </div>
         </div>
+      </div>
       </div>
     </div>
   );

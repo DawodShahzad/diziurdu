@@ -1,6 +1,6 @@
 import React, { useState, useMemo, useRef, useEffect, useLayoutEffect } from 'react';
 import { createPortal } from 'react-dom';
-import { Show, Episode, AdminSettings, WhereToWatch, TrailerItem, CastMember, DetailsOriginMeta } from '../types';
+import { Show, Episode, AdminSettings, WhereToWatch, TrailerItem, CastMember, DetailsOriginMeta, AdDeviceLayout, MoreInfoAdSection } from '../types';
 import {
   Plus,
   Check,
@@ -16,6 +16,9 @@ import { ShareArrowIcon } from './ShareArrowIcon';
 import { ShareModal } from './ShareModal';
 import { WatchProgressItem } from '../utils/watchProgress';
 import { MediaImage } from './MediaImage';
+import { AdTileBanner } from './AdTileBanner';
+import { Footer } from './Footer';
+import { notifyPreviewStarted } from '../utils/previewResumeTracker';
 
 interface ShareTitleDesktopPageProps {
   show: Show;
@@ -36,6 +39,10 @@ interface ShareTitleDesktopPageProps {
   likedShowIds?: string[];
   onToggleLike?: (showId: string) => void;
   originMeta?: DetailsOriginMeta | null;
+  isFullPlayerOpen?: boolean;
+  onClosingStateChange?: (closing: boolean) => void;
+  currentAdLayout?: AdDeviceLayout;
+  onNavigateInternal?: (path: string) => void;
 }
 
 export const ShareTitleDesktopPage: React.FC<ShareTitleDesktopPageProps> = ({
@@ -56,7 +63,11 @@ export const ShareTitleDesktopPage: React.FC<ShareTitleDesktopPageProps> = ({
   onToggleGlobalMute,
   likedShowIds,
   onToggleLike,
-  originMeta
+  originMeta,
+  isFullPlayerOpen = false,
+  onClosingStateChange,
+  currentAdLayout = 'desktop',
+  onNavigateInternal
 }) => {
   const rootRef = useRef<HTMLDivElement>(null);
   const [pageAnimStyle, setPageAnimStyle] = useState<{
@@ -70,6 +81,7 @@ export const ShareTitleDesktopPage: React.FC<ShareTitleDesktopPageProps> = ({
 
   useLayoutEffect(() => {
     setIsClosingPage(false);
+    onClosingStateChange?.(false);
     if (isNormalOrigin && originMeta?.element) {
       const originRect = originMeta.element.getBoundingClientRect();
       const vw = window.innerWidth;
@@ -135,29 +147,47 @@ export const ShareTitleDesktopPage: React.FC<ShareTitleDesktopPageProps> = ({
 
   const triggerBackToBrowse = (skipHistoryPush = false) => {
     if (isClosingPage) return;
+    const capturedY = typeof window !== 'undefined' ? window.scrollY : 0;
     setIsClosingPage(true);
+    onClosingStateChange?.(true);
     if (videoRef.current && !videoRef.current.paused) {
       videoRef.current.pause();
     }
+    // Hold exact visual vertical offset at frame 0 while App switches container to fixed transparent overlay,
+    // then smoothly and slowly slide down + fade out on GPU compositor
     setPageAnimStyle({
-      transform: 'translate3d(0, 100vh, 0)',
-      opacity: 0.9,
-      transition: 'transform 280ms cubic-bezier(0.22, 1, 0.36, 1), opacity 220ms ease-in'
+      transform: `translate3d(0, ${-capturedY}px, 0)`,
+      opacity: 1,
+      transition: 'none'
     });
-    window.setTimeout(() => onBackToBrowse(skipHistoryPush), 285);
+    requestAnimationFrame(() => {
+      requestAnimationFrame(() => {
+        setPageAnimStyle({
+          transform: `translate3d(0, calc(${-capturedY}px + 100vh), 0)`,
+          opacity: 0,
+          transition:
+            'transform 460ms cubic-bezier(0.22, 1, 0.36, 1), opacity 400ms cubic-bezier(0.25, 0.46, 0.45, 0.94)'
+        });
+      });
+    });
+    window.setTimeout(() => onBackToBrowse(skipHistoryPush), 475);
   };
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
+      if (isFullPlayerOpen) return;
       if (e.key === 'Escape' && !isAboutModalOpen && !isShareModalOpen) {
         e.preventDefault();
         triggerBackToBrowse(false);
       }
     };
-    const onSystemBack = () => {
+    const onSystemBack = (e: Event) => {
+      if (isFullPlayerOpen) return;
+      e.preventDefault();
       triggerBackToBrowse(true);
     };
     const onUiBack = () => {
+      if (isFullPlayerOpen) return;
       triggerBackToBrowse(false);
     };
     window.addEventListener('keydown', onKey);
@@ -181,6 +211,11 @@ export const ShareTitleDesktopPage: React.FC<ShareTitleDesktopPageProps> = ({
   const [isShareModalOpen, setIsShareModalOpen] = useState<boolean>(false);
   const [isSeasonDropdownOpen, setIsSeasonDropdownOpen] = useState<boolean>(false);
   const [isAboutModalOpen, setIsAboutModalOpen] = useState<boolean>(false);
+  const heroLogoSlotRef = useRef<HTMLDivElement>(null);
+  const heroLowerSectionRef = useRef<HTMLDivElement>(null);
+  const seasonSelectorAnchorRef = useRef<HTMLDivElement>(null);
+  const episodesRowAnchorRef = useRef<HTMLDivElement>(null);
+  const [logoScrollSettlePx, setLogoScrollSettlePx] = useState<number>(148);
 
   const getOverlayScroller = (): HTMLElement | null => {
     try {
@@ -232,6 +267,7 @@ export const ShareTitleDesktopPage: React.FC<ShareTitleDesktopPageProps> = ({
       pauseToBackdropTimerRef.current = null;
     }
     setIsInactive(false);
+    setIsScrolledDown(false);
     const scroller = getOverlayScroller();
     if (scroller) {
       scroller.scrollTo({ top: 0, behavior: 'instant' });
@@ -250,6 +286,7 @@ export const ShareTitleDesktopPage: React.FC<ShareTitleDesktopPageProps> = ({
   const [showBackdropOverPaused, setShowBackdropOverPaused] = useState<boolean>(false);
   const [previewToggleFlash, setPreviewToggleFlash] = useState<'play' | 'pause' | null>(null);
   const [isInactive, setIsInactive] = useState<boolean>(false);
+  const [isScrolledDown, setIsScrolledDown] = useState<boolean>(false);
   const [isMuted, setIsMuted] = useState<boolean>(isGlobalMuted);
   const videoRef = useRef<HTMLVideoElement>(null);
   const inactivityTimerRef = useRef<number | null>(null);
@@ -285,6 +322,41 @@ export const ShareTitleDesktopPage: React.FC<ShareTitleDesktopPageProps> = ({
       episodes: []
     };
   const episodes = currentSeason?.episodes || [];
+
+  // Measure exact available vertical space below the untransformed hero logo slot
+  // so when scrolled down the logo settles all the way down above the Season selector (or further down if no Season selector)
+  useLayoutEffect(() => {
+    const measureSettleDistance = () => {
+      const slotEl = heroLogoSlotRef.current;
+      if (!slotEl) return;
+      const lowerEl = heroLowerSectionRef.current;
+      const heroAdEl = lowerEl?.querySelector('[data-hero-more-info-ad="true"]') as HTMLElement | null;
+      const anchorEl =
+        heroAdEl ||
+        seasonSelectorAnchorRef.current ||
+        episodesRowAnchorRef.current ||
+        lowerEl;
+      if (!anchorEl) return;
+
+      const slotRect = slotEl.getBoundingClientRect();
+      const anchorRect = anchorEl.getBoundingClientRect();
+      const hasSeasonSelector = Boolean(!heroAdEl && seasonSelectorAnchorRef.current);
+      // Keep 14px breathing room above Season selector, or 20px (6px higher) when no Season selector is shown above Episodes / lower content
+      const clearancePx = hasSeasonSelector ? 14 : 20;
+      const available = Math.max(0, Math.round(anchorRect.top - slotRect.bottom - clearancePx));
+      if (available > 0) {
+        setLogoScrollSettlePx(available);
+      }
+    };
+
+    measureSettleDistance();
+    const rafId = window.requestAnimationFrame(measureSettleDistance);
+    window.addEventListener('resize', measureSettleDistance);
+    return () => {
+      window.cancelAnimationFrame(rafId);
+      window.removeEventListener('resize', measureSettleDistance);
+    };
+  }, [show.id, isScrolledDown, seasons.length, episodes.length, adminSettings]);
 
   // Backdrop source: prioritize desktop more info backdrop
   const backdropSrc =
@@ -402,10 +474,12 @@ export const ShareTitleDesktopPage: React.FC<ShareTitleDesktopPageProps> = ({
     };
   }, [isVideoPlaying, isPausedByScroll, isPreviewEnded]);
 
-  // Pause preview when user scrolls down; keep info unsettled when paused or ended
+  // Pause preview when user scrolls down; dissolve infos & action buttons on scroll while keeping title logo & season selector visible
   useEffect(() => {
     const handleScroll = () => {
-      if (getScrollTop() > 150) {
+      const currentTop = getScrollTop();
+      setIsScrolledDown(currentTop > 28);
+      if (currentTop > 150) {
         setIsInactive(false);
         if (inactivityTimerRef.current) {
           window.clearTimeout(inactivityTimerRef.current);
@@ -532,6 +606,38 @@ export const ShareTitleDesktopPage: React.FC<ShareTitleDesktopPageProps> = ({
     }
   };
 
+  const [rowNavBoxes, setRowNavBoxes] = useState<{
+    episodes: { top: number; height: number } | null;
+    trailers: { top: number; height: number } | null;
+    related: { top: number; height: number } | null;
+    cast: { top: number; height: number } | null;
+  }>({ episodes: null, trailers: null, related: null, cast: null });
+
+  const measureRowNavBox = (
+    ref: React.RefObject<HTMLDivElement | null>,
+    selector: string
+  ): { top: number; height: number } | null => {
+    const el = ref.current;
+    const parentEl = el?.parentElement;
+    if (!el || !parentEl) return null;
+    const cardEl = el.querySelector(selector) as HTMLElement | null;
+    if (!cardEl) return null;
+    const parentRect = parentEl.getBoundingClientRect();
+    const cardRect = cardEl.getBoundingClientRect();
+    const height = Math.round(cardRect.height);
+    if (height <= 0) return null;
+    return { top: Math.round(cardRect.top - parentRect.top), height };
+  };
+
+  const updateAllRowNavBoxes = () => {
+    setRowNavBoxes({
+      episodes: measureRowNavBox(episodesRowRef, '[data-episode-thumb="true"]'),
+      trailers: measureRowNavBox(trailersRowRef, '[data-trailer-thumb="true"]'),
+      related: measureRowNavBox(relatedRowRef, '[data-related-card="true"]'),
+      cast: measureRowNavBox(castRowRef, '[data-cast-thumb="true"]')
+    });
+  };
+
   // Scroll helpers for horizontal rows
   const checkRowScroll = (
     ref: React.RefObject<HTMLDivElement | null>,
@@ -546,10 +652,25 @@ export const ShareTitleDesktopPage: React.FC<ShareTitleDesktopPageProps> = ({
   };
 
   useEffect(() => {
-    checkRowScroll(episodesRowRef, setCanScrollLeft, setCanScrollRight);
-    checkRowScroll(trailersRowRef, setCanScrollTrailersLeft, setCanScrollTrailersRight);
-    checkRowScroll(relatedRowRef, setCanScrollRelatedLeft, setCanScrollRelatedRight);
-    checkRowScroll(castRowRef, setCanScrollCastLeft, setCanScrollCastRight);
+    const syncAll = () => {
+      checkRowScroll(episodesRowRef, setCanScrollLeft, setCanScrollRight);
+      checkRowScroll(trailersRowRef, setCanScrollTrailersLeft, setCanScrollTrailersRight);
+      checkRowScroll(relatedRowRef, setCanScrollRelatedLeft, setCanScrollRelatedRight);
+      checkRowScroll(castRowRef, setCanScrollCastLeft, setCanScrollCastRight);
+      updateAllRowNavBoxes();
+    };
+    syncAll();
+    const rafId = window.requestAnimationFrame(syncAll);
+    const ro = new ResizeObserver(syncAll);
+    [episodesRowRef, trailersRowRef, relatedRowRef, castRowRef].forEach((r) => {
+      if (r.current) ro.observe(r.current);
+    });
+    window.addEventListener('resize', syncAll, { passive: true });
+    return () => {
+      window.cancelAnimationFrame(rafId);
+      ro.disconnect();
+      window.removeEventListener('resize', syncAll);
+    };
   }, [episodes.length, show.id]);
 
   // Scroll episodes horizontal row by 4 episode cards (Homepage-style navigation)
@@ -688,6 +809,37 @@ export const ShareTitleDesktopPage: React.FC<ShareTitleDesktopPageProps> = ({
     return name.slice(0, 2).toUpperCase();
   };
 
+  const hasMultipleSeasons = seasons.length > 1;
+  const shouldDissolveForScroll = isScrolledDown;
+
+  const renderMoreInfoAd = (section: MoreInfoAdSection) => {
+    const canShowMoreInfoAd =
+      Boolean(adminSettings.moreInfoAdEnabled) &&
+      (adminSettings.moreInfoAdLayouts || ['desktop', 'laptop', 'tablet', 'mobile']).includes(currentAdLayout);
+    const placement: MoreInfoAdSection = adminSettings.moreInfoAdPlacement || 'episodes';
+    if (!canShowMoreInfoAd || placement !== section) return null;
+    const useCustom = Boolean(adminSettings.moreInfoAdUseCustomCreative);
+    return (
+      <AdTileBanner
+        insideMoreInfo
+        title={useCustom ? adminSettings.moreInfoAdTitle : adminSettings.adTileTitle}
+        subtitle={useCustom ? adminSettings.moreInfoAdSubtitle : adminSettings.adTileSubtitle}
+        buttonText={useCustom ? adminSettings.moreInfoAdButtonText : adminSettings.adTileButtonText}
+        buttonUrl={useCustom ? adminSettings.moreInfoAdButtonUrl : adminSettings.adTileButtonUrl}
+        imageUrl={useCustom ? adminSettings.moreInfoAdImageUrl : adminSettings.adTileImageUrl}
+        logoImageUrl={useCustom ? adminSettings.moreInfoAdLogoImageUrl : adminSettings.adTileLogoImageUrl}
+        containerMode={useCustom ? (adminSettings.moreInfoAdContainerMode || 'contained') : (adminSettings.adTileContainerMode || 'contained')}
+        aspectHeight={useCustom ? (adminSettings.moreInfoAdAspectHeight || 'default') : (adminSettings.adTileAspectHeight || 'default')}
+        imageGlare={useCustom ? (adminSettings.moreInfoAdImageGlare !== false) : (adminSettings.adTileImageGlare !== false)}
+        badgePosition={useCustom ? (adminSettings.moreInfoAdBadgePosition || 'bottom_left') : (adminSettings.adTileBadgePosition || 'bottom_left')}
+        textPosition={useCustom ? (adminSettings.moreInfoAdTextPosition || 'center') : (adminSettings.adTileTextPosition || 'center')}
+        buttonPosition={useCustom ? (adminSettings.moreInfoAdButtonPosition || 'center') : (adminSettings.adTileButtonPosition || 'center')}
+        showCloseButton={useCustom ? Boolean(adminSettings.moreInfoAdShowCloseButton) : Boolean(adminSettings.adTileShowCloseButton)}
+        onNavigateInternal={onNavigateInternal}
+      />
+    );
+  };
+
   return (
     <div
       ref={rootRef}
@@ -795,6 +947,7 @@ export const ShareTitleDesktopPage: React.FC<ShareTitleDesktopPageProps> = ({
                     playsInline
                     loop={false}
                     onPlaying={() => {
+                      notifyPreviewStarted(`share-desktop::${show.id}`);
                       if (!isPausedByScrollRef.current && !isPreviewEndedRef.current) {
                         setIsVideoPlaying(true);
                       }
@@ -887,7 +1040,9 @@ export const ShareTitleDesktopPage: React.FC<ShareTitleDesktopPageProps> = ({
                   }
                   onToggleGlobalMute?.();
                 }}
-                className="absolute bottom-[82px] right-8 md:right-12 z-30 w-8 h-8 rounded-full border border-white/45 hover:border-white bg-black/45 hover:bg-black/65 text-white flex items-center justify-center transition-all cursor-pointer shadow-lg backdrop-blur-xs active:scale-95 animate-in fade-in duration-300"
+                onPointerDown={(e) => e.stopPropagation()}
+                onTouchStart={(e) => e.stopPropagation()}
+                className="absolute bottom-[82px] right-8 md:right-12 z-30 before:content-[''] before:absolute before:-inset-3 w-8 h-8 rounded-full border border-white/45 hover:border-white bg-black/45 hover:bg-black/65 text-white flex items-center justify-center transition-all cursor-pointer shadow-lg backdrop-blur-xs active:scale-95 animate-in fade-in duration-300"
                 aria-label={isMuted ? 'Unmute video' : 'Mute video'}
                 title={isMuted ? 'Unmute' : 'Mute'}
               >
@@ -899,32 +1054,56 @@ export const ShareTitleDesktopPage: React.FC<ShareTitleDesktopPageProps> = ({
               </button>
             )}
 
-        {/* Hero Left Content Column: positioned cleanly above transparent Season selector */}
-        <div className="relative z-20 w-full h-full max-w-[1780px] mx-auto px-6 sm:px-8 lg:px-12 flex flex-col justify-end pb-[90px] sm:pb-[94px] pointer-events-none">
+        {/* Hero Left Content Column: moves upper elements slightly lower when only 1 season (no season pill) while preserving exact hero height & episode row placement */}
+        <div
+          className={`relative z-20 w-full h-full max-w-[1780px] mx-auto px-6 sm:px-8 lg:px-12 flex flex-col justify-end pointer-events-none ${
+            isSeries && episodes.length > 0 && !hasMultipleSeasons
+              ? 'pb-[54px] sm:pb-[58px]'
+              : 'pb-[90px] sm:pb-[94px]'
+          }`}
+        >
           <div className="w-full max-w-[440px] lg:max-w-[480px] pointer-events-auto space-y-3 bg-transparent">
-            <div
-              className={`space-y-3 transition-transform duration-500 ease-out ${
-                shouldHideInfo ? 'translate-y-6 sm:translate-y-7' : 'translate-y-0'
-              }`}
-            >
-              {/* 1. Title ClearArt PNG Logo (NO shadow) */}
-              <div className="max-w-[320px] sm:max-w-[370px] bg-transparent">
-                {show.titleLogoUrl ? (
-                  <img
-                    src={show.titleLogoUrl}
-                    alt={show.title}
-                    referrerPolicy="no-referrer"
-                    className="max-h-16 sm:max-h-20 lg:max-h-22 w-auto object-contain bg-transparent"
-                  />
-                ) : (
-                  <h1 className="text-3xl sm:text-4xl lg:text-5xl font-black text-white tracking-tight font-display">
-                    {show.title}
-                  </h1>
-                )}
+            <div className="space-y-3">
+              {/* 1. Title ClearArt PNG Logo (Fixed 2.5:1 sizing matching Normal Mode More Info Modal; settles all the way down into available space on scroll) */}
+              <div
+                ref={heroLogoSlotRef}
+                className="relative w-[320px] sm:w-[350px] lg:w-[370px] max-w-full aspect-[2.5/1] shrink-0 bg-transparent"
+              >
+                <div
+                  style={{
+                    transform: shouldDissolveForScroll
+                      ? `translate3d(0, ${logoScrollSettlePx}px, 0)`
+                      : shouldHideInfo
+                      ? 'translate3d(0, 28px, 0)'
+                      : 'translate3d(0, 0, 0)'
+                  }}
+                  className="relative w-full h-full overflow-hidden flex items-end bg-transparent transition-transform duration-500 ease-out"
+                >
+                  {show.titleLogoUrl ? (
+                    <img
+                      src={show.titleLogoUrl}
+                      alt={show.title}
+                      referrerPolicy="no-referrer"
+                      className="absolute inset-0 block w-full h-full max-w-full max-h-full object-contain object-bottom-left bg-transparent"
+                    />
+                  ) : (
+                    <h1 className="text-3xl sm:text-4xl lg:text-5xl font-black text-white tracking-tight font-display">
+                      {show.title}
+                    </h1>
+                  )}
+                </div>
               </div>
 
-              {/* 2. Action Buttons Line: Play / Resume, Add to List, Like, Share */}
-              <div className="flex items-center gap-3 pt-0.5 flex-wrap">
+              {/* 2. Action Buttons Line: Dissolves cleanly when scrolling down from top; visible when at top */}
+              <div
+                className={`flex items-center gap-3 pt-0.5 flex-wrap transition-all duration-400 ease-out ${
+                  shouldDissolveForScroll
+                    ? 'opacity-0 pointer-events-none translate-y-2'
+                    : shouldHideInfo
+                    ? 'translate-y-6 sm:translate-y-7 opacity-100 pointer-events-auto'
+                    : 'opacity-100 pointer-events-auto translate-y-0'
+                }`}
+              >
                 {/* Main Play / Resume Button: calls onPlayShow(show) so it resumes correctly */}
                 <button
                   onClick={() => onPlayShow(show)}
@@ -985,12 +1164,14 @@ export const ShareTitleDesktopPage: React.FC<ShareTitleDesktopPageProps> = ({
               </div>
             </div>
 
-            {/* 3. Metadata & Announcement container */}
+            {/* 3. Metadata & Announcement container: dissolves smoothly on scroll down or preview inactivity */}
             <div
-              className={`space-y-1.5 transition-all duration-500 ease-out select-none ${
-                shouldHideInfo
+              className={`space-y-1.5 transition-all duration-400 ease-out select-none ${
+                shouldDissolveForScroll
+                  ? 'opacity-0 pointer-events-none translate-y-2'
+                  : shouldHideInfo
                   ? 'opacity-0 pointer-events-none max-h-0 overflow-hidden m-0 p-0'
-                  : 'opacity-100 pointer-events-auto max-h-40'
+                  : 'opacity-100 pointer-events-auto max-h-40 translate-y-0'
               }`}
             >
               {/* Metadata line: Year, Duration, HD, Maturity Rating, Genres */}
@@ -1039,61 +1220,71 @@ export const ShareTitleDesktopPage: React.FC<ShareTitleDesktopPageProps> = ({
       {/* strictly 0.7cm / ~26px of episode top edges peek above screen bottom)     */}
       {/* ========================================================================= */}
       <div
-        className={`relative z-20 w-full max-w-[1780px] mx-auto px-6 sm:px-8 lg:px-12 pb-6 space-y-10 ${
+        ref={heroLowerSectionRef}
+        className={`relative z-20 w-full pl-6 sm:pl-8 lg:pl-12 pr-0 pb-6 space-y-10 ${
           isSeries && episodes.length > 0 ? '-mt-[192px]' : '-mt-[168px]'
         }`}
       >
-        {/* SECTION 1: EPISODES (Always shows transparent Season dropdown button, */}
-        {/* Episode count shown ONLY inside the dropdown menu) */}
+        {(() => {
+          const heroAdNode = renderMoreInfoAd('hero');
+          return heroAdNode ? <div data-hero-more-info-ad="true">{heroAdNode}</div> : null;
+        })()}
+
+        {/* SECTION 1: EPISODES (Season selector ONLY shown when > 1 season; spacer keeps exact episode row vertical placement when 1 season) */}
         {isSeries && episodes.length > 0 && (
           <section className="space-y-3">
-            {/* Left-side Transparent Season Dropdown Selector (hides cleanly when preview hides info, preserving episode edge height) */}
-            <div
-              className={`flex items-center justify-start transition-opacity duration-500 ease-out ${
-                shouldHideInfo ? 'opacity-0 pointer-events-none' : 'opacity-100 pointer-events-auto'
-              }`}
-            >
-              <div className="relative">
-                <button
-                  onClick={() => setIsSeasonDropdownOpen(!isSeasonDropdownOpen)}
-                  className="flex items-center gap-2 px-3.5 py-1.5 rounded-xl bg-transparent hover:bg-white/10 border border-white/25 hover:border-white/50 text-white font-bold text-xs sm:text-sm transition-colors cursor-pointer"
-                >
-                  <span>Season {selectedSeasonNumber}</span>
-                  <ChevronDown
-                    className={`w-4 h-4 text-white/80 transition-transform ${
-                      isSeasonDropdownOpen ? 'rotate-180' : ''
-                    }`}
-                  />
-                </button>
+            {hasMultipleSeasons ? (
+              <div
+                ref={seasonSelectorAnchorRef}
+                className={`flex items-center justify-start transition-opacity duration-500 ease-out ${
+                  shouldHideInfo && !shouldDissolveForScroll ? 'opacity-0 pointer-events-none' : 'opacity-100 pointer-events-auto'
+                }`}
+              >
+                <div className="relative">
+                  <button
+                    onClick={() => setIsSeasonDropdownOpen(!isSeasonDropdownOpen)}
+                    className="flex items-center gap-2 px-3.5 py-1.5 rounded-xl bg-transparent hover:bg-white/10 border border-white/25 hover:border-white/50 text-white font-bold text-xs sm:text-sm transition-colors cursor-pointer"
+                  >
+                    <span>Season {selectedSeasonNumber}</span>
+                    <ChevronDown
+                      className={`w-4 h-4 text-white/80 transition-transform ${
+                        isSeasonDropdownOpen ? 'rotate-180' : ''
+                      }`}
+                    />
+                  </button>
 
-                {isSeasonDropdownOpen && (
-                  <div className="absolute left-0 top-full mt-2 w-56 rounded-xl bg-zinc-900/95 backdrop-blur-md border border-zinc-700 p-1.5 shadow-2xl z-30 space-y-1">
-                    {seasons.map((s) => (
-                      <button
-                        key={s.seasonNumber}
-                        onClick={() => {
-                          setSelectedSeasonNumber(s.seasonNumber);
-                          setIsSeasonDropdownOpen(false);
-                        }}
-                        className={`w-full text-left px-3 py-2 rounded-lg text-xs font-semibold transition-colors cursor-pointer flex items-center justify-between ${
-                          s.seasonNumber === selectedSeasonNumber
-                            ? 'bg-white/15 text-white font-bold'
-                            : 'text-zinc-300 hover:text-white hover:bg-white/5'
-                        }`}
-                      >
-                        <span>Season {s.seasonNumber}</span>
-                        <span className="text-zinc-400 text-[11px]">
-                          {s.episodes.length} {s.episodes.length === 1 ? 'Episode' : 'Episodes'}
-                        </span>
-                      </button>
-                    ))}
-                  </div>
-                )}
+                  {isSeasonDropdownOpen && (
+                    <div className="absolute left-0 top-full mt-2 w-56 rounded-xl bg-zinc-900/95 backdrop-blur-md border border-zinc-700 p-1.5 shadow-2xl z-30 space-y-1">
+                      {seasons.map((s) => (
+                        <button
+                          key={s.seasonNumber}
+                          onClick={() => {
+                            setSelectedSeasonNumber(s.seasonNumber);
+                            setIsSeasonDropdownOpen(false);
+                          }}
+                          className={`w-full text-left px-3 py-2 rounded-lg text-xs font-semibold transition-colors cursor-pointer flex items-center justify-between ${
+                            s.seasonNumber === selectedSeasonNumber
+                              ? 'bg-white/15 text-white font-bold'
+                              : 'text-zinc-300 hover:text-white hover:bg-white/5'
+                          }`}
+                        >
+                          <span>Season {s.seasonNumber}</span>
+                          <span className="text-zinc-400 text-[11px]">
+                            {s.episodes.length} {s.episodes.length === 1 ? 'Episode' : 'Episodes'}
+                          </span>
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                </div>
               </div>
-            </div>
+            ) : (
+              /* Preserve exact episode row vertical placement without rendering Season selector for single-season titles */
+              <div className="h-[34px] pointer-events-none" aria-hidden="true" />
+            )}
 
-            {/* Horizontal Episodes Row: exact homepage style (rounded-[6px], NO border, 4 cards + edge of 5th) */}
-            <div className="relative group/episodes">
+            {/* Horizontal Episodes Row: stretches edge-to-edge on BOTH far left and far right when scrolling */}
+            <div ref={episodesRowAnchorRef} className="relative group/episodes -ml-6 sm:-ml-8 lg:-ml-12">
               {canScrollLeft && (
                 <button
                   onClick={(e) => {
@@ -1101,9 +1292,14 @@ export const ShareTitleDesktopPage: React.FC<ShareTitleDesktopPageProps> = ({
                     scrollRowByCards(episodesRowRef, 'left', '[data-episode-card="true"]', 4);
                   }}
                   aria-label="Scroll left"
-                  className="group/nav absolute left-0 top-0 z-40 w-11 sm:w-12 md:w-14 h-[150px] md:h-[164px] lg:h-[180px] rounded-r-xl rounded-l-none bg-black/40 hover:bg-black/75 text-white flex items-center justify-center cursor-pointer border-0 select-none opacity-0 group-hover/episodes:opacity-100 transition-opacity duration-200 shadow-xl"
+                  style={{
+                    top: rowNavBoxes.episodes ? `${rowNavBoxes.episodes.top}px` : '0px',
+                    height: rowNavBoxes.episodes ? `${rowNavBoxes.episodes.height}px` : '164px',
+                    background: 'linear-gradient(to right, rgba(0, 0, 0, 0.72) 0%, rgba(0, 0, 0, 0.42) 45%, rgba(0, 0, 0, 0.14) 76%, rgba(0, 0, 0, 0) 100%)'
+                  }}
+                  className="group/nav absolute left-0 z-40 w-12 sm:w-14 md:w-16 rounded-none text-white flex items-center justify-start pl-1.5 sm:pl-2 cursor-pointer border-0 select-none opacity-0 group-hover/episodes:opacity-100 transition-opacity duration-200"
                 >
-                  <ChevronLeft className="w-8 h-8 stroke-[2.5] group-active/nav:scale-75 transition-transform duration-100" />
+                  <ChevronLeft className="w-8 h-8 stroke-[2.5] drop-shadow-[0_2px_6px_rgba(0,0,0,0.7)] group-active/nav:scale-75 transition-transform duration-100" />
                 </button>
               )}
 
@@ -1114,9 +1310,14 @@ export const ShareTitleDesktopPage: React.FC<ShareTitleDesktopPageProps> = ({
                     scrollRowByCards(episodesRowRef, 'right', '[data-episode-card="true"]', 4);
                   }}
                   aria-label="Scroll right"
-                  className="group/nav absolute right-0 top-0 z-40 w-11 sm:w-12 md:w-14 h-[150px] md:h-[164px] lg:h-[180px] rounded-l-xl rounded-r-none bg-black/40 hover:bg-black/75 text-white flex items-center justify-center cursor-pointer border-0 select-none opacity-0 group-hover/episodes:opacity-100 transition-opacity duration-200 shadow-xl"
+                  style={{
+                    top: rowNavBoxes.episodes ? `${rowNavBoxes.episodes.top}px` : '0px',
+                    height: rowNavBoxes.episodes ? `${rowNavBoxes.episodes.height}px` : '164px',
+                    background: 'linear-gradient(to left, rgba(0, 0, 0, 0.72) 0%, rgba(0, 0, 0, 0.42) 45%, rgba(0, 0, 0, 0.14) 76%, rgba(0, 0, 0, 0) 100%)'
+                  }}
+                  className="group/nav absolute right-0 z-40 w-12 sm:w-14 md:w-16 rounded-none text-white flex items-center justify-end pr-1.5 sm:pr-2 cursor-pointer border-0 select-none opacity-0 group-hover/episodes:opacity-100 transition-opacity duration-200"
                 >
-                  <ChevronRight className="w-8 h-8 stroke-[2.5] group-active/nav:scale-75 transition-transform duration-100" />
+                  <ChevronRight className="w-8 h-8 stroke-[2.5] drop-shadow-[0_2px_6px_rgba(0,0,0,0.7)] group-active/nav:scale-75 transition-transform duration-100" />
                 </button>
               )}
 
@@ -1125,7 +1326,7 @@ export const ShareTitleDesktopPage: React.FC<ShareTitleDesktopPageProps> = ({
                 onScroll={() =>
                   checkRowScroll(episodesRowRef, setCanScrollLeft, setCanScrollRight)
                 }
-                className="flex items-start gap-2 sm:gap-2.5 md:gap-3 lg:gap-4 overflow-x-auto no-scrollbar scroll-smooth pb-2 select-none"
+                className="flex items-start gap-2 sm:gap-2.5 md:gap-3 lg:gap-4 overflow-x-auto no-scrollbar scroll-smooth pb-2 pl-6 sm:pl-8 lg:pl-12 pr-6 sm:pr-8 lg:pr-12 select-none"
               >
                 {episodes.map((ep) => {
                   const epKey = ep.id || `s${ep.seasonNumber || 1}e${ep.episodeNumber}`;
@@ -1145,7 +1346,10 @@ export const ShareTitleDesktopPage: React.FC<ShareTitleDesktopPageProps> = ({
                       onClick={() => onPlayShow(show, ep)}
                       className="group/ep w-[calc((100vw-20px)/2.12)] sm:w-[265px] md:w-[290px] lg:w-[calc((100vw-112px)/4.05)] max-w-[340px] shrink-0 cursor-pointer flex flex-col gap-2 rounded-[6px] md:rounded-[10px] border-0 select-none"
                     >
-                      <div className="relative aspect-video w-full rounded-[6px] md:rounded-[10px] overflow-hidden bg-zinc-900 border-0">
+                      <div
+                        data-episode-thumb="true"
+                        className="relative aspect-video w-full rounded-[6px] md:rounded-[10px] overflow-hidden bg-zinc-900 border-0"
+                      >
                         <MediaImage
                           src={ep.thumbnailUrl}
                           fallbackTitle={ep.title || `Episode ${ep.episodeNumber}`}
@@ -1222,6 +1426,9 @@ export const ShareTitleDesktopPage: React.FC<ShareTitleDesktopPageProps> = ({
           </section>
         )}
 
+        {/* More Info Ad Tile (Beneath Episodes) */}
+        {renderMoreInfoAd('episodes')}
+
         {/* SECTION 2: TRAILERS & MORE */}
         {trailersList.length > 0 && (
           <section className="space-y-4">
@@ -1236,9 +1443,14 @@ export const ShareTitleDesktopPage: React.FC<ShareTitleDesktopPageProps> = ({
                     scrollRowByCards(trailersRowRef, 'left', '[data-trailer-card="true"]', 3)
                   }
                   aria-label="Scroll trailers left"
-                  className="group/nav absolute left-0 top-0 z-40 w-11 sm:w-12 h-[142px] sm:h-[154px] rounded-r-xl bg-black/40 hover:bg-black/75 text-white flex items-center justify-center cursor-pointer opacity-0 group-hover/trailers:opacity-100 transition-opacity duration-200 shadow-xl"
+                  style={{
+                    top: rowNavBoxes.trailers ? `${rowNavBoxes.trailers.top}px` : '0px',
+                    height: rowNavBoxes.trailers ? `${rowNavBoxes.trailers.height}px` : '154px',
+                    background: 'linear-gradient(to right, rgba(0, 0, 0, 0.72) 0%, rgba(0, 0, 0, 0.42) 45%, rgba(0, 0, 0, 0.14) 76%, rgba(0, 0, 0, 0) 100%)'
+                  }}
+                  className="group/nav absolute left-0 z-40 w-12 sm:w-14 md:w-16 rounded-none text-white flex items-center justify-start pl-1.5 sm:pl-2 cursor-pointer border-0 select-none opacity-0 group-hover/trailers:opacity-100 transition-opacity duration-200"
                 >
-                  <ChevronLeft className="w-8 h-8 stroke-[2.5]" />
+                  <ChevronLeft className="w-8 h-8 stroke-[2.5] drop-shadow-[0_2px_6px_rgba(0,0,0,0.7)] group-active/nav:scale-75 transition-transform duration-100" />
                 </button>
               )}
 
@@ -1248,9 +1460,14 @@ export const ShareTitleDesktopPage: React.FC<ShareTitleDesktopPageProps> = ({
                     scrollRowByCards(trailersRowRef, 'right', '[data-trailer-card="true"]', 3)
                   }
                   aria-label="Scroll trailers right"
-                  className="group/nav absolute right-0 top-0 z-40 w-11 sm:w-12 h-[142px] sm:h-[154px] rounded-l-xl bg-black/40 hover:bg-black/75 text-white flex items-center justify-center cursor-pointer opacity-0 group-hover/trailers:opacity-100 transition-opacity duration-200 shadow-xl"
+                  style={{
+                    top: rowNavBoxes.trailers ? `${rowNavBoxes.trailers.top}px` : '0px',
+                    height: rowNavBoxes.trailers ? `${rowNavBoxes.trailers.height}px` : '154px',
+                    background: 'linear-gradient(to left, rgba(0, 0, 0, 0.72) 0%, rgba(0, 0, 0, 0.42) 45%, rgba(0, 0, 0, 0.14) 76%, rgba(0, 0, 0, 0) 100%)'
+                  }}
+                  className="group/nav absolute right-0 z-40 w-12 sm:w-14 md:w-16 rounded-none text-white flex items-center justify-end pr-1.5 sm:pr-2 cursor-pointer border-0 select-none opacity-0 group-hover/trailers:opacity-100 transition-opacity duration-200"
                 >
-                  <ChevronRight className="w-8 h-8 stroke-[2.5]" />
+                  <ChevronRight className="w-8 h-8 stroke-[2.5] drop-shadow-[0_2px_6px_rgba(0,0,0,0.7)] group-active/nav:scale-75 transition-transform duration-100" />
                 </button>
               )}
 
@@ -1263,7 +1480,7 @@ export const ShareTitleDesktopPage: React.FC<ShareTitleDesktopPageProps> = ({
                     setCanScrollTrailersRight
                   )
                 }
-                className="flex items-start gap-3.5 overflow-x-auto no-scrollbar scroll-smooth pb-2 select-none"
+                className="flex items-start gap-3.5 overflow-x-auto no-scrollbar scroll-smooth pb-2 pr-6 sm:pr-8 lg:pr-12 select-none"
               >
                 {trailersList.map((trailer) => (
                   <div
@@ -1274,7 +1491,10 @@ export const ShareTitleDesktopPage: React.FC<ShareTitleDesktopPageProps> = ({
                     }
                     className="w-[calc((100%-42px)/4.32)] shrink-0 min-w-[240px] max-w-[360px] cursor-pointer flex flex-col gap-2 rounded-[6px]"
                   >
-                    <div className="relative aspect-video w-full rounded-[6px] overflow-hidden bg-zinc-900">
+                    <div
+                      data-trailer-thumb="true"
+                      className="relative aspect-video w-full rounded-[6px] overflow-hidden bg-zinc-900"
+                    >
                       <MediaImage
                         src={trailer.thumbnailUrl}
                         fallbackTitle={trailer.title}
@@ -1304,9 +1524,12 @@ export const ShareTitleDesktopPage: React.FC<ShareTitleDesktopPageProps> = ({
           </section>
         )}
 
-        {/* SECTION 3: MORE LIKE THIS (Horizontal Row Feed, max 12 titles of related genre/category) */}
+        {/* More Info Ad Tile (Beneath Trailers & More) */}
+        {renderMoreInfoAd('trailers')}
+
+        {/* SECTION 3: MORE LIKE THIS (Restored clean distance from edges + transparent buttons outside the row) */}
         {similarShows.length > 0 && (
-          <section className="space-y-4">
+          <section className="space-y-4 pr-6 sm:pr-8 lg:pr-12">
             <div className="flex items-center gap-1.5">
               <h2 className="text-lg sm:text-xl font-bold text-white tracking-tight">
                 More Like This
@@ -1321,9 +1544,13 @@ export const ShareTitleDesktopPage: React.FC<ShareTitleDesktopPageProps> = ({
                     scrollRowByCards(relatedRowRef, 'left', '[data-related-card="true"]', 5)
                   }
                   aria-label="Scroll related left"
-                  className="group/nav absolute left-0 top-0 bottom-2 z-40 w-11 sm:w-12 rounded-r-xl bg-black/45 hover:bg-black/80 text-white flex items-center justify-center cursor-pointer opacity-0 group-hover/related:opacity-100 transition-opacity duration-200 shadow-xl"
+                  style={{
+                    top: rowNavBoxes.related ? `${rowNavBoxes.related.top}px` : '0px',
+                    height: rowNavBoxes.related ? `${rowNavBoxes.related.height}px` : 'calc(100% - 8px)'
+                  }}
+                  className="group/nav absolute -left-6 sm:-left-8 lg:-left-11 z-40 w-7 sm:w-8 lg:w-10 bg-transparent text-white/75 hover:text-white flex items-center justify-center cursor-pointer border-0 select-none opacity-0 group-hover/related:opacity-100 transition-opacity duration-200"
                 >
-                  <ChevronLeft className="w-8 h-8 stroke-[2.5]" />
+                  <ChevronLeft className="w-7 h-7 sm:w-8 sm:h-8 stroke-[2.2] drop-shadow-[0_2px_6px_rgba(0,0,0,0.85)] group-active/nav:scale-75 transition-transform duration-100" />
                 </button>
               )}
 
@@ -1333,9 +1560,13 @@ export const ShareTitleDesktopPage: React.FC<ShareTitleDesktopPageProps> = ({
                     scrollRowByCards(relatedRowRef, 'right', '[data-related-card="true"]', 5)
                   }
                   aria-label="Scroll related right"
-                  className="group/nav absolute right-0 top-0 bottom-2 z-40 w-11 sm:w-12 rounded-l-xl bg-black/45 hover:bg-black/80 text-white flex items-center justify-center cursor-pointer opacity-0 group-hover/related:opacity-100 transition-opacity duration-200 shadow-xl"
+                  style={{
+                    top: rowNavBoxes.related ? `${rowNavBoxes.related.top}px` : '0px',
+                    height: rowNavBoxes.related ? `${rowNavBoxes.related.height}px` : 'calc(100% - 8px)'
+                  }}
+                  className="group/nav absolute -right-6 sm:-right-8 lg:-right-11 z-40 w-7 sm:w-8 lg:w-10 bg-transparent text-white/75 hover:text-white flex items-center justify-center cursor-pointer border-0 select-none opacity-0 group-hover/related:opacity-100 transition-opacity duration-200"
                 >
-                  <ChevronRight className="w-8 h-8 stroke-[2.5]" />
+                  <ChevronRight className="w-7 h-7 sm:w-8 sm:h-8 stroke-[2.2] drop-shadow-[0_2px_6px_rgba(0,0,0,0.85)] group-active/nav:scale-75 transition-transform duration-100" />
                 </button>
               )}
 
@@ -1375,9 +1606,12 @@ export const ShareTitleDesktopPage: React.FC<ShareTitleDesktopPageProps> = ({
           </section>
         )}
 
+        {/* More Info Ad Tile (Beneath More Like This) */}
+        {renderMoreInfoAd('more_like_this')}
+
         {/* SECTION 4: WHERE TO WATCH (Square Logo Card Style matching image_16b38785.png) */}
         {whereToWatchItems.length > 0 && (
-          <section className="space-y-4">
+          <section className="space-y-4 pr-6 sm:pr-8 lg:pr-12">
             <h2 className="text-lg sm:text-xl font-bold text-white tracking-tight">
               Where to Watch
             </h2>
@@ -1437,11 +1671,14 @@ export const ShareTitleDesktopPage: React.FC<ShareTitleDesktopPageProps> = ({
           </section>
         )}
 
+        {/* More Info Ad Tile (Beneath Where to Watch) */}
+        {renderMoreInfoAd('where_to_watch')}
+
         {/* SECTION 5: CAST & CREW HORIZONTAL ROW + ABOUT & INFORMATION SECTION */}
         <section className="space-y-10 pt-2">
-          {/* Cast & Crew Row matching image_0fb6cc57.png */}
+          {/* Cast & Crew Row: Restored clean distance from edges + transparent buttons outside the row */}
           {show.cast && show.cast.length > 0 && (
-            <div className="space-y-4">
+            <div className="space-y-4 pr-6 sm:pr-8 lg:pr-12">
               <div className="flex items-center gap-1.5">
                 <h2 className="text-lg sm:text-xl font-bold text-white tracking-tight">
                   Cast & Crew
@@ -1456,9 +1693,13 @@ export const ShareTitleDesktopPage: React.FC<ShareTitleDesktopPageProps> = ({
                       scrollRowByCards(castRowRef, 'left', '[data-cast-card="true"]', 5)
                     }
                     aria-label="Scroll cast left"
-                    className="group/nav absolute left-0 top-0 bottom-6 z-40 w-10 rounded-r-xl bg-black/50 hover:bg-black/80 text-white flex items-center justify-center cursor-pointer opacity-0 group-hover/cast:opacity-100 transition-opacity duration-200"
+                    style={{
+                      top: rowNavBoxes.cast ? `${rowNavBoxes.cast.top}px` : '0px',
+                      height: rowNavBoxes.cast ? `${rowNavBoxes.cast.height}px` : '112px'
+                    }}
+                    className="group/nav absolute -left-6 sm:-left-8 lg:-left-11 z-40 w-7 sm:w-8 lg:w-10 bg-transparent text-white/75 hover:text-white flex items-center justify-center cursor-pointer border-0 select-none opacity-0 group-hover/cast:opacity-100 transition-opacity duration-200"
                   >
-                    <ChevronLeft className="w-7 h-7 stroke-[2.5]" />
+                    <ChevronLeft className="w-7 h-7 sm:w-8 sm:h-8 stroke-[2.2] drop-shadow-[0_2px_6px_rgba(0,0,0,0.85)] group-active/nav:scale-75 transition-transform duration-100" />
                   </button>
                 )}
 
@@ -1468,9 +1709,13 @@ export const ShareTitleDesktopPage: React.FC<ShareTitleDesktopPageProps> = ({
                       scrollRowByCards(castRowRef, 'right', '[data-cast-card="true"]', 5)
                     }
                     aria-label="Scroll cast right"
-                    className="group/nav absolute right-0 top-0 bottom-6 z-40 w-10 rounded-l-xl bg-black/50 hover:bg-black/80 text-white flex items-center justify-center cursor-pointer opacity-0 group-hover/cast:opacity-100 transition-opacity duration-200"
+                    style={{
+                      top: rowNavBoxes.cast ? `${rowNavBoxes.cast.top}px` : '0px',
+                      height: rowNavBoxes.cast ? `${rowNavBoxes.cast.height}px` : '112px'
+                    }}
+                    className="group/nav absolute -right-6 sm:-right-8 lg:-right-11 z-40 w-7 sm:w-8 lg:w-10 bg-transparent text-white/75 hover:text-white flex items-center justify-center cursor-pointer border-0 select-none opacity-0 group-hover/cast:opacity-100 transition-opacity duration-200"
                   >
-                    <ChevronRight className="w-7 h-7 stroke-[2.5]" />
+                    <ChevronRight className="w-7 h-7 sm:w-8 sm:h-8 stroke-[2.2] drop-shadow-[0_2px_6px_rgba(0,0,0,0.85)] group-active/nav:scale-75 transition-transform duration-100" />
                   </button>
                 )}
 
@@ -1492,7 +1737,10 @@ export const ShareTitleDesktopPage: React.FC<ShareTitleDesktopPageProps> = ({
                         aria-label={`View ${actor.name}'s appearances`}
                         className="group/actor flex flex-col items-center text-center w-[112px] sm:w-[126px] shrink-0 cursor-pointer focus:outline-none"
                       >
-                        <div className="w-24 h-24 sm:w-28 sm:h-28 rounded-full overflow-hidden bg-[#2b2b2f] flex items-center justify-center shadow-md ring-2 ring-transparent group-hover/actor:ring-white/80 transition-all duration-200">
+                        <div
+                          data-cast-thumb="true"
+                          className="w-24 h-24 sm:w-28 sm:h-28 rounded-full overflow-hidden bg-[#2b2b2f] flex items-center justify-center shadow-md ring-2 ring-transparent group-hover/actor:ring-white/80 transition-all duration-200"
+                        >
                           {imgSrc ? (
                             <img
                               src={imgSrc}
@@ -1522,8 +1770,11 @@ export const ShareTitleDesktopPage: React.FC<ShareTitleDesktopPageProps> = ({
             </div>
           )}
 
+          {/* More Info Ad Tile (Beneath Cast & Crew) */}
+          {renderMoreInfoAd('cast')}
+
           {/* About Card & Information Section matching image_eec75954.png */}
-          <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-start">
+          <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-start pr-6 sm:pr-8 lg:pr-12">
             {/* About Box */}
             <div className="lg:col-span-5 space-y-3.5">
               <h2 className="text-lg sm:text-xl font-bold text-white tracking-tight">About</h2>
@@ -1598,8 +1849,14 @@ export const ShareTitleDesktopPage: React.FC<ShareTitleDesktopPageProps> = ({
               </div>
             </div>
           </div>
+
+          {/* More Info Ad Tile (Beneath About & Information) */}
+          {renderMoreInfoAd('about')}
         </section>
       </div>
+
+      {/* Minimal Desktop Footer matching #181818 page background */}
+      <Footer shows={allShows} platformName={platformName} />
 
       {/* Expanded About Synopsis Modal: Portaled to document.body so it stays centered in the current viewport window */}
       {isAboutModalOpen &&

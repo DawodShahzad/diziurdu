@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { MapPin, X, Shield, Megaphone, HelpCircle, FileText, Lock, Tv, Mail, ExternalLink, CheckCircle } from 'lucide-react';
 import { DiziLogo } from './DiziLogo';
 import { Show } from '../types';
+import { useDeviceLayout } from '../utils/deviceLayout';
 
 interface FooterProps {
   shows?: Show[];
@@ -39,6 +40,7 @@ export const Footer: React.FC<FooterProps> = ({
   const [contactSubmitted, setContactSubmitted] = useState(false);
   const [dmcaSubmitted, setDmcaSubmitted] = useState(false);
   const [promoteSubmitted, setPromoteSubmitted] = useState(false);
+  const { isMobile } = useDeviceLayout();
 
   const closeModal = () => {
     setActiveModal(null);
@@ -47,309 +49,87 @@ export const Footer: React.FC<FooterProps> = ({
     setPromoteSubmitted(false);
   };
 
-  // Dedicated Desktop My List & Full-Size More Info Compact Footer
-  if (isMyListPage) {
-    return (
-      <footer className="hidden md:block relative w-full mt-0 pt-2 px-6 sm:px-8 lg:px-12 pb-10 select-none bg-transparent">
-        <div className="max-w-[1780px] mx-auto flex flex-col md:flex-row md:items-end justify-between gap-6 pt-6 border-t border-white/10">
-          {/* Left: Brand Logo + Copyright */}
-          <div className="flex flex-col items-start gap-2.5">
-            <div className="flex items-center gap-2 max-w-[150px]">
-              <DiziLogo variant="red" size="md" />
-            </div>
-            <p className="text-xs text-zinc-400 font-normal">
-              © {new Date().getFullYear()} {platformName}, All Rights Reserved
-            </p>
-          </div>
+  if (isMobile) return null;
 
-          {/* Right: Social icons above the main footer links */}
-          <div className="flex flex-col items-end gap-3.5">
-            {/* Clickable Social Icons row (Facebook, Instagram, YouTube, X) */}
-            <div className="flex items-center gap-4 text-zinc-300">
-              <a
-                href="https://facebook.com/diziurdu"
-                target="_blank"
-                rel="noopener noreferrer"
-                className="hover:text-white transition-colors cursor-pointer"
-                aria-label="Facebook"
-              >
-                <svg className="w-4.5 h-4.5 fill-current" viewBox="0 0 24 24"><path d="M24 12.073c0-6.627-5.373-12-12-12s-12 5.373-12 12c0 5.99 4.388 10.954 10.125 11.854v-8.385H7.078v-3.47h3.047V9.43c0-3.007 1.792-4.669 4.533-4.669 1.312 0 2.686.235 2.686.235v2.953H15.83c-1.491 0-1.956.925-1.956 1.874v2.25h3.328l-.532 3.47h-2.796v8.385C19.612 23.027 24 18.062 24 12.073z"/></svg>
-              </a>
-              <a
-                href="https://instagram.com/diziurdu"
-                target="_blank"
-                rel="noopener noreferrer"
-                className="hover:text-white transition-colors cursor-pointer"
-                aria-label="Instagram"
-              >
-                <svg className="w-4.5 h-4.5 fill-current" viewBox="0 0 24 24"><path d="M12 2.163c3.204 0 3.584.012 4.85.07 3.252.148 4.771 1.691 4.919 4.919.058 1.265.069 1.645.069 4.849 0 3.205-.012 3.584-.069 4.849-.149 3.225-1.664 4.771-4.919 4.919-1.266.058-1.644.07-4.85.07-3.204 0-3.584-.012-4.849-.07-3.26-.149-4.771-1.699-4.919-4.92-.058-1.265-.07-1.644-.07-4.849 0-3.204.013-3.583.07-4.849.149-3.227 1.664-4.771 4.919-4.919 1.266-.057 1.645-.069 4.849-.069zm0-2.163c-3.259 0-3.667.014-4.947.072-4.358.2-6.78 2.618-6.98 6.98-.059 1.281-.073 1.689-.073 4.948 0 3.259.014 3.668.072 4.948.2 4.358 2.618 6.78 6.98 6.98 1.281.058 1.689.072 4.948.072 3.259 0 3.668-.014 4.948-.072 4.354-.2 6.782-2.618 6.979-6.98.059-1.28.073-1.689.073-4.948 0-3.259-.014-3.667-.072-4.947-.196-4.354-2.617-6.78-6.979-6.98-1.281-.059-1.69-.073-4.949-.073zm0 5.838c-3.403 0-6.162 2.759-6.162 6.162s2.759 6.163 6.162 6.163 6.162-2.759 6.162-6.163c0-3.403-2.759-6.162-6.162-6.162zm0 10.162c-2.209 0-4-1.79-4-4 0-2.209 1.791-4 4-4s4 1.791 4 4c0 2.21-1.791 4-4 4zm6.406-11.845c-.796 0-1.441.645-1.441 1.44s.645 1.44 1.441 1.44c.795 0 1.439-.645 1.439-1.44s-.644-1.44-1.439-1.44z"/></svg>
-              </a>
-              <a
-                href="https://youtube.com/@diziurdu"
-                target="_blank"
-                rel="noopener noreferrer"
-                className="hover:text-white transition-colors cursor-pointer"
-                aria-label="YouTube"
-              >
-                <svg className="w-5 h-5 fill-current" viewBox="0 0 24 24"><path d="M23.498 6.186a3.016 3.016 0 0 0-2.122-2.136C19.505 3.545 12 3.545 12 3.545s-7.505 0-9.377.505A3.017 3.017 0 0 0 .502 6.186C0 8.07 0 12 0 12s0 3.93.502 5.814a3.016 3.016 0 0 0 2.122 2.136c1.871.505 9.376.505 9.376.505s7.505 0 9.377-.505a3.015 3.015 0 0 0 2.122-2.136C24 15.93 24 12 24 12s0-3.93-.502-5.814zM9.545 15.568V8.432L15.818 12l-6.273 3.568z"/></svg>
-              </a>
-              <a
-                href="https://x.com/diziurdu"
-                target="_blank"
-                rel="noopener noreferrer"
-                className="hover:text-white transition-colors cursor-pointer"
-                aria-label="X"
-              >
-                <svg className="w-4 h-4 fill-current" viewBox="0 0 24 24"><path d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-5.214-6.817L4.99 21.75H1.68l7.73-8.835L1.254 2.25H8.08l4.713 6.231zm-1.161 17.52h1.833L7.084 4.126H5.117z"/></svg>
-              </a>
-            </div>
-
-            {/* Main Footer Links (No new/foreign links) */}
-            <div className="flex flex-wrap items-center gap-x-5 gap-y-2 text-xs text-zinc-400 font-medium">
-              <button onClick={() => setActiveModal('privacy')} className="hover:text-white transition-colors cursor-pointer">
-                Privacy Policy
-              </button>
-              <button onClick={() => setActiveModal('terms')} className="hover:text-white transition-colors cursor-pointer">
-                Terms of Use
-              </button>
-              <button onClick={() => setActiveModal('dmca')} className="hover:text-white transition-colors cursor-pointer">
-                DMCA Takedown
-              </button>
-              <button onClick={() => setActiveModal('contact')} className="hover:text-white transition-colors cursor-pointer">
-                Contact Us
-              </button>
-              <button onClick={() => setActiveModal('faq')} className="hover:text-white transition-colors cursor-pointer">
-                FAQ
-              </button>
-            </div>
+  // Unified Minimal Desktop Footer: zero divider line, subtle ultra-smooth eased fade into page base color (no hard lines or banding)
+  return (
+    <footer
+      className="relative w-full mt-10 pt-14 px-6 sm:px-8 lg:px-12 pb-10 select-none border-0"
+      style={{
+        background:
+          'linear-gradient(to top, rgba(0, 0, 0, 0.44) 0%, rgba(0, 0, 0, 0.36) 14%, rgba(0, 0, 0, 0.27) 29%, rgba(0, 0, 0, 0.18) 45%, rgba(0, 0, 0, 0.11) 61%, rgba(0, 0, 0, 0.05) 77%, rgba(0, 0, 0, 0.015) 90%, rgba(0, 0, 0, 0) 100%)'
+      }}
+    >
+      <div className="max-w-[1780px] mx-auto flex flex-col md:flex-row md:items-end justify-between gap-6">
+        {/* Left: Brand Logo + Copyright */}
+        <div className="flex flex-col items-start gap-2.5">
+          <div className="flex items-center gap-2 max-w-[150px]">
+            <DiziLogo variant="red" size="md" />
           </div>
+          <p className="text-xs text-zinc-400 font-normal">
+            © {new Date().getFullYear()} {platformName}, All Rights Reserved
+          </p>
         </div>
 
-        {/* Modal viewer for footer links */}
-        {activeModal && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 sm:p-6 bg-black/50 animate-in fade-in duration-200">
-            <div className="relative w-full max-w-3xl max-h-[85vh] overflow-y-auto bg-[#101217] border border-white/10 rounded-2xl p-6 sm:p-8 shadow-2xl text-zinc-200">
-              <button
-                onClick={closeModal}
-                className="absolute top-5 right-5 p-2 rounded-full bg-white/10 hover:bg-white/20 text-zinc-300 hover:text-white transition-colors cursor-pointer"
-                aria-label="Close modal"
-              >
-                <X className="w-5 h-5" />
-              </button>
-              <div className="space-y-4 text-xs leading-relaxed">
-                <h2 className="text-xl font-bold text-white mb-2 capitalize">
-                  {activeModal === 'legal-notices' ? 'Preliminary Information Form' : activeModal.replace('-', ' ')}
-                </h2>
-                <p className="text-zinc-400">
-                  This document governs the usage, subscription, and legal terms applicable to your account and viewing on the platform. All rights reserved.
-                </p>
-                <div className="p-4 rounded-xl bg-white/[0.03] border border-white/5 space-y-2">
-                  <p className="font-semibold text-white">General Information & Compliance</p>
-                  <p className="text-zinc-400">
-                    Pursuant to consumer protection regulations and digital streaming licensing provisions, users are entitled to full disclosure regarding subscriptions, digital content delivery, data processing, and cancellations.
-                  </p>
-                </div>
-              </div>
-            </div>
-          </div>
-        )}
-      </footer>
-    );
-  }
-
-  return (
-    <footer className="hidden md:block relative w-full mt-16 sm:mt-20 px-3 sm:px-6 md:px-10 lg:px-14 pb-6 sm:pb-8 select-none">
-      {/* 
-        Overlaid Container: Floating card design that does not touch left, right, and bottom edges
-      */}
-      <div className="relative rounded-2xl sm:rounded-3xl border border-white/10 bg-[#07080a]/95 backdrop-blur-md shadow-2xl overflow-hidden text-zinc-400 pt-10 sm:pt-12 pb-8 sm:pb-10 px-6 sm:px-10 lg:px-14">
-        <div className="max-w-7xl mx-auto">
-          {/* Main 4-Column Layout */}
-          <div className="grid grid-cols-1 md:grid-cols-12 gap-8 lg:gap-12">
-            {/* Column 1: Brand Logo, Location & Tagline */}
-            <div className="md:col-span-4 lg:col-span-4 flex flex-col items-start space-y-3.5">
-              {/* Dizi Urdu Brand Logo */}
-              <div className="flex items-center gap-2 max-w-[150px]">
-                <DiziLogo variant="red" size="lg" className="max-w-[150px]" />
-              </div>
-
-              {/* Location marker */}
-              <div className="flex items-center gap-1.5 text-zinc-300 text-xs sm:text-sm font-semibold tracking-wide">
-                <MapPin className="w-4 h-4 text-[#b81d24]" />
-                <span>{platformName} Pakistan</span>
-              </div>
-
-              {/* Tagline */}
-              <p className="text-xs text-zinc-400 leading-relaxed max-w-sm">
-                Pakistan’s home for premium Urdu dubbed Turkish dramas, historical Ottoman epics, official trailers, and cast biographies.
-              </p>
-            </div>
-
-            {/* Column 2: EXPLORE */}
-            <div className="md:col-span-2 lg:col-span-2 space-y-3.5">
-              <h4 className="text-[11px] font-black tracking-[0.2em] uppercase text-zinc-300">
-                EXPLORE
-              </h4>
-              <ul className="space-y-2.5 text-xs">
-                <li>
-                  <button
-                    onClick={onOpenCategories}
-                    className="text-zinc-400 hover:text-white transition-colors cursor-pointer text-left"
-                  >
-                    Categories
-                  </button>
-                </li>
-                {onRequestContent && (
-                  <li>
-                    <button
-                      onClick={onRequestContent}
-                      className="text-zinc-400 hover:text-white transition-colors cursor-pointer text-left"
-                    >
-                      Request Content
-                    </button>
-                  </li>
-                )}
-                {onOpenAccount && (
-                  <li>
-                    <button
-                      onClick={onOpenAccount}
-                      className="text-zinc-400 hover:text-white transition-colors cursor-pointer text-left"
-                    >
-                      My Account
-                    </button>
-                  </li>
-                )}
-              </ul>
-            </div>
-
-            {/* Column 3: LEGAL */}
-            <div className="md:col-span-3 lg:col-span-3 space-y-3.5">
-              <h4 className="text-[11px] font-black tracking-[0.2em] uppercase text-zinc-300">
-                LEGAL
-              </h4>
-              <ul className="space-y-2.5 text-xs">
-                <li>
-                  <button
-                    onClick={() => setActiveModal('privacy')}
-                    className="text-zinc-400 hover:text-white transition-colors cursor-pointer text-left"
-                  >
-                    Privacy Policy
-                  </button>
-                </li>
-                <li>
-                  <button
-                    onClick={() => setActiveModal('terms')}
-                    className="text-zinc-400 hover:text-white transition-colors cursor-pointer text-left"
-                  >
-                    Terms of Use
-                  </button>
-                </li>
-                <li>
-                  <button
-                    onClick={() => setActiveModal('dmca')}
-                    className="text-zinc-400 hover:text-white transition-colors cursor-pointer text-left"
-                  >
-                    DMCA Takedown
-                  </button>
-                </li>
-              </ul>
-            </div>
-
-            {/* Column 4: SUPPORT */}
-            <div className="md:col-span-3 lg:col-span-3 space-y-3.5">
-              <h4 className="text-[11px] font-black tracking-[0.2em] uppercase text-zinc-300">
-                SUPPORT
-              </h4>
-              <ul className="space-y-2.5 text-xs">
-                <li>
-                  <button
-                    onClick={() => setActiveModal('contact')}
-                    className="text-zinc-400 hover:text-white transition-colors cursor-pointer text-left"
-                  >
-                    Contact Us
-                  </button>
-                </li>
-                <li>
-                  <button
-                    onClick={() => setActiveModal('faq')}
-                    className="text-zinc-400 hover:text-white transition-colors cursor-pointer text-left"
-                  >
-                    FAQ
-                  </button>
-                </li>
-                <li>
-                  <button
-                    onClick={() => setActiveModal('promote')}
-                    className="text-zinc-400 hover:text-white transition-colors cursor-pointer text-left"
-                  >
-                    Promote with Us
-                  </button>
-                </li>
-              </ul>
-            </div>
+        {/* Right: Social icons above the main footer links */}
+        <div className="flex flex-col items-end gap-3.5">
+          {/* Clickable Social Icons row (Facebook, Instagram, YouTube, X) */}
+          <div className="flex items-center gap-4 text-zinc-300">
+            <a
+              href="https://facebook.com/diziurdu"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="hover:text-white transition-colors cursor-pointer"
+              aria-label="Facebook"
+            >
+              <svg className="w-4.5 h-4.5 fill-current" viewBox="0 0 24 24"><path d="M24 12.073c0-6.627-5.373-12-12-12s-12 5.373-12 12c0 5.99 4.388 10.954 10.125 11.854v-8.385H7.078v-3.47h3.047V9.43c0-3.007 1.792-4.669 4.533-4.669 1.312 0 2.686.235 2.686.235v2.953H15.83c-1.491 0-1.956.925-1.956 1.874v2.25h3.328l-.532 3.47h-2.796v8.385C19.612 23.027 24 18.062 24 12.073z"/></svg>
+            </a>
+            <a
+              href="https://instagram.com/diziurdu"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="hover:text-white transition-colors cursor-pointer"
+              aria-label="Instagram"
+            >
+              <svg className="w-4.5 h-4.5 fill-current" viewBox="0 0 24 24"><path d="M12 2.163c3.204 0 3.584.012 4.85.07 3.252.148 4.771 1.691 4.919 4.919.058 1.265.069 1.645.069 4.849 0 3.205-.012 3.584-.069 4.849-.149 3.225-1.664 4.771-4.919 4.919-1.266.058-1.644.07-4.85.07-3.204 0-3.584-.012-4.849-.07-3.26-.149-4.771-1.699-4.919-4.92-.058-1.265-.07-1.644-.07-4.849 0-3.204.013-3.583.07-4.849.149-3.227 1.664-4.771 4.919-4.919 1.266-.057 1.645-.069 4.849-.069zm0-2.163c-3.259 0-3.667.014-4.947.072-4.358.2-6.78 2.618-6.98 6.98-.059 1.281-.073 1.689-.073 4.948 0 3.259.014 3.668.072 4.948.2 4.358 2.618 6.78 6.98 6.98 1.281.058 1.689.072 4.948.072 3.259 0 3.668-.014 4.948-.072 4.354-.2 6.782-2.618 6.979-6.98.059-1.28.073-1.689.073-4.948 0-3.259-.014-3.667-.072-4.947-.196-4.354-2.617-6.78-6.979-6.98-1.281-.059-1.69-.073-4.949-.073zm0 5.838c-3.403 0-6.162 2.759-6.162 6.162s2.759 6.163 6.162 6.163 6.162-2.759 6.162-6.163c0-3.403-2.759-6.162-6.162-6.162zm0 10.162c-2.209 0-4-1.79-4-4 0-2.209 1.791-4 4-4s4 1.791 4 4c0 2.21-1.791 4-4 4zm6.406-11.845c-.796 0-1.441.645-1.441 1.44s.645 1.44 1.441 1.44c.795 0 1.439-.645 1.439-1.44s-.644-1.44-1.439-1.44z"/></svg>
+            </a>
+            <a
+              href="https://youtube.com/@diziurdu"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="hover:text-white transition-colors cursor-pointer"
+              aria-label="YouTube"
+            >
+              <svg className="w-5 h-5 fill-current" viewBox="0 0 24 24"><path d="M23.498 6.186a3.016 3.016 0 0 0-2.122-2.136C19.505 3.545 12 3.545 12 3.545s-7.505 0-9.377.505A3.017 3.017 0 0 0 .502 6.186C0 8.07 0 12 0 12s0 3.93.502 5.814a3.016 3.016 0 0 0 2.122 2.136c1.871.505 9.376.505 9.376.505s7.505 0 9.377-.505a3.015 3.015 0 0 0 2.122-2.136C24 15.93 24 12 24 12s0-3.93-.502-5.814zM9.545 15.568V8.432L15.818 12l-6.273 3.568z"/></svg>
+            </a>
+            <a
+              href="https://x.com/diziurdu"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="hover:text-white transition-colors cursor-pointer"
+              aria-label="X"
+            >
+              <svg className="w-4 h-4 fill-current" viewBox="0 0 24 24"><path d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-5.214-6.817L4.99 21.75H1.68l7.73-8.835L1.254 2.25H8.08l4.713 6.231zm-1.161 17.52h1.833L7.084 4.126H5.117z"/></svg>
+            </a>
           </div>
 
-          {/* Bottom Bar: Social Links on Left, 2026 Dizi Urdu Parallel on Right */}
-          <div className="pt-6 sm:pt-8 mt-8 border-t border-zinc-800/80 flex flex-col sm:flex-row items-center justify-between gap-4">
-            {/* Social Media Links on Left */}
-            <div className="flex items-center gap-6 text-white">
-              {/* Facebook */}
-              <a
-                href="https://facebook.com/diziurdu"
-                target="_blank"
-                rel="noopener noreferrer"
-                className="text-white hover:text-white cursor-pointer"
-                aria-label="Facebook"
-              >
-                <svg className="w-5 h-5 fill-current" viewBox="0 0 24 24">
-                  <path d="M24 12.073c0-6.627-5.373-12-12-12s-12 5.373-12 12c0 5.99 4.388 10.954 10.125 11.854v-8.385H7.078v-3.47h3.047V9.43c0-3.007 1.792-4.669 4.533-4.669 1.312 0 2.686.235 2.686.235v2.953H15.83c-1.491 0-1.956.925-1.956 1.874v2.25h3.328l-.532 3.47h-2.796v8.385C19.612 23.027 24 18.062 24 12.073z" />
-                </svg>
-              </a>
-
-              {/* Instagram */}
-              <a
-                href="https://instagram.com/diziurdu"
-                target="_blank"
-                rel="noopener noreferrer"
-                className="text-white hover:text-white cursor-pointer"
-                aria-label="Instagram"
-              >
-                <svg className="w-5 h-5 fill-current" viewBox="0 0 24 24">
-                  <path d="M12 2.163c3.204 0 3.584.012 4.85.07 3.252.148 4.771 1.691 4.919 4.919.058 1.265.069 1.645.069 4.849 0 3.205-.012 3.584-.069 4.849-.149 3.225-1.664 4.771-4.919 4.919-1.266.058-1.644.07-4.85.07-3.204 0-3.584-.012-4.849-.07-3.26-.149-4.771-1.699-4.919-4.92-.058-1.265-.07-1.644-.07-4.849 0-3.204.013-3.583.07-4.849.149-3.227 1.664-4.771 4.919-4.919 1.266-.057 1.645-.069 4.849-.069zm0-2.163c-3.259 0-3.667.014-4.947.072-4.358.2-6.78 2.618-6.98 6.98-.059 1.281-.073 1.689-.073 4.948 0 3.259.014 3.668.072 4.948.2 4.358 2.618 6.78 6.98 6.98 1.281.058 1.689.072 4.948.072 3.259 0 3.668-.014 4.948-.072 4.354-.2 6.782-2.618 6.979-6.98.059-1.28.073-1.689.073-4.948 0-3.259-.014-3.667-.072-4.947-.196-4.354-2.617-6.78-6.979-6.98-1.281-.059-1.69-.073-4.949-.073zm0 5.838c-3.403 0-6.162 2.759-6.162 6.162s2.759 6.163 6.162 6.163 6.162-2.759 6.162-6.163c0-3.403-2.759-6.162-6.162-6.162zm0 10.162c-2.209 0-4-1.79-4-4 0-2.209 1.791-4 4-4s4 1.791 4 4c0 2.21-1.791 4-4 4zm6.406-11.845c-.796 0-1.441.645-1.441 1.44s.645 1.44 1.441 1.44c.795 0 1.439-.645 1.439-1.44s-.644-1.44-1.439-1.44z" />
-                </svg>
-              </a>
-
-              {/* YouTube */}
-              <a
-                href="https://youtube.com/@diziurdu"
-                target="_blank"
-                rel="noopener noreferrer"
-                className="text-white hover:text-white cursor-pointer"
-                aria-label="YouTube"
-              >
-                <svg className="w-5.5 h-5.5 fill-current" viewBox="0 0 24 24">
-                  <path d="M23.498 6.186a3.016 3.016 0 0 0-2.122-2.136C19.505 3.545 12 3.545 12 3.545s-7.505 0-9.377.505A3.017 3.017 0 0 0 .502 6.186C0 8.07 0 12 0 12s0 3.93.502 5.814a3.016 3.016 0 0 0 2.122 2.136c1.871.505 9.376.505 9.376.505s7.505 0 9.377-.505a3.015 3.015 0 0 0 2.122-2.136C24 15.93 24 12 24 12s0-3.93-.502-5.814zM9.545 15.568V8.432L15.818 12l-6.273 3.568z" />
-                </svg>
-              </a>
-
-              {/* X (formerly Twitter) */}
-              <a
-                href="https://x.com/diziurdu"
-                target="_blank"
-                rel="noopener noreferrer"
-                className="text-white hover:text-white cursor-pointer"
-                aria-label="X"
-              >
-                <svg className="w-4.5 h-4.5 fill-current" viewBox="0 0 24 24">
-                  <path d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-5.214-6.817L4.99 21.75H1.68l7.73-8.835L1.254 2.25H8.08l4.713 6.231zm-1.161 17.52h1.833L7.084 4.126H5.117z" />
-                </svg>
-              </a>
-            </div>
-
-            {/* 2026 Dizi Urdu Parallel to Social Links on the Right */}
-            <p className="text-xs sm:text-[13px] font-medium text-zinc-400 shrink-0">
-              © 2026 {platformName}. All rights reserved.
-            </p>
+          {/* Main Footer Links */}
+          <div className="flex flex-wrap items-center gap-x-5 gap-y-2 text-xs text-zinc-400 font-medium">
+            <button onClick={() => setActiveModal('privacy')} className="hover:text-white transition-colors cursor-pointer">
+              Privacy Policy
+            </button>
+            <button onClick={() => setActiveModal('terms')} className="hover:text-white transition-colors cursor-pointer">
+              Terms of Use
+            </button>
+            <button onClick={() => setActiveModal('dmca')} className="hover:text-white transition-colors cursor-pointer">
+              DMCA Takedown
+            </button>
+            <button onClick={() => setActiveModal('contact')} className="hover:text-white transition-colors cursor-pointer">
+              Contact Us
+            </button>
+            <button onClick={() => setActiveModal('faq')} className="hover:text-white transition-colors cursor-pointer">
+              FAQ
+            </button>
           </div>
         </div>
       </div>

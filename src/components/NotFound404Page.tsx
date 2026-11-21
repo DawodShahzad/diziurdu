@@ -1,5 +1,6 @@
 import React from 'react';
 import { Home, Search, Film } from 'lucide-react';
+import { useDeviceLayout } from '../utils/deviceLayout';
 
 interface NotFound404PageProps {
   onGoHome: () => void;
@@ -12,19 +13,28 @@ export const NotFound404Page: React.FC<NotFound404PageProps> = ({
   onOpenSearch,
   platformName = 'Dizi Urdu'
 }) => {
+  const { isMobile } = useDeviceLayout();
+
   return (
-    <div className="min-h-screen w-full bg-black md:bg-[#141414] text-white flex flex-col items-center justify-center relative overflow-hidden px-6 py-24 select-none">
+    <div
+      className={`min-h-screen w-full ${
+        isMobile ? 'bg-black' : 'bg-[#141414]'
+      } text-white flex flex-col items-center justify-center relative overflow-hidden px-6 py-24 select-none`}
+    >
       {/* Desktop subtle atmospheric glow (hidden on pure black mobile) */}
-      <div
-        aria-hidden="true"
-        className="hidden md:block absolute -top-24 left-1/2 -translate-x-1/2 w-[620px] h-[420px] rounded-full blur-[150px] opacity-20 pointer-events-none"
-        style={{
-          background: 'radial-gradient(circle, #e50914 0%, #991b1b 45%, transparent 80%)'
-        }}
-      />
+      {!isMobile && (
+        <div
+          aria-hidden="true"
+          className="absolute -top-24 left-1/2 -translate-x-1/2 w-[620px] h-[420px] rounded-full blur-[150px] opacity-20 pointer-events-none"
+          style={{
+            background: 'radial-gradient(circle, #e50914 0%, #991b1b 45%, transparent 80%)'
+          }}
+        />
+      )}
 
       {/* Mobile Dedicated 404 Layout (#000000 pure black, clean centered cardless minimal hierarchy) */}
-      <div className="md:hidden relative z-10 w-full max-w-xs mx-auto flex flex-col items-center text-center space-y-5">
+      {isMobile ? (
+      <div className="relative z-10 w-full max-w-xs mx-auto flex flex-col items-center text-center space-y-5">
         <div className="w-14 h-14 rounded-2xl bg-white/[0.05] border border-white/10 flex items-center justify-center">
           <Film className="w-7 h-7 text-red-500" />
         </div>
@@ -61,9 +71,9 @@ export const NotFound404Page: React.FC<NotFound404PageProps> = ({
           </button>
         </div>
       </div>
-
-      {/* Desktop Dedicated 404 Layout (#141414 dark cinema backdrop with bold 404 editorial typography) */}
-      <div className="hidden md:flex relative z-10 max-w-2xl mx-auto flex-col items-center text-center space-y-6">
+      ) : (
+      /* Desktop Dedicated 404 Layout (#141414 dark cinema backdrop with bold 404 editorial typography) */
+      <div className="flex relative z-10 max-w-2xl mx-auto flex-col items-center text-center space-y-6">
         <div className="relative">
           <span className="text-[120px] lg:text-[152px] font-black leading-none tracking-tighter text-transparent bg-clip-text bg-gradient-to-b from-white via-zinc-300 to-zinc-700 font-display select-none">
             404
@@ -100,6 +110,7 @@ export const NotFound404Page: React.FC<NotFound404PageProps> = ({
           </button>
         </div>
       </div>
+      )}
     </div>
   );
 };

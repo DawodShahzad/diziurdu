@@ -59,25 +59,27 @@ import {
   ChevronDown,
   ChevronUp,
   Info,
-  Bell
+  Bell,
+  Megaphone
 } from 'lucide-react';
 import { DiziLogo } from './DiziLogo';
 import { AdminArtworkManager } from './AdminArtworkManager';
 import { AdminLivePreviewEngine } from './AdminLivePreviewEngine';
+import { AdminAdsManagerTab } from './AdminAdsManagerTab';
 import { DEFAULT_GENRES } from './BrowseByGenreRow';
 import fullBackupData from '../full_backup.json';
 
 const INITIAL_CATEGORIES = ((fullBackupData as any)?.categoriesList as CategoryItem[]) || [];
 const INITIAL_PROFILE_PICTURE_GROUPS = ((fullBackupData as any)?.profilePictureGroups as ProfilePictureGroup[]) || [];
 
-export type AdminTab = 'overview' | 'shows' | 'feeds' | 'categories' | 'profiles' | 'notifications' | 'image_health' | 'video_health' | 'settings' | 'export_import';
+export type AdminTab = 'overview' | 'shows' | 'feeds' | 'categories' | 'profiles' | 'notifications' | 'image_health' | 'video_health' | 'ads' | 'settings' | 'export_import';
 
 interface AdminDashboardPageProps {
   shows: Show[];
   feeds: FeedConfig[];
   adminSettings: AdminSettings;
   notifications?: NotificationItem[];
-  initialTab?: 'overview' | 'shows' | 'feeds' | 'categories' | 'profiles' | 'notifications' | 'image_health' | 'video_health' | 'settings' | 'export_import';
+  initialTab?: AdminTab;
   initialEditingFeedId?: string;
   onUpdateShows: (shows: Show[]) => void;
   onUpdateFeeds: (feeds: FeedConfig[]) => void;
@@ -632,6 +634,7 @@ export const AdminDashboardPage: React.FC<AdminDashboardPageProps> = ({
     verticalBackdropUrls: [],
     posterLandscapeUrls: [],
     titleLogoUrl: '',
+    centralLogoUrl: '',
     sourceWatermarkUrl: '',
     embedBackdropUrl: '',
     embedBackdropDarkness: 35,
@@ -1262,9 +1265,19 @@ export const AdminDashboardPage: React.FC<AdminDashboardPageProps> = ({
         key: `${s.id}-titleLogo`,
         showId: s.id,
         showTitle: s.title,
-        label: 'Title PNG Logo',
+        label: 'Title PNG Logo (2.5:1)',
         url: imageQuickEdits[`${s.id}-titleLogo`] ?? s.titleLogoUrl,
         fieldPath: 'titleLogoUrl'
+      });
+    }
+    if (s.centralLogoUrl) {
+      allStoredImages.push({
+        key: `${s.id}-centralLogo`,
+        showId: s.id,
+        showTitle: s.title,
+        label: 'Central Logo',
+        url: imageQuickEdits[`${s.id}-centralLogo`] ?? s.centralLogoUrl,
+        fieldPath: 'centralLogoUrl'
       });
     }
     if (s.posterVerticalUrl) {
@@ -1332,6 +1345,7 @@ export const AdminDashboardPage: React.FC<AdminDashboardPageProps> = ({
       if (imgRef.fieldPath === 'posterLandscapeUrl') clone.posterLandscapeUrl = newUrl;
       else if (imgRef.fieldPath === 'backdropUrl') clone.backdropUrl = newUrl;
       else if (imgRef.fieldPath === 'titleLogoUrl') clone.titleLogoUrl = newUrl;
+      else if (imgRef.fieldPath === 'centralLogoUrl') clone.centralLogoUrl = newUrl;
       else if (imgRef.fieldPath === 'posterVerticalUrl') clone.posterVerticalUrl = newUrl;
       else if (imgRef.fieldPath.startsWith('season-')) {
         // Episode thumbnail
@@ -1688,6 +1702,29 @@ export const AdminDashboardPage: React.FC<AdminDashboardPageProps> = ({
             {brokenVideos.size > 0 && (
               <span className="text-[10px] px-1.5 py-0.2 rounded bg-red-950 text-red-400 font-mono font-bold">
                 {brokenVideos.size}
+              </span>
+            )}
+          </button>
+
+          <button
+            onClick={() => setActiveTab('ads')}
+            className={`w-full flex items-center gap-3 px-3.5 py-2.5 rounded-xl text-xs font-medium transition-colors cursor-pointer text-left justify-between ${
+              activeTab === 'ads'
+                ? 'bg-[#272727] text-white font-semibold'
+                : 'text-zinc-400 hover:text-white hover:bg-[#1f1f1f]'
+            }`}
+          >
+            <div className="flex items-center gap-3">
+              <Megaphone className={`w-4 h-4 ${activeTab === 'ads' ? 'text-amber-400' : 'text-zinc-400'}`} />
+              <span>Ads Manager</span>
+            </div>
+            {(adminSettings.adTileEnabled ||
+              adminSettings.moreInfoAdEnabled ||
+              adminSettings.searchAdEnabled ||
+              adminSettings.narrowAdBarEnabled ||
+              adminSettings.alertPosterEnabled) && (
+              <span className="text-[9px] px-1.5 py-0.5 rounded bg-amber-500/20 text-amber-300 font-bold">
+                LIVE
               </span>
             )}
           </button>
@@ -6055,14 +6092,14 @@ export const AdminDashboardPage: React.FC<AdminDashboardPageProps> = ({
                     </div>
 
                     {/* Option 10: Sign-Up Promotional Tile Banner */}
-                    <div className="p-4 rounded-xl bg-zinc-900/90 border border-zinc-800 space-y-4">
+                    <div className="p-4 rounded-xl bg-zinc-900/90 border border-zinc-800 space-y-5">
                       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
                         <div>
                           <h4 className="text-sm font-bold text-white">
                             Promotional Sign-Up Tile Banner
                           </h4>
                           <p className="text-xs text-zinc-400">
-                            Display an Apple TV-style Sign-Up banner tile on the Homepage. Clicking it opens the Login / Create Account page.
+                            Display an Apple TV-style Sign-Up banner tile on the Homepage. Configure container width, rounded corners, and completely different tiles per layout.
                           </p>
                         </div>
 
@@ -6089,89 +6126,166 @@ export const AdminDashboardPage: React.FC<AdminDashboardPageProps> = ({
                         </button>
                       </div>
 
-                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-1">
-                        <div>
-                          <label className="block text-[11px] font-semibold text-zinc-400 mb-1">
-                            Headline Title (optional)
-                          </label>
-                          <input
-                            type="text"
-                            value={adminSettings.signupTileTitle || ''}
-                            onChange={(e) => {
-                              const updated = { ...adminSettings, signupTileTitle: e.target.value };
-                              onUpdateSettings(updated);
-                              try {
-                                localStorage.setItem('cineflix_settings', JSON.stringify(updated));
-                              } catch {}
-                            }}
-                            placeholder="e.g. Watch Every Original Ad-Free"
-                            className="w-full px-3 py-2 rounded-lg bg-zinc-950 border border-zinc-800 text-xs text-white placeholder-zinc-600 focus:outline-none focus:border-red-500"
-                          />
+                      {/* Visibility per Layout */}
+                      <div className="flex flex-wrap items-center gap-2 pt-1">
+                        <span className="text-[11px] font-semibold text-zinc-400 mr-1">
+                          Show on Layouts:
+                        </span>
+                        {(['desktop', 'tablet', 'mobile'] as const).map((layoutKey) => {
+                          const currentLayouts = adminSettings.signupTileLayouts || ['desktop', 'tablet', 'mobile'];
+                          const isChecked = currentLayouts.includes(layoutKey);
+                          return (
+                            <button
+                              key={layoutKey}
+                              type="button"
+                              onClick={() => {
+                                const nextLayouts = isChecked
+                                  ? currentLayouts.filter((l) => l !== layoutKey)
+                                  : [...currentLayouts, layoutKey];
+                                const updated = { ...adminSettings, signupTileLayouts: nextLayouts };
+                                onUpdateSettings(updated);
+                                try {
+                                  localStorage.setItem('cineflix_settings', JSON.stringify(updated));
+                                } catch {}
+                              }}
+                              className={`px-3 py-1 rounded-lg text-xs font-bold capitalize transition-all cursor-pointer border ${
+                                isChecked
+                                  ? 'bg-red-600/20 border-red-500 text-white'
+                                  : 'bg-zinc-950 border-zinc-800 text-zinc-500 hover:text-zinc-300'
+                              }`}
+                            >
+                              {layoutKey}
+                            </button>
+                          );
+                        })}
+                      </div>
+
+                      {/* Desktop / Tablet Layout Configuration */}
+                      <div className="p-3.5 rounded-xl bg-zinc-950/70 border border-zinc-800/90 space-y-3">
+                        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                          <h5 className="text-xs font-bold text-white uppercase tracking-wider">
+                            Desktop &amp; Tablet Tile Settings
+                          </h5>
+                          <div className="flex items-center gap-1 bg-zinc-900 p-1 rounded-lg border border-zinc-800">
+                            <button
+                              type="button"
+                              onClick={() => {
+                                const updated = { ...adminSettings, signupTileContainerMode: 'contained' as const };
+                                onUpdateSettings(updated);
+                                try {
+                                  localStorage.setItem('cineflix_settings', JSON.stringify(updated));
+                                } catch {}
+                              }}
+                              className={`px-2.5 py-1 rounded text-[11px] font-bold transition-all cursor-pointer ${
+                                (adminSettings.signupTileContainerMode || 'contained') === 'contained'
+                                  ? 'bg-red-600 text-white'
+                                  : 'text-zinc-400 hover:text-white'
+                              }`}
+                            >
+                              Contained Tile (Padded)
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => {
+                                const updated = { ...adminSettings, signupTileContainerMode: 'full_bleed' as const };
+                                onUpdateSettings(updated);
+                                try {
+                                  localStorage.setItem('cineflix_settings', JSON.stringify(updated));
+                                } catch {}
+                              }}
+                              className={`px-2.5 py-1 rounded text-[11px] font-bold transition-all cursor-pointer ${
+                                adminSettings.signupTileContainerMode === 'full_bleed'
+                                  ? 'bg-red-600 text-white'
+                                  : 'text-zinc-400 hover:text-white'
+                              }`}
+                            >
+                              Edge-to-Edge (0 Padding, Sharp)
+                            </button>
+                          </div>
                         </div>
 
-                        <div>
-                          <label className="block text-[11px] font-semibold text-zinc-400 mb-1">
-                            Button Label
-                          </label>
-                          <input
-                            type="text"
-                            value={adminSettings.signupTileButtonText || ''}
-                            onChange={(e) => {
-                              const updated = { ...adminSettings, signupTileButtonText: e.target.value };
-                              onUpdateSettings(updated);
-                              try {
-                                localStorage.setItem('cineflix_settings', JSON.stringify(updated));
-                              } catch {}
-                            }}
-                            placeholder="Sign Up to Watch"
-                            className="w-full px-3 py-2 rounded-lg bg-zinc-950 border border-zinc-800 text-xs text-white placeholder-zinc-600 focus:outline-none focus:border-red-500"
-                          />
-                        </div>
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                          <div>
+                            <label className="block text-[11px] font-semibold text-zinc-400 mb-1">
+                              Headline Title (optional)
+                            </label>
+                            <input
+                              type="text"
+                              value={adminSettings.signupTileTitle || ''}
+                              onChange={(e) => {
+                                const updated = { ...adminSettings, signupTileTitle: e.target.value };
+                                onUpdateSettings(updated);
+                                try {
+                                  localStorage.setItem('cineflix_settings', JSON.stringify(updated));
+                                } catch {}
+                              }}
+                              placeholder="e.g. Watch Every Original Ad-Free"
+                              className="w-full px-3 py-2 rounded-lg bg-zinc-950 border border-zinc-800 text-xs text-white placeholder-zinc-600 focus:outline-none focus:border-red-500"
+                            />
+                          </div>
 
-                        <div className="sm:col-span-2">
-                          <label className="block text-[11px] font-semibold text-zinc-400 mb-1">
-                            Subtitle Text
-                          </label>
-                          <input
-                            type="text"
-                            value={adminSettings.signupTileSubtitle || ''}
-                            onChange={(e) => {
-                              const updated = { ...adminSettings, signupTileSubtitle: e.target.value };
-                              onUpdateSettings(updated);
-                              try {
-                                localStorage.setItem('cineflix_settings', JSON.stringify(updated));
-                              } catch {}
-                            }}
-                            placeholder="Stream thousands of hours of exclusive Turkish Originals & dubbed epics."
-                            className="w-full px-3 py-2 rounded-lg bg-zinc-950 border border-zinc-800 text-xs text-white placeholder-zinc-600 focus:outline-none focus:border-red-500"
-                          />
-                        </div>
+                          <div>
+                            <label className="block text-[11px] font-semibold text-zinc-400 mb-1">
+                              Button Label
+                            </label>
+                            <input
+                              type="text"
+                              value={adminSettings.signupTileButtonText || ''}
+                              onChange={(e) => {
+                                const updated = { ...adminSettings, signupTileButtonText: e.target.value };
+                                onUpdateSettings(updated);
+                                try {
+                                  localStorage.setItem('cineflix_settings', JSON.stringify(updated));
+                                } catch {}
+                              }}
+                              placeholder="Sign Up to Watch"
+                              className="w-full px-3 py-2 rounded-lg bg-zinc-950 border border-zinc-800 text-xs text-white placeholder-zinc-600 focus:outline-none focus:border-red-500"
+                            />
+                          </div>
 
-                        <div className="sm:col-span-2">
-                          <label className="block text-[11px] font-semibold text-zinc-400 mb-1">
-                            Custom Banner Image URL (leave empty for automatic catalog collage)
-                          </label>
-                          <input
-                            type="text"
-                            value={adminSettings.signupTileImageUrl || ''}
-                            onChange={(e) => {
-                              const updated = { ...adminSettings, signupTileImageUrl: e.target.value };
-                              onUpdateSettings(updated);
-                              try {
-                                localStorage.setItem('cineflix_settings', JSON.stringify(updated));
-                              } catch {}
-                            }}
-                            placeholder="https://..."
-                            className="w-full px-3 py-2 rounded-lg bg-zinc-950 border border-zinc-800 text-xs text-white placeholder-zinc-600 focus:outline-none focus:border-red-500"
-                          />
-                        </div>
+                          <div className="sm:col-span-2">
+                            <label className="block text-[11px] font-semibold text-zinc-400 mb-1">
+                              Subtitle Text (optional — hidden if left empty)
+                            </label>
+                            <input
+                              type="text"
+                              value={adminSettings.signupTileSubtitle || ''}
+                              onChange={(e) => {
+                                const updated = { ...adminSettings, signupTileSubtitle: e.target.value };
+                                onUpdateSettings(updated);
+                                try {
+                                  localStorage.setItem('cineflix_settings', JSON.stringify(updated));
+                                } catch {}
+                              }}
+                              placeholder="Leave empty to hide subtitle"
+                              className="w-full px-3 py-2 rounded-lg bg-zinc-950 border border-zinc-800 text-xs text-white placeholder-zinc-600 focus:outline-none focus:border-red-500"
+                            />
+                          </div>
 
-                        <div className="sm:col-span-2 grid grid-cols-1 sm:grid-cols-2 gap-3 pt-1">
+                          <div className="sm:col-span-2">
+                            <label className="block text-[11px] font-semibold text-zinc-400 mb-1">
+                              Custom Banner Image URL (leave empty for automatic catalog collage)
+                            </label>
+                            <input
+                              type="text"
+                              value={adminSettings.signupTileImageUrl || ''}
+                              onChange={(e) => {
+                                const updated = { ...adminSettings, signupTileImageUrl: e.target.value };
+                                onUpdateSettings(updated);
+                                try {
+                                  localStorage.setItem('cineflix_settings', JSON.stringify(updated));
+                                } catch {}
+                              }}
+                              placeholder="https://..."
+                              className="w-full px-3 py-2 rounded-lg bg-zinc-950 border border-zinc-800 text-xs text-white placeholder-zinc-600 focus:outline-none focus:border-red-500"
+                            />
+                          </div>
+
                           <div>
                             <label className="block text-[11px] font-semibold text-zinc-400 mb-1">
                               Banner Logo Mode
                             </label>
-                            <div className="flex items-center gap-1.5 bg-zinc-950 p-1 rounded-lg border border-zinc-800">
+                            <div className="flex items-center gap-1.5 bg-zinc-900 p-1 rounded-lg border border-zinc-800">
                               <button
                                 type="button"
                                 onClick={() => {
@@ -6228,39 +6342,220 @@ export const AdminDashboardPage: React.FC<AdminDashboardPageProps> = ({
                             />
                           </div>
                         </div>
+                      </div>
 
-                        <div className="sm:col-span-2 flex flex-wrap items-center gap-2 pt-1">
-                          <span className="text-[11px] font-semibold text-zinc-400 mr-1">
-                            Show on Layouts:
-                          </span>
-                          {(['desktop', 'tablet', 'mobile'] as const).map((layoutKey) => {
-                            const currentLayouts = adminSettings.signupTileLayouts || ['desktop', 'tablet', 'mobile'];
-                            const isChecked = currentLayouts.includes(layoutKey);
-                            return (
+                      {/* Mobile Layout Independent Configuration */}
+                      <div className="p-3.5 rounded-xl bg-zinc-950/70 border border-zinc-800/90 space-y-3">
+                        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                          <div>
+                            <h5 className="text-xs font-bold text-white uppercase tracking-wider">
+                              Mobile Tile Settings
+                            </h5>
+                            <p className="text-[11px] text-zinc-500">
+                              Set mobile container style independently or customize a completely separate mobile banner.
+                            </p>
+                          </div>
+                          <div className="flex flex-wrap items-center gap-2">
+                            <div className="flex items-center gap-1 bg-zinc-900 p-1 rounded-lg border border-zinc-800">
                               <button
-                                key={layoutKey}
                                 type="button"
                                 onClick={() => {
-                                  const nextLayouts = isChecked
-                                    ? currentLayouts.filter((l) => l !== layoutKey)
-                                    : [...currentLayouts, layoutKey];
-                                  const updated = { ...adminSettings, signupTileLayouts: nextLayouts };
+                                  const updated = { ...adminSettings, signupTileMobileContainerMode: 'contained' as const };
                                   onUpdateSettings(updated);
                                   try {
                                     localStorage.setItem('cineflix_settings', JSON.stringify(updated));
                                   } catch {}
                                 }}
-                                className={`px-3 py-1 rounded-lg text-xs font-bold capitalize transition-all cursor-pointer border ${
-                                  isChecked
-                                    ? 'bg-red-600/20 border-red-500 text-white'
-                                    : 'bg-zinc-950 border-zinc-800 text-zinc-500 hover:text-zinc-300'
+                                className={`px-2.5 py-1 rounded text-[11px] font-bold transition-all cursor-pointer ${
+                                  (adminSettings.signupTileMobileContainerMode || adminSettings.signupTileContainerMode || 'contained') === 'contained'
+                                    ? 'bg-red-600 text-white'
+                                    : 'text-zinc-400 hover:text-white'
                                 }`}
                               >
-                                {layoutKey}
+                                Contained Tile
                               </button>
-                            );
-                          })}
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  const updated = { ...adminSettings, signupTileMobileContainerMode: 'full_bleed' as const };
+                                  onUpdateSettings(updated);
+                                  try {
+                                    localStorage.setItem('cineflix_settings', JSON.stringify(updated));
+                                  } catch {}
+                                }}
+                                className={`px-2.5 py-1 rounded text-[11px] font-bold transition-all cursor-pointer ${
+                                  (adminSettings.signupTileMobileContainerMode || adminSettings.signupTileContainerMode) === 'full_bleed'
+                                    ? 'bg-red-600 text-white'
+                                    : 'text-zinc-400 hover:text-white'
+                                }`}
+                              >
+                                Edge-to-Edge (0 Padding)
+                              </button>
+                            </div>
+
+                            <button
+                              type="button"
+                              onClick={() => {
+                                const updated = {
+                                  ...adminSettings,
+                                  signupTileSeparateMobile: !adminSettings.signupTileSeparateMobile
+                                };
+                                onUpdateSettings(updated);
+                                try {
+                                  localStorage.setItem('cineflix_settings', JSON.stringify(updated));
+                                } catch {}
+                              }}
+                              className={`px-3 py-1.5 rounded-lg text-[11px] font-bold transition-all cursor-pointer border ${
+                                adminSettings.signupTileSeparateMobile
+                                  ? 'bg-amber-600 border-amber-500 text-white'
+                                  : 'bg-zinc-900 border-zinc-700 text-zinc-300 hover:text-white'
+                              }`}
+                            >
+                              {adminSettings.signupTileSeparateMobile ? 'Separate Mobile Content: ON' : 'Separate Mobile Content: OFF'}
+                            </button>
+                          </div>
                         </div>
+
+                        {adminSettings.signupTileSeparateMobile && (
+                          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-2 border-t border-zinc-800/80">
+                            <div>
+                              <label className="block text-[11px] font-semibold text-zinc-400 mb-1">
+                                Mobile Headline Title (optional)
+                              </label>
+                              <input
+                                type="text"
+                                value={adminSettings.signupTileMobileTitle || ''}
+                                onChange={(e) => {
+                                  const updated = { ...adminSettings, signupTileMobileTitle: e.target.value };
+                                  onUpdateSettings(updated);
+                                  try {
+                                    localStorage.setItem('cineflix_settings', JSON.stringify(updated));
+                                  } catch {}
+                                }}
+                                placeholder="Separate mobile headline"
+                                className="w-full px-3 py-2 rounded-lg bg-zinc-950 border border-zinc-800 text-xs text-white placeholder-zinc-600 focus:outline-none focus:border-red-500"
+                              />
+                            </div>
+
+                            <div>
+                              <label className="block text-[11px] font-semibold text-zinc-400 mb-1">
+                                Mobile Button Label
+                              </label>
+                              <input
+                                type="text"
+                                value={adminSettings.signupTileMobileButtonText || ''}
+                                onChange={(e) => {
+                                  const updated = { ...adminSettings, signupTileMobileButtonText: e.target.value };
+                                  onUpdateSettings(updated);
+                                  try {
+                                    localStorage.setItem('cineflix_settings', JSON.stringify(updated));
+                                  } catch {}
+                                }}
+                                placeholder="Sign Up to Watch"
+                                className="w-full px-3 py-2 rounded-lg bg-zinc-950 border border-zinc-800 text-xs text-white placeholder-zinc-600 focus:outline-none focus:border-red-500"
+                              />
+                            </div>
+
+                            <div className="sm:col-span-2">
+                              <label className="block text-[11px] font-semibold text-zinc-400 mb-1">
+                                Mobile Subtitle Text (optional — hidden if left empty)
+                              </label>
+                              <input
+                                type="text"
+                                value={adminSettings.signupTileMobileSubtitle || ''}
+                                onChange={(e) => {
+                                  const updated = { ...adminSettings, signupTileMobileSubtitle: e.target.value };
+                                  onUpdateSettings(updated);
+                                  try {
+                                    localStorage.setItem('cineflix_settings', JSON.stringify(updated));
+                                  } catch {}
+                                }}
+                                placeholder="Leave empty to hide subtitle on mobile"
+                                className="w-full px-3 py-2 rounded-lg bg-zinc-950 border border-zinc-800 text-xs text-white placeholder-zinc-600 focus:outline-none focus:border-red-500"
+                              />
+                            </div>
+
+                            <div className="sm:col-span-2">
+                              <label className="block text-[11px] font-semibold text-zinc-400 mb-1">
+                                Mobile Custom Banner Image URL (leave empty for collage)
+                              </label>
+                              <input
+                                type="text"
+                                value={adminSettings.signupTileMobileImageUrl || ''}
+                                onChange={(e) => {
+                                  const updated = { ...adminSettings, signupTileMobileImageUrl: e.target.value };
+                                  onUpdateSettings(updated);
+                                  try {
+                                    localStorage.setItem('cineflix_settings', JSON.stringify(updated));
+                                  } catch {}
+                                }}
+                                placeholder="https://..."
+                                className="w-full px-3 py-2 rounded-lg bg-zinc-950 border border-zinc-800 text-xs text-white placeholder-zinc-600 focus:outline-none focus:border-red-500"
+                              />
+                            </div>
+
+                            <div>
+                              <label className="block text-[11px] font-semibold text-zinc-400 mb-1">
+                                Mobile Logo Mode
+                              </label>
+                              <div className="flex items-center gap-1.5 bg-zinc-900 p-1 rounded-lg border border-zinc-800">
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    const updated = { ...adminSettings, signupTileMobileUseCustomLogo: false };
+                                    onUpdateSettings(updated);
+                                    try {
+                                      localStorage.setItem('cineflix_settings', JSON.stringify(updated));
+                                    } catch {}
+                                  }}
+                                  className={`flex-1 px-2 py-1.5 rounded text-[11px] font-bold transition-all cursor-pointer ${
+                                    !adminSettings.signupTileMobileUseCustomLogo
+                                      ? 'bg-red-600 text-white'
+                                      : 'text-zinc-400 hover:text-white'
+                                  }`}
+                                >
+                                  Platform Logo
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    const updated = { ...adminSettings, signupTileMobileUseCustomLogo: true };
+                                    onUpdateSettings(updated);
+                                    try {
+                                      localStorage.setItem('cineflix_settings', JSON.stringify(updated));
+                                    } catch {}
+                                  }}
+                                  className={`flex-1 px-2 py-1.5 rounded text-[11px] font-bold transition-all cursor-pointer ${
+                                    adminSettings.signupTileMobileUseCustomLogo
+                                      ? 'bg-red-600 text-white'
+                                      : 'text-zinc-400 hover:text-white'
+                                  }`}
+                                >
+                                  Custom Logo
+                                </button>
+                              </div>
+                            </div>
+
+                            <div>
+                              <label className="block text-[11px] font-semibold text-zinc-400 mb-1">
+                                Mobile Custom Logo URL
+                              </label>
+                              <input
+                                type="text"
+                                value={adminSettings.signupTileMobileCustomLogoUrl || ''}
+                                onChange={(e) => {
+                                  const updated = { ...adminSettings, signupTileMobileCustomLogoUrl: e.target.value };
+                                  onUpdateSettings(updated);
+                                  try {
+                                    localStorage.setItem('cineflix_settings', JSON.stringify(updated));
+                                  } catch {}
+                                }}
+                                placeholder="https://..."
+                                className="w-full px-3 py-2 rounded-lg bg-zinc-950 border border-zinc-800 text-xs text-white placeholder-zinc-600 focus:outline-none focus:border-red-500"
+                              />
+                            </div>
+                          </div>
+                        )}
                       </div>
                     </div>
 
@@ -6282,6 +6577,8 @@ export const AdminDashboardPage: React.FC<AdminDashboardPageProps> = ({
                             onClick={() => {
                               try {
                                 sessionStorage.removeItem('dizi_alert_poster_dismissed');
+                                localStorage.removeItem('dizi_alert_dismiss_count');
+                                localStorage.removeItem('dizi_alert_action_count');
                               } catch {}
                               window.dispatchEvent(new Event('dizi_alert_poster_reset'));
                             }}
@@ -6378,7 +6675,7 @@ export const AdminDashboardPage: React.FC<AdminDashboardPageProps> = ({
                           />
                         </div>
 
-                        <div className="sm:col-span-2">
+                        <div>
                           <label className="block text-[11px] font-semibold text-zinc-400 mb-1">
                             Poster Image URL
                           </label>
@@ -6394,6 +6691,140 @@ export const AdminDashboardPage: React.FC<AdminDashboardPageProps> = ({
                             }}
                             placeholder="https://..."
                             className="w-full px-3 py-2 rounded-lg bg-zinc-950 border border-zinc-800 text-xs text-white placeholder-zinc-600 focus:outline-none focus:border-red-500"
+                          />
+                        </div>
+
+                        <div>
+                          <label className="block text-[11px] font-semibold text-zinc-400 mb-1">
+                            Alert Video URL (MP4 / HLS Stream - Optional)
+                          </label>
+                          <input
+                            type="text"
+                            value={adminSettings.alertPosterVideoUrl || ''}
+                            onChange={(e) => {
+                              const updated = { ...adminSettings, alertPosterVideoUrl: e.target.value };
+                              onUpdateSettings(updated);
+                              try {
+                                localStorage.setItem('cineflix_settings', JSON.stringify(updated));
+                              } catch {}
+                            }}
+                            placeholder="https://.../video.mp4 or .m3u8"
+                            className="w-full px-3 py-2 rounded-lg bg-zinc-950 border border-zinc-800 text-xs text-white placeholder-zinc-600 focus:outline-none focus:border-red-500"
+                          />
+                        </div>
+
+                        {/* Ad Yellow Badge Checkbox & Video Ad Controls */}
+                        <div className="sm:col-span-2 p-3 rounded-lg bg-zinc-950/90 border border-zinc-800 space-y-3">
+                          <label className="flex items-center gap-2.5 cursor-pointer select-none">
+                            <input
+                              type="checkbox"
+                              checked={Boolean(adminSettings.alertPosterIsAd)}
+                              onChange={(e) => {
+                                const updated = { ...adminSettings, alertPosterIsAd: e.target.checked };
+                                onUpdateSettings(updated);
+                                try {
+                                  localStorage.setItem('cineflix_settings', JSON.stringify(updated));
+                                } catch {}
+                              }}
+                              className="w-4 h-4 accent-amber-500 rounded cursor-pointer"
+                            />
+                            <span className="inline-flex items-center gap-1.5 text-xs font-semibold text-white">
+                              <span className="inline-block px-1.5 py-0.5 rounded bg-[#F5B400] text-white text-[10px] font-bold leading-none">
+                                Ad
+                              </span>
+                              Show Yellow &quot;Ad&quot; Badge (and enable Ad Video mode if video is set)
+                            </span>
+                          </label>
+
+                          {Boolean(adminSettings.alertPosterIsAd) && Boolean((adminSettings.alertPosterVideoUrl || '').trim()) && (
+                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-1 border-t border-zinc-800">
+                              <label className="flex items-center gap-2 cursor-pointer select-none">
+                                <input
+                                  type="checkbox"
+                                  checked={Boolean(adminSettings.alertPosterAdRequireFullWatch)}
+                                  onChange={(e) => {
+                                    const updated = {
+                                      ...adminSettings,
+                                      alertPosterAdRequireFullWatch: e.target.checked
+                                    };
+                                    onUpdateSettings(updated);
+                                    try {
+                                      localStorage.setItem('cineflix_settings', JSON.stringify(updated));
+                                    } catch {}
+                                  }}
+                                  className="w-4 h-4 accent-red-600 rounded cursor-pointer"
+                                />
+                                <span className="text-[11px] font-semibold text-zinc-200">
+                                  User must watch full Ad (Disable Skip button)
+                                </span>
+                              </label>
+
+                              {!adminSettings.alertPosterAdRequireFullWatch && (
+                                <div>
+                                  <label className="block text-[11px] font-semibold text-zinc-400 mb-1">
+                                    Show Skip Button After (seconds)
+                                  </label>
+                                  <input
+                                    type="number"
+                                    min={0}
+                                    value={adminSettings.alertPosterAdSkipDelaySeconds ?? 5}
+                                    onChange={(e) => {
+                                      const val = Math.max(0, parseInt(e.target.value || '0', 10) || 0);
+                                      const updated = {
+                                        ...adminSettings,
+                                        alertPosterAdSkipDelaySeconds: val
+                                      };
+                                      onUpdateSettings(updated);
+                                      try {
+                                        localStorage.setItem('cineflix_settings', JSON.stringify(updated));
+                                      } catch {}
+                                    }}
+                                    className="w-full px-3 py-1.5 rounded-lg bg-zinc-900 border border-zinc-800 text-xs text-white focus:outline-none focus:border-red-500"
+                                  />
+                                </div>
+                              )}
+                            </div>
+                          )}
+                        </div>
+
+                        {/* Persistent Visit Suppression Limits */}
+                        <div>
+                          <label className="block text-[11px] font-semibold text-zinc-400 mb-1">
+                            Stop Showing After X Cross/Dismiss Clicks (0 = Unlimited)
+                          </label>
+                          <input
+                            type="number"
+                            min={0}
+                            value={adminSettings.alertPosterMaxDismissCount ?? 0}
+                            onChange={(e) => {
+                              const val = Math.max(0, parseInt(e.target.value || '0', 10) || 0);
+                              const updated = { ...adminSettings, alertPosterMaxDismissCount: val };
+                              onUpdateSettings(updated);
+                              try {
+                                localStorage.setItem('cineflix_settings', JSON.stringify(updated));
+                              } catch {}
+                            }}
+                            className="w-full px-3 py-2 rounded-lg bg-zinc-950 border border-zinc-800 text-xs text-white focus:outline-none focus:border-red-500"
+                          />
+                        </div>
+
+                        <div>
+                          <label className="block text-[11px] font-semibold text-zinc-400 mb-1">
+                            Stop Showing After X Action Button Clicks (0 = Unlimited)
+                          </label>
+                          <input
+                            type="number"
+                            min={0}
+                            value={adminSettings.alertPosterMaxActionCount ?? 0}
+                            onChange={(e) => {
+                              const val = Math.max(0, parseInt(e.target.value || '0', 10) || 0);
+                              const updated = { ...adminSettings, alertPosterMaxActionCount: val };
+                              onUpdateSettings(updated);
+                              try {
+                                localStorage.setItem('cineflix_settings', JSON.stringify(updated));
+                              } catch {}
+                            }}
+                            className="w-full px-3 py-2 rounded-lg bg-zinc-950 border border-zinc-800 text-xs text-white focus:outline-none focus:border-red-500"
                           />
                         </div>
 
@@ -6429,10 +6860,11 @@ export const AdminDashboardPage: React.FC<AdminDashboardPageProps> = ({
                           </div>
                         </div>
 
-                        {adminSettings.alertPosterButtonAction === 'link' && (
+                        {(adminSettings.alertPosterButtonAction === 'link' ||
+                          (Boolean(adminSettings.alertPosterIsAd) && Boolean((adminSettings.alertPosterVideoUrl || '').trim()))) && (
                           <div>
                             <label className="block text-[11px] font-semibold text-zinc-400 mb-1">
-                              Destination URL (e.g. /series or https://...)
+                              Destination / Ad Target URL (e.g. /series or https://...)
                             </label>
                             <input
                               type="text"
@@ -6630,8 +7062,384 @@ export const AdminDashboardPage: React.FC<AdminDashboardPageProps> = ({
                     </div>
                   </div>
                 </div>
+
+                {/* Option 15: Login / Create Account Background & Media (Desktop + Mobile) */}
+                {(() => {
+                  const updateLoginSetting = (patch: Partial<AdminSettings>) => {
+                    const updated = { ...adminSettings, ...patch };
+                    onUpdateSettings(updated);
+                    try {
+                      localStorage.setItem('cineflix_settings', JSON.stringify(updated));
+                    } catch {}
+                  };
+
+                  const desktopMode =
+                    adminSettings.loginDesktopBgMode ||
+                    (adminSettings.loginDesktopVideoUrl
+                      ? 'video'
+                      : adminSettings.loginBackgroundImageUrl
+                      ? 'image'
+                      : 'collage');
+                  const mobileMode =
+                    adminSettings.loginMobileBgMode ||
+                    (adminSettings.loginMobileVideoUrl
+                      ? 'video'
+                      : adminSettings.loginMobileMediaUrl
+                      ? 'image'
+                      : 'collage');
+
+                  const glarePresets = [
+                    { label: 'Crimson', color: '#e11d48' },
+                    { label: 'Amber', color: '#d97706' },
+                    { label: 'Royal Blue', color: '#2563eb' },
+                    { label: 'Emerald', color: '#059669' },
+                    { label: 'Violet', color: '#7c3aed' }
+                  ];
+
+                  const modeOptions: { id: 'collage' | 'image' | 'video' | 'color_glare'; label: string }[] = [
+                    { id: 'collage', label: 'Catalog Collage' },
+                    { id: 'image', label: 'Image / GIF' },
+                    { id: 'video', label: 'Video (+ Image)' },
+                    { id: 'color_glare', label: 'Color Glarence' }
+                  ];
+
+                  return (
+                    <div className="p-4 sm:p-5 rounded-xl bg-black/40 border border-zinc-800/80 space-y-5">
+                      <div>
+                        <h4 className="text-sm font-bold text-white flex items-center gap-2">
+                          <span>15. Login &amp; Create Account Background &amp; Media</span>
+                          <span className="text-[10px] px-1.5 py-0.5 rounded bg-zinc-800 text-zinc-300 font-semibold">
+                            Auth Page
+                          </span>
+                        </h4>
+                        <p className="text-xs text-zinc-400 mt-0.5">
+                          Choose Catalog Collage, Image/GIF, Video (loop or image start/end fade-in &amp; fade-out), or Profile-PIN style Color Glarence independently for Desktop and Mobile.
+                        </p>
+                      </div>
+
+                      {/* DESKTOP CONFIG */}
+                      <div className="space-y-3 p-3.5 rounded-xl bg-zinc-950/60 border border-zinc-800/70">
+                        <div className="flex flex-wrap items-center justify-between gap-2">
+                          <p className="text-xs font-bold text-white">Desktop Login Background</p>
+                          <div className="flex flex-wrap gap-1.5">
+                            {modeOptions.map((opt) => (
+                              <button
+                                key={`desk-${opt.id}`}
+                                type="button"
+                                onClick={() => updateLoginSetting({ loginDesktopBgMode: opt.id })}
+                                className={`px-2.5 py-1 rounded-lg text-[11px] font-semibold transition-colors cursor-pointer ${
+                                  desktopMode === opt.id
+                                    ? 'bg-[#e50914] text-white'
+                                    : 'bg-zinc-900 text-zinc-300 hover:bg-zinc-800'
+                                }`}
+                              >
+                                {opt.label}
+                              </button>
+                            ))}
+                          </div>
+                        </div>
+
+                        {desktopMode === 'image' && (
+                          <div className="space-y-2.5">
+                            <input
+                              type="text"
+                              value={adminSettings.loginBackgroundImageUrl || ''}
+                              onChange={(e) => updateLoginSetting({ loginBackgroundImageUrl: e.target.value })}
+                              placeholder="https://example.com/desktop-bg.jpg or .gif"
+                              className="w-full bg-zinc-950 border border-zinc-800 rounded-lg px-3.5 py-2 text-xs text-white focus:outline-none focus:border-red-500 font-mono"
+                            />
+                            {adminSettings.loginBackgroundImageUrl && (
+                              <div className="relative h-28 rounded-xl overflow-hidden border border-white/10">
+                                <img
+                                  src={adminSettings.loginBackgroundImageUrl}
+                                  alt="Desktop background preview"
+                                  className="w-full h-full object-cover"
+                                />
+                              </div>
+                            )}
+                          </div>
+                        )}
+
+                        {desktopMode === 'video' && (
+                          <div className="space-y-2.5">
+                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                              <div>
+                                <label className="text-[11px] text-zinc-400 font-semibold block mb-1">
+                                  Video URL (.mp4 / .webm)
+                                </label>
+                                <input
+                                  type="text"
+                                  value={adminSettings.loginDesktopVideoUrl || ''}
+                                  onChange={(e) => updateLoginSetting({ loginDesktopVideoUrl: e.target.value })}
+                                  placeholder="https://example.com/desktop-bg.mp4"
+                                  className="w-full bg-zinc-950 border border-zinc-800 rounded-lg px-3 py-2 text-xs text-white focus:outline-none focus:border-red-500 font-mono"
+                                />
+                              </div>
+                              <div>
+                                <label className="text-[11px] text-zinc-400 font-semibold block mb-1">
+                                  Start / End Image URL (Optional with Video)
+                                </label>
+                                <input
+                                  type="text"
+                                  value={adminSettings.loginBackgroundImageUrl || ''}
+                                  onChange={(e) => updateLoginSetting({ loginBackgroundImageUrl: e.target.value })}
+                                  placeholder="https://example.com/desktop-poster.jpg"
+                                  className="w-full bg-zinc-950 border border-zinc-800 rounded-lg px-3 py-2 text-xs text-white focus:outline-none focus:border-red-500 font-mono"
+                                />
+                              </div>
+                            </div>
+                            <div className="flex flex-wrap items-center gap-2 pt-0.5">
+                              <span className="text-[11px] text-zinc-400 font-semibold">Playback:</span>
+                              <button
+                                type="button"
+                                onClick={() => updateLoginSetting({ loginDesktopVideoPlayMode: 'loop' })}
+                                className={`px-2.5 py-1 rounded-lg text-[11px] font-semibold transition-colors cursor-pointer ${
+                                  (adminSettings.loginDesktopVideoPlayMode || 'loop') === 'loop'
+                                    ? 'bg-white text-black'
+                                    : 'bg-zinc-900 text-zinc-300 hover:bg-zinc-800'
+                                }`}
+                              >
+                                Loop Video
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => updateLoginSetting({ loginDesktopVideoPlayMode: 'once_with_image_fade' })}
+                                className={`px-2.5 py-1 rounded-lg text-[11px] font-semibold transition-colors cursor-pointer ${
+                                  adminSettings.loginDesktopVideoPlayMode === 'once_with_image_fade'
+                                    ? 'bg-white text-black'
+                                    : 'bg-zinc-900 text-zinc-300 hover:bg-zinc-800'
+                                }`}
+                              >
+                                Image Start &amp; End (Fade In / Fade Out)
+                              </button>
+                            </div>
+                          </div>
+                        )}
+
+                        {desktopMode === 'color_glare' && (
+                          <div className="space-y-2.5">
+                            <div className="flex flex-wrap items-center gap-2">
+                              {glarePresets.map((p) => (
+                                <button
+                                  key={`desk-glare-${p.color}`}
+                                  type="button"
+                                  onClick={() => updateLoginSetting({ loginDesktopGlareColor: p.color })}
+                                  className={`flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-[11px] font-semibold border cursor-pointer ${
+                                    (adminSettings.loginDesktopGlareColor || '#e11d48') === p.color
+                                      ? 'border-white text-white bg-white/10'
+                                      : 'border-zinc-800 text-zinc-300 bg-zinc-900'
+                                  }`}
+                                >
+                                  <span className="w-3 h-3 rounded-full" style={{ backgroundColor: p.color }} />
+                                  {p.label}
+                                </button>
+                              ))}
+                              <input
+                                type="color"
+                                value={adminSettings.loginDesktopGlareColor || '#e11d48'}
+                                onChange={(e) => updateLoginSetting({ loginDesktopGlareColor: e.target.value })}
+                                className="w-7 h-7 rounded cursor-pointer bg-transparent border-0"
+                                title="Custom glarence color"
+                              />
+                            </div>
+                          </div>
+                        )}
+                      </div>
+
+                      {/* MOBILE CONFIG */}
+                      <div className="space-y-3 p-3.5 rounded-xl bg-zinc-950/60 border border-zinc-800/70">
+                        <div className="flex flex-wrap items-center justify-between gap-2">
+                          <p className="text-xs font-bold text-white">Mobile Top Half Display</p>
+                          <div className="flex flex-wrap gap-1.5">
+                            {modeOptions.map((opt) => (
+                              <button
+                                key={`mob-${opt.id}`}
+                                type="button"
+                                onClick={() => updateLoginSetting({ loginMobileBgMode: opt.id })}
+                                className={`px-2.5 py-1 rounded-lg text-[11px] font-semibold transition-colors cursor-pointer ${
+                                  mobileMode === opt.id
+                                    ? 'bg-[#e50914] text-white'
+                                    : 'bg-zinc-900 text-zinc-300 hover:bg-zinc-800'
+                                }`}
+                              >
+                                {opt.label}
+                              </button>
+                            ))}
+                          </div>
+                        </div>
+
+                        {mobileMode === 'image' && (
+                          <div className="space-y-2.5">
+                            <input
+                              type="text"
+                              value={adminSettings.loginMobileMediaUrl || ''}
+                              onChange={(e) => updateLoginSetting({ loginMobileMediaUrl: e.target.value })}
+                              placeholder="https://example.com/mobile-hero.jpg or .gif"
+                              className="w-full bg-zinc-950 border border-zinc-800 rounded-lg px-3.5 py-2 text-xs text-white focus:outline-none focus:border-red-500 font-mono"
+                            />
+                            {adminSettings.loginMobileMediaUrl && (
+                              <div className="relative h-28 rounded-xl overflow-hidden border border-white/10 bg-black">
+                                <img
+                                  src={adminSettings.loginMobileMediaUrl}
+                                  alt="Mobile media preview"
+                                  className="w-full h-full object-cover"
+                                />
+                              </div>
+                            )}
+                          </div>
+                        )}
+
+                        {mobileMode === 'video' && (
+                          <div className="space-y-2.5">
+                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                              <div>
+                                <label className="text-[11px] text-zinc-400 font-semibold block mb-1">
+                                  Video URL (.mp4 / .webm)
+                                </label>
+                                <input
+                                  type="text"
+                                  value={adminSettings.loginMobileVideoUrl || ''}
+                                  onChange={(e) => updateLoginSetting({ loginMobileVideoUrl: e.target.value })}
+                                  placeholder="https://example.com/mobile-hero.mp4"
+                                  className="w-full bg-zinc-950 border border-zinc-800 rounded-lg px-3 py-2 text-xs text-white focus:outline-none focus:border-red-500 font-mono"
+                                />
+                              </div>
+                              <div>
+                                <label className="text-[11px] text-zinc-400 font-semibold block mb-1">
+                                  Start / End Image URL (Optional with Video)
+                                </label>
+                                <input
+                                  type="text"
+                                  value={adminSettings.loginMobileMediaUrl || ''}
+                                  onChange={(e) => updateLoginSetting({ loginMobileMediaUrl: e.target.value })}
+                                  placeholder="https://example.com/mobile-poster.jpg"
+                                  className="w-full bg-zinc-950 border border-zinc-800 rounded-lg px-3 py-2 text-xs text-white focus:outline-none focus:border-red-500 font-mono"
+                                />
+                              </div>
+                            </div>
+                            <div className="flex flex-wrap items-center gap-2 pt-0.5">
+                              <span className="text-[11px] text-zinc-400 font-semibold">Playback:</span>
+                              <button
+                                type="button"
+                                onClick={() => updateLoginSetting({ loginMobileVideoPlayMode: 'loop' })}
+                                className={`px-2.5 py-1 rounded-lg text-[11px] font-semibold transition-colors cursor-pointer ${
+                                  (adminSettings.loginMobileVideoPlayMode || 'loop') === 'loop'
+                                    ? 'bg-white text-black'
+                                    : 'bg-zinc-900 text-zinc-300 hover:bg-zinc-800'
+                                }`}
+                              >
+                                Loop Video
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => updateLoginSetting({ loginMobileVideoPlayMode: 'once_with_image_fade' })}
+                                className={`px-2.5 py-1 rounded-lg text-[11px] font-semibold transition-colors cursor-pointer ${
+                                  adminSettings.loginMobileVideoPlayMode === 'once_with_image_fade'
+                                    ? 'bg-white text-black'
+                                    : 'bg-zinc-900 text-zinc-300 hover:bg-zinc-800'
+                                }`}
+                              >
+                                Image Start &amp; End (Fade In / Fade Out)
+                              </button>
+                            </div>
+                          </div>
+                        )}
+
+                        {mobileMode === 'color_glare' && (
+                          <div className="flex flex-wrap items-center gap-2">
+                            {glarePresets.map((p) => (
+                              <button
+                                key={`mob-glare-${p.color}`}
+                                type="button"
+                                onClick={() => updateLoginSetting({ loginMobileGlareColor: p.color })}
+                                className={`flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-[11px] font-semibold border cursor-pointer ${
+                                  (adminSettings.loginMobileGlareColor || '#e11d48') === p.color
+                                    ? 'border-white text-white bg-white/10'
+                                    : 'border-zinc-800 text-zinc-300 bg-zinc-900'
+                                }`}
+                              >
+                                <span className="w-3 h-3 rounded-full" style={{ backgroundColor: p.color }} />
+                                {p.label}
+                              </button>
+                            ))}
+                            <input
+                              type="color"
+                              value={adminSettings.loginMobileGlareColor || '#e11d48'}
+                              onChange={(e) => updateLoginSetting({ loginMobileGlareColor: e.target.value })}
+                              className="w-7 h-7 rounded cursor-pointer bg-transparent border-0"
+                              title="Custom mobile glarence color"
+                            />
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  );
+                })()}
+
+                {/* Option 16: Full Size More Info Page Top Navbar Toggle */}
+                <div className="p-4 sm:p-5 rounded-xl bg-black/40 border border-zinc-800/80">
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                    <div>
+                      <h4 className="text-sm font-bold text-white flex items-center gap-2">
+                        <span>16. Full Size More Info Page Top Navbar</span>
+                        <span className="text-[10px] px-1.5 py-0.5 rounded bg-zinc-800 text-zinc-300 font-semibold">
+                          Desktop
+                        </span>
+                      </h4>
+                      <p className="text-xs text-zinc-400 mt-0.5">
+                        Turn off the sticky top navbar on the Full Size More Info page. When hidden, only the top-left logo (or logo + hamburger menu when Standard Navbar is selected) appears and scrolls naturally with the page.
+                      </p>
+                    </div>
+                    <div className="flex items-center gap-1.5 bg-zinc-900 p-1 rounded-lg border border-zinc-800 shrink-0 self-start sm:self-auto">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          const updated = { ...adminSettings, hideNavbarOnFullSizeMoreInfo: false };
+                          onUpdateSettings(updated);
+                          try {
+                            localStorage.setItem('cineflix_settings', JSON.stringify(updated));
+                          } catch {}
+                        }}
+                        className={`px-3 py-1.5 rounded-md text-xs font-bold transition-all cursor-pointer ${
+                          !adminSettings.hideNavbarOnFullSizeMoreInfo
+                            ? 'bg-red-600 text-white shadow'
+                            : 'text-zinc-400 hover:text-white'
+                        }`}
+                      >
+                        Show Navbar
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          const updated = { ...adminSettings, hideNavbarOnFullSizeMoreInfo: true };
+                          onUpdateSettings(updated);
+                          try {
+                            localStorage.setItem('cineflix_settings', JSON.stringify(updated));
+                          } catch {}
+                        }}
+                        className={`px-3 py-1.5 rounded-md text-xs font-bold transition-all cursor-pointer ${
+                          adminSettings.hideNavbarOnFullSizeMoreInfo
+                            ? 'bg-red-600 text-white shadow'
+                            : 'text-zinc-400 hover:text-white'
+                        }`}
+                      >
+                        Turn Off (Corner Logo)
+                      </button>
+                    </div>
+                  </div>
+                </div>
               </div>
             </div>
+          )}
+
+          {/* ========================================================================= */}
+          {/* TAB: DEDICATED ADS MANAGER                                               */}
+          {/* ========================================================================= */}
+          {activeTab === 'ads' && (
+            <AdminAdsManagerTab
+              adminSettings={adminSettings}
+              onUpdateSettings={onUpdateSettings}
+            />
           )}
 
           {/* ========================================================================= */}

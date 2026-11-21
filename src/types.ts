@@ -124,7 +124,8 @@ export interface Show {
   poster1x2Url?: string; // 1:2 Vertical Title-Included Poster (Mobile Ultra-Tall Stretch Feeds)
   poster1x2Urls?: string[]; // Multiple 1:2 Ultra-Tall Title Posters
   posterUrl?: string; // Generic / vertical poster fallback
-  titleLogoUrl?: string; // Transparent PNG logo / clearart
+  titleLogoUrl?: string; // Standard 2.5:1 (~650x260) Transparent PNG logo / clearart
+  centralLogoUrl?: string; // Optional centered PNG logo for Mobile 2:3 Recommendation & Modern Top 10 Rank cards (falls back to titleLogoUrl)
   sourceWatermarkUrl?: string; // Optional Source Watermark displayed on preview video only (top-left on recommendation, top-right on popout preview)
   trailerUrl: string; // Main trailer / extended clip (.mp4, .webm, or .m3u8)
   hoverPreviewUrl?: string; // Legacy / general hover preview (.mp4, .webm, or .m3u8)
@@ -343,6 +344,16 @@ export interface DetailsOriginMeta {
   posterUrl?: string;
 }
 
+export type AdDeviceLayout = 'desktop' | 'laptop' | 'tablet' | 'mobile';
+export type MoreInfoAdSection =
+  | 'hero'
+  | 'episodes'
+  | 'trailers'
+  | 'more_like_this'
+  | 'where_to_watch'
+  | 'cast'
+  | 'about';
+
 export interface AdminSettings {
   enableWhereToWatch: boolean;
   enableHorizontalEpisodes: boolean;
@@ -352,6 +363,16 @@ export interface AdminSettings {
   useCustomLogo?: boolean;
   customLogoUrl?: string;
   platformName?: string;
+  loginDesktopBgMode?: 'collage' | 'image' | 'video' | 'color_glare'; // Desktop Login background style
+  loginBackgroundImageUrl?: string; // Desktop Login custom image/GIF URL (also used as start/end image when video uses once_with_image_fade)
+  loginDesktopVideoUrl?: string; // Desktop Login custom video URL (.mp4 / .webm)
+  loginDesktopVideoPlayMode?: 'loop' | 'once_with_image_fade'; // Loop video OR show image on start & fade back to image when video ends
+  loginDesktopGlareColor?: string; // Accent color for Desktop Login color_glare mode (Profile PIN style)
+  loginMobileBgMode?: 'collage' | 'image' | 'video' | 'color_glare'; // Mobile Login top display style
+  loginMobileMediaUrl?: string; // Mobile Login custom image/GIF URL (also used as start/end image when video uses once_with_image_fade)
+  loginMobileVideoUrl?: string; // Mobile Login custom video URL (.mp4 / .webm)
+  loginMobileVideoPlayMode?: 'loop' | 'once_with_image_fade'; // Loop video OR show image on start & fade back to image when video ends
+  loginMobileGlareColor?: string; // Accent color for Mobile Login color_glare mode
   backdropDarkness?: number; // 0 to 100 percentage
   enableStretchableCards?: boolean; // Hover expands portrait poster into 16:9 landscape with logo and preview
   profilePictureGroups?: ProfilePictureGroup[];
@@ -382,22 +403,119 @@ export interface AdminSettings {
   signupTileImageUrl?: string;
   signupTileUseCustomLogo?: boolean;
   signupTileCustomLogoUrl?: string;
+  signupTileContainerMode?: 'contained' | 'full_bleed';
+  signupTileSeparateMobile?: boolean;
+  signupTileMobileTitle?: string;
+  signupTileMobileSubtitle?: string;
+  signupTileMobileButtonText?: string;
+  signupTileMobileImageUrl?: string;
+  signupTileMobileUseCustomLogo?: boolean;
+  signupTileMobileCustomLogoUrl?: string;
+  signupTileMobileContainerMode?: 'contained' | 'full_bleed';
   signupTileLayouts?: ('desktop' | 'tablet' | 'mobile')[];
 
-  // Global Alert Poster Modal (Prime Video Traveling style)
+  // Global Alert Poster Modal (Prime Video Traveling / Video Ad style)
   alertPosterEnabled?: boolean;
   alertPosterImageUrl?: string;
+  alertPosterVideoUrl?: string;
+  alertPosterIsAd?: boolean;
   alertPosterTitle?: string;
   alertPosterSubtitle?: string;
   alertPosterButtonText?: string;
   alertPosterButtonAction?: 'close' | 'link' | 'login';
   alertPosterButtonUrl?: string;
-  alertPosterLayouts?: ('desktop' | 'tablet' | 'mobile')[];
+  alertPosterLayouts?: AdDeviceLayout[];
+  alertPosterMaxDismissCount?: number;
+  alertPosterMaxActionCount?: number;
+  alertPosterAdSkipDelaySeconds?: number;
+  alertPosterAdRequireFullWatch?: boolean;
+  alertPosterDelayMode?: 'fixed' | 'random';
+  alertPosterDelaySeconds?: number;
+  alertPosterDelayMaxSeconds?: number;
+
+  // Dedicated Ads Manager: 1) Homepage Ad Tile (Signup-Tile style with configurable Ad badge, logo, positions & close button)
+  adTileEnabled?: boolean;
+  adTileLayouts?: AdDeviceLayout[];
+  adTileTitle?: string;
+  adTileSubtitle?: string;
+  adTileButtonText?: string;
+  adTileButtonUrl?: string;
+  adTileImageUrl?: string;
+  adTileLogoImageUrl?: string;
+  adTileContainerMode?: 'contained' | 'full_bleed';
+  adTileAspectHeight?: 'default' | 'tall' | 'narrow';
+  adTileImageGlare?: boolean;
+  adTileBadgePosition?: 'top_left' | 'bottom_left';
+  adTileTextPosition?: 'center' | 'bottom_left' | 'bottom_right';
+  adTileButtonPosition?: 'center' | 'bottom_left' | 'bottom_right';
+  adTileShowCloseButton?: boolean;
+  adTileSeparateMobile?: boolean;
+  adTileMobileTitle?: string;
+  adTileMobileSubtitle?: string;
+  adTileMobileButtonText?: string;
+  adTileMobileButtonUrl?: string;
+  adTileMobileImageUrl?: string;
+  adTileMobileLogoImageUrl?: string;
+  adTileMobileContainerMode?: 'contained' | 'full_bleed';
+  adTileMobileAspectHeight?: 'default' | 'tall' | 'narrow';
+  adTileMobileImageGlare?: boolean;
+  adTileMobileBadgePosition?: 'top_left' | 'bottom_left';
+  adTileMobileTextPosition?: 'center' | 'bottom_left' | 'bottom_right';
+  adTileMobileButtonPosition?: 'center' | 'bottom_left' | 'bottom_right';
+  adTileMobileShowCloseButton?: boolean;
+
+  // Dedicated Ads Manager: 2) More Info Page Ad Tile (Movies & Shows)
+  moreInfoAdEnabled?: boolean;
+  moreInfoAdPlacement?: MoreInfoAdSection;
+  moreInfoAdLayouts?: AdDeviceLayout[];
+  moreInfoAdUseCustomCreative?: boolean;
+  moreInfoAdTitle?: string;
+  moreInfoAdSubtitle?: string;
+  moreInfoAdButtonText?: string;
+  moreInfoAdButtonUrl?: string;
+  moreInfoAdImageUrl?: string;
+  moreInfoAdLogoImageUrl?: string;
+  moreInfoAdContainerMode?: 'contained' | 'full_bleed';
+  moreInfoAdAspectHeight?: 'default' | 'tall' | 'narrow';
+  moreInfoAdImageGlare?: boolean;
+  moreInfoAdBadgePosition?: 'top_left' | 'bottom_left';
+  moreInfoAdTextPosition?: 'center' | 'bottom_left' | 'bottom_right';
+  moreInfoAdButtonPosition?: 'center' | 'bottom_left' | 'bottom_right';
+  moreInfoAdShowCloseButton?: boolean;
+
+  // Dedicated Ads Manager: 3) Search Page Ad Tile (Recommended For You card style at random position)
+  searchAdEnabled?: boolean;
+  searchAdLayouts?: AdDeviceLayout[];
+  searchAdImageUrl?: string;
+  searchAdBadgeText?: string;
+  searchAdTitle?: string;
+  searchAdSubtitle?: string;
+  searchAdButtonText?: string;
+  searchAdButtonUrl?: string;
+
+  // Dedicated Ads Manager: 4) Narrow Ad Bar with Configurable Cross Button, Positions, Logo & Timer
+  narrowAdBarEnabled?: boolean;
+  narrowAdBarLayouts?: AdDeviceLayout[];
+  narrowAdBarImageUrl?: string;
+  narrowAdBarLogoImageUrl?: string;
+  narrowAdBarTitle?: string;
+  narrowAdBarSubtitle?: string;
+  narrowAdBarButtonText?: string;
+  narrowAdBarButtonUrl?: string;
+  narrowAdBarPlacement?: 'bottom_floating' | 'top_banner';
+  narrowAdBarBadgePosition?: 'top_left' | 'bottom_left';
+  narrowAdBarTextPosition?: 'left' | 'center' | 'right';
+  narrowAdBarButtonPosition?: 'left' | 'center' | 'right';
+  narrowAdBarShowCloseButton?: boolean;
+  narrowAdBarDelayMode?: 'fixed' | 'random';
+  narrowAdBarDelaySeconds?: number;
+  narrowAdBarDelayMaxSeconds?: number;
 
   // Detail & Player UI Options
   hideMobileDetailActionLabels?: boolean;
   mobileAutoFullscreenLandscapeEmbed?: boolean;
   hideFullSizeEpisodeTitles?: boolean;
+  hideNavbarOnFullSizeMoreInfo?: boolean;
 }
 
 export interface WatchHistoryItem {

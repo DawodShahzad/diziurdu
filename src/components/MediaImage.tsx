@@ -12,6 +12,8 @@ interface MediaImageProps extends Omit<React.ImgHTMLAttributes<HTMLImageElement>
   skeletonDelayMs?: number;
 }
 
+const loadedImageUrlCache = new Set<string>();
+
 export const MediaImage: React.FC<MediaImageProps> = ({
   src,
   fallbackTitle,
@@ -31,13 +33,14 @@ export const MediaImage: React.FC<MediaImageProps> = ({
   ...rest
 }) => {
   const cleanSrc = typeof src === 'string' ? src.trim() : '';
+  const alreadyCached = Boolean(cleanSrc && loadedImageUrlCache.has(cleanSrc));
   const [hasError, setHasError] = useState(false);
-  const [isLoaded, setIsLoaded] = useState(false);
+  const [isLoaded, setIsLoaded] = useState(alreadyCached);
   const internalRef = useRef<HTMLImageElement>(null);
 
   useEffect(() => {
     setHasError(false);
-    setIsLoaded(false);
+    setIsLoaded(Boolean(cleanSrc && loadedImageUrlCache.has(cleanSrc)));
   }, [cleanSrc, deferLoad]);
 
   useEffect(() => {
@@ -47,6 +50,7 @@ export const MediaImage: React.FC<MediaImageProps> = ({
       if (el.naturalWidth === 0) {
         setHasError(true);
       } else {
+        loadedImageUrlCache.add(cleanSrc);
         setIsLoaded(true);
       }
     }
@@ -54,7 +58,7 @@ export const MediaImage: React.FC<MediaImageProps> = ({
 
   const showFallback = !cleanSrc || hasError;
 
-  if (deferLoad) {
+  if (deferLoad && !alreadyCached) {
     return (
       <div
         className={
@@ -97,13 +101,19 @@ export const MediaImage: React.FC<MediaImageProps> = ({
       setHasError(true);
       return;
     }
-    if (typeof img.decode === 'function') {
+    const markReady = () => {
+      if (cleanSrc) loadedImageUrlCache.add(cleanSrc);
+      setIsLoaded(true);
+    };
+    if (loadedImageUrlCache.has(cleanSrc)) {
+      setIsLoaded(true);
+    } else if (typeof img.decode === 'function') {
       img
         .decode()
-        .then(() => setIsLoaded(true))
-        .catch(() => setIsLoaded(true));
+        .then(markReady)
+        .catch(markReady);
     } else {
-      setIsLoaded(true);
+      markReady();
     }
     onLoad?.(event);
   };

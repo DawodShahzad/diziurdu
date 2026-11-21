@@ -218,7 +218,9 @@ export const TrendsFeed: React.FC<TrendsFeedProps> = ({
                         e.stopPropagation();
                         setIsMuted(!isMuted);
                       }}
-                      className="absolute bottom-3 right-3 z-20 w-8 h-8 rounded-full bg-black/70 hover:bg-black/90 text-white flex items-center justify-center cursor-pointer shadow border border-white/20"
+                      onPointerDown={(e) => e.stopPropagation()}
+                      onTouchStart={(e) => e.stopPropagation()}
+                      className="absolute bottom-3 right-3 z-20 before:content-[''] before:absolute before:-inset-3 w-8 h-8 rounded-full bg-black/70 hover:bg-black/90 text-white flex items-center justify-center cursor-pointer shadow border border-white/20"
                       aria-label="Toggle sound"
                     >
                       {isMuted ? <VolumeX className="w-4 h-4" /> : <Volume2 className="w-4 h-4" />}
@@ -234,12 +236,14 @@ export const TrendsFeed: React.FC<TrendsFeedProps> = ({
                     className="cursor-pointer min-h-[40px] flex items-center"
                   >
                     {show.titleLogoUrl ? (
-                      <img
-                        src={show.titleLogoUrl}
-                        alt={show.title}
-                        referrerPolicy="no-referrer"
-                        className="h-10 sm:h-12 w-auto max-w-[200px] object-contain object-left drop-shadow-md"
-                      />
+                      <div className="relative w-[45%] max-w-[200px] aspect-[2.5/1] overflow-hidden shrink-0">
+                        <img
+                          src={show.titleLogoUrl}
+                          alt={show.title}
+                          referrerPolicy="no-referrer"
+                          className="absolute inset-0 block w-full h-full max-w-full max-h-full object-contain object-bottom-left drop-shadow-md"
+                        />
+                      </div>
                     ) : (
                       <h2 className="text-xl font-black text-white font-display tracking-tight">
                         {show.title}
