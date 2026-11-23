@@ -1,7 +1,6 @@
-import './firebase';
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import fullBackupData from './full_backup.json';
-import { Show, FeedConfig, AdminSettings, CastMember, VideoSourceType, NotificationItem, Episode, TrailerItem, CategoryItem, ProfilePictureGroup, DetailsOriginMeta, AdDeviceLayout } from './types';
+import { Show, FeedConfig, AdminSettings, CastMember, VideoSourceType, NotificationItem, Episode, TrailerItem, CategoryItem, ProfilePictureGroup, DetailsOriginMeta, AdDeviceLayout, PwaStatusBarMode, PwaStatusBarPageKey } from './types';
 import { NotFound404Page } from './components/NotFound404Page';
 
 // Extract full database contents directly from full_backup.json
@@ -25,6 +24,7 @@ const DB_SETTINGS: AdminSettings = (fullBackupData && (fullBackupData as any).ad
       mobileNavbarStyle: 'floating',
       mobileNavbarTheme: 'solid',
       mobileNavbarShowLabels: true,
+      showMobileNotifications: true,
       mobileRecommendationStyle: 'portrait',
       useNoPreviewButtonsFor2x3Recommendation: false,
       useFullSizeMoreInfoByDefault: false,
@@ -96,7 +96,23 @@ import { Film, Tv, Sparkles, Filter, ChevronRight, ChevronLeft, Bookmark, X, Men
 import { WatchProgressItem, EpisodeProgressItem } from './utils/watchProgress';
 import { resolveShowShareMeta } from './utils/shareMeta';
 import { MediaImage } from './components/MediaImage';
+import { DesktopTop10Page } from './components/DesktopTop10Page';
 import { detectIsMobileDevice, detectIsTabletDevice } from './utils/deviceLayout';
+import { usePWAInstall } from './hooks/usePWAInstall';
+import { AppSplashScreen } from './components/AppSplashScreen';
+import { PWAInstallPopout } from './components/PWAInstallPopout';
+import { triggerHaptic } from './utils/haptics';
+
+const DEFAULT_PWA_STATUS_BAR_CONFIG: Record<PwaStatusBarPageKey, PwaStatusBarMode> = {
+  home: 'transparent',
+  detail: 'black',
+  player: 'black',
+  categories: 'transparent',
+  top10: 'transparent',
+  search: 'black',
+  profile: 'black',
+  login: 'transparent'
+};
 
 function getPinnedOrRotatingRecommendation(pool: Show[], storageKey: string, forceRotate = false): Show | null {
   if (!pool || pool.length === 0) return null;
@@ -446,7 +462,14 @@ export default function App() {
   const [isAccountModalOpen, setIsAccountModalOpen] = useState<boolean>(false);
   const [isAppSettingsModalOpen, setIsAppSettingsModalOpen] = useState<boolean>(false);
   const [isRequestContentModalOpen, setIsRequestContentModalOpen] = useState<boolean>(false);
-  const [isLoggedIn, setIsLoggedIn] = useState<boolean>(true);
+  // Default logged out on first visit / clean export; only logged in once user signs up or logs in
+  const [isLoggedIn, setIsLoggedIn] = useState<boolean>(() => {
+    try {
+      return localStorage.getItem('cineflix_is_logged_in') === 'true';
+    } catch {
+      return false;
+    }
+  });
 
   // User Profile state: pick first picture from first picture row as initial when not saved in local browser
   const [userAvatar, setUserAvatar] = useState<string>(() => {
@@ -495,10 +518,12 @@ export default function App() {
     return localStorage.getItem('cineflix_user_password') || '';
   });
 
-  // Profile Lock State (4-digit PIN required on website visit when enabled)
+  // Profile Lock State (4-digit PIN required on website visit when logged in and enabled)
   const [isProfileLocked, setIsProfileLocked] = useState<boolean>(() => {
     if (typeof window === 'undefined') return false;
     try {
+      const loggedIn = localStorage.getItem('cineflix_is_logged_in') === 'true';
+      if (!loggedIn) return false;
       const isEnabled = localStorage.getItem('dizi_profile_lock_enabled') === 'true';
       const hasPin = Boolean(localStorage.getItem('dizi_profile_lock_pin'));
       const isSessionUnlocked = sessionStorage.getItem('dizi_profile_unlocked') === 'true';
@@ -684,9 +709,10 @@ export default function App() {
     } catch {}
   };
 
-  // When user clicks sign out (or Sign In from guest mode), open Login / Create Account page
+  // When user clicks sign out (or Login from guest mode), clear login session and open Login / Sign Up page
   const handleSignOut = () => {
     try {
+      localStorage.removeItem('cineflix_is_logged_in');
       sessionStorage.removeItem('dizi_profile_unlocked');
     } catch {}
     setIsLoggedIn(false);
@@ -1086,6 +1112,18 @@ export default function App() {
   });
   const [isMobile, setIsMobile] = useState<boolean>(() => detectIsMobileDevice());
   const [isTablet, setIsTablet] = useState<boolean>(() => detectIsTabletDevice());
+  const [isLandscape, setIsLandscape] = useState<boolean>(() => {
+    if (typeof window === 'undefined') return false;
+    return window.innerWidth > window.innerHeight;
+  });
+  const isMobileLandscape = isMobile && !isTablet && isLandscape;
+  const isMobileTransparentBlurOn = Boolean(
+    adminSettings.mobileTransparentBlurNavbar || adminSettings.mobileNavbarTheme === 'glass'
+  );
+  const [mobileLandscapeTopBarHidden, setMobileLandscapeTopBarHidden] = useState<boolean>(false);
+  const mobileLandscapeLastScrollYRef = useRef<number>(0);
+  const mobileLandscapeUpAccumRef = useRef<number>(0);
+  const homeSavedScrollYRef = useRef<number>(0);
   // Session-frozen homepage row seed: refreshes on reload/reopen, never shifts while user browses
   const [sessionRowSeed] = useState<number>(() =>
     ((Date.now() ^ Math.floor(Math.random() * 0x7fffffff)) >>> 0) || 1337
@@ -1165,6 +1203,7 @@ export default function App() {
       setWindowWidth(window.innerWidth);
       setIsMobile(detectIsMobileDevice());
       setIsTablet(detectIsTabletDevice());
+      setIsLandscape(window.innerWidth > window.innerHeight);
     };
     handleResize();
     window.addEventListener('resize', handleResize);
@@ -1234,6 +1273,7 @@ export default function App() {
   const genreReturnScrollRef = useRef<number>(0);
   const [isHamburgerDrawerOpen, setIsHamburgerDrawerOpen] = useState<boolean>(false);
   const [drawerDedicatedView, setDrawerDedicatedView] = useState<'top_10_movies' | 'top_10_series' | 'vertical_my_list' | null>(null);
+  const [top10AccessSource, setTop10AccessSource] = useState<'direct' | 'categories'>('direct');
   const [isNotificationOpen, setIsNotificationOpen] = useState<boolean>(false);
   const [mobileTop10ShareShow, setMobileTop10ShareShow] = useState<Show | null>(null);
   const [isCategoriesDetailOpen, setIsCategoriesDetailOpen] = useState<boolean>(false);
@@ -1346,17 +1386,72 @@ export default function App() {
   const handleMobileSelectTab = (tab: 'home' | 'search' | 'profile' | 'trends') => {
     if (tab === 'trends') return;
     setActionSheetShow(null);
+
+    const isCurrentlyOnHome =
+      activeFilter === 'all' &&
+      !isMobileSearchOpen &&
+      !isMobileProfileOpen &&
+      !selectedShowForDetail &&
+      !drawerDedicatedView &&
+      !selectedGenreView &&
+      !selectedCategoryFilter &&
+      !selectedSpecialFeed &&
+      !is404Page &&
+      !searchQuery.trim();
+
     if (tab === 'home') {
+      if (isCurrentlyOnHome) {
+        // Already on homepage: smoothly scroll back to top
+        window.scrollTo({ top: 0, behavior: 'smooth' });
+        homeSavedScrollYRef.current = 0;
+        return;
+      }
+
+      // Coming back from another page/tab: return to homepage at the exact scroll position where user left off
+      const savedScrollY = homeSavedScrollYRef.current || 0;
+      setIs404Page(false);
+      setDrawerDedicatedView(null);
       setSelectedShowForDetail(null);
+      setSharedTitleShow(null);
+      setDetailOriginMeta(null);
       setIsMobileProfileOpen(false);
       setIsMobileSearchOpen(false);
-      handleGoHome();
+      setIsAccountModalOpen(false);
+      setIsAppSettingsModalOpen(false);
+      setSelectedSpecialFeed(null);
+      setSelectedCategoryFilter(null);
+      setSelectedCategoryFromGenre(null);
+      setSelectedGenreView(null);
+      setIsCategoriesDetailOpen(false);
+      setDesktopSearchTermFilter('');
+      setDesktopCommittedExactQuery('');
+      setSearchQuery('');
+      pageScrollPositionsRef.current.all = savedScrollY;
+      if (activeFilter !== 'all') {
+        setActiveFilter('all');
+        try {
+          sessionStorage.setItem('cineflix_active_filter', 'all');
+        } catch {}
+      }
+      pushRoute('/');
+      requestAnimationFrame(() => {
+        window.scrollTo({ top: savedScrollY, behavior: 'instant' });
+      });
+      setTimeout(() => {
+        window.scrollTo({ top: savedScrollY, behavior: 'instant' });
+      }, 40);
     } else if (tab === 'search') {
+      if (isCurrentlyOnHome) {
+        homeSavedScrollYRef.current = window.scrollY;
+      }
       setSelectedShowForDetail(null);
       setIsMobileProfileOpen(false);
       setIsMobileSearchOpen(true);
       pushRoute(searchQuery.trim() ? `/search?q=${encodeURIComponent(searchQuery.trim())}` : '/search');
     } else if (tab === 'profile') {
+      if (isCurrentlyOnHome) {
+        homeSavedScrollYRef.current = window.scrollY;
+      }
       setSelectedShowForDetail(null);
       setIsMobileSearchOpen(false);
       setIsMobileProfileOpen(true);
@@ -1396,8 +1491,46 @@ export default function App() {
       setIsMobileScrolled(scrollY > 10);
       const opacity = Math.min(0.9, (scrollY / 384) * 0.9);
       setMobileHeaderOpacity(opacity);
-      if (!selectedShowForDetail && !playingMedia && !searchQuery) {
+
+      // Mobile landscape top navbar hide on scroll down; reveal smoothly after scrolling up ~4cm (~150px)
+      if (isMobileLandscape) {
+        const delta = scrollY - mobileLandscapeLastScrollYRef.current;
+        mobileLandscapeLastScrollYRef.current = scrollY;
+        if (scrollY <= 16) {
+          mobileLandscapeUpAccumRef.current = 0;
+          setMobileLandscapeTopBarHidden(false);
+        } else if (delta > 2) {
+          mobileLandscapeUpAccumRef.current = 0;
+          if (scrollY > 24) {
+            setMobileLandscapeTopBarHidden(true);
+          }
+        } else if (delta < -1) {
+          mobileLandscapeUpAccumRef.current += Math.abs(delta);
+          if (mobileLandscapeUpAccumRef.current >= 150) {
+            setMobileLandscapeTopBarHidden(false);
+          }
+        }
+      } else {
+        mobileLandscapeUpAccumRef.current = 0;
+        mobileLandscapeLastScrollYRef.current = scrollY;
+        setMobileLandscapeTopBarHidden(false);
+      }
+
+      if (
+        !selectedShowForDetail &&
+        !playingMedia &&
+        !searchQuery &&
+        !isMobileSearchOpen &&
+        !isMobileProfileOpen &&
+        !drawerDedicatedView &&
+        !selectedGenreView &&
+        !selectedCategoryFilter &&
+        !selectedSpecialFeed
+      ) {
         const current = activeFilterRef.current;
+        if (current === 'all') {
+          homeSavedScrollYRef.current = scrollY;
+        }
         if (current === 'all' || current === 'series' || current === 'movies') {
           if (checkTwoFeedLinesScrolled()) {
             pageScrollPositionsRef.current[current] = window.scrollY;
@@ -1411,7 +1544,18 @@ export default function App() {
     };
     window.addEventListener('scroll', handleScroll, { passive: true });
     return () => window.removeEventListener('scroll', handleScroll);
-  }, [selectedShowForDetail, playingMedia, searchQuery]);
+  }, [
+    selectedShowForDetail,
+    playingMedia,
+    searchQuery,
+    isMobileLandscape,
+    isMobileSearchOpen,
+    isMobileProfileOpen,
+    drawerDedicatedView,
+    selectedGenreView,
+    selectedCategoryFilter,
+    selectedSpecialFeed
+  ]);
 
   // When switching between pages, load always from where left if > 2 lines were scrolled, else from top
   useEffect(() => {
@@ -1659,6 +1803,7 @@ export default function App() {
 
   // Toggle watchlist: only updates watchlist state during session, feed content does not change until next reload!
   const handleToggleWatchlist = (showId: string) => {
+    triggerHaptic(10);
     const isAdding = !watchlist.includes(showId);
     setWatchlist((prev) =>
       isAdding ? [...prev, showId] : prev.filter((id) => id !== showId)
@@ -2241,14 +2386,16 @@ export default function App() {
             setIsMobileProfileOpen(false);
             setIsAccountModalOpen(false);
             setIsAppSettingsModalOpen(false);
+            setTop10AccessSource('direct');
             setDrawerDedicatedView('top_10_movies');
-          } else if (cleanPath === '/top10/series') {
+          } else if (cleanPath === '/top10/series' || cleanPath === '/top10') {
             setIs404Page(false);
             setSelectedSpecialFeed(null);
             setIsMobileSearchOpen(false);
             setIsMobileProfileOpen(false);
             setIsAccountModalOpen(false);
             setIsAppSettingsModalOpen(false);
+            setTop10AccessSource('direct');
             setDrawerDedicatedView('top_10_series');
           } else if (cleanPath.startsWith('/collection/')) {
             const feedId = decodeURIComponent(cleanPath.slice('/collection/'.length));
@@ -3286,6 +3433,95 @@ export default function App() {
     return [...shows].sort(() => 0.5 - Math.random()).slice(0, 14);
   });
 
+  // PWA Install Engine (Custom Install Popout + Settings Download Option, auto-hidden when installed)
+  const pwaInstall = usePWAInstall({
+    suppressAutoPopout: Boolean(
+      playingMedia ||
+        isAdminPanelOpen ||
+        isLoginPageOpen ||
+        isProfileLocked ||
+        isAppSettingsModalOpen
+    )
+  });
+
+  // Handle Android / PWA Home Screen Icon Shortcuts: /?action=search and /?action=watchlist
+  const pwaShortcutHandledRef = useRef<boolean>(false);
+  useEffect(() => {
+    if (pwaShortcutHandledRef.current || typeof window === 'undefined') return;
+    try {
+      const params = new URLSearchParams(window.location.search);
+      const action = params.get('action');
+      if (action === 'search') {
+        pwaShortcutHandledRef.current = true;
+        if (detectIsMobileDevice()) {
+          setIsMobileSearchOpen(true);
+        } else {
+          setSearchQuery(' ');
+          setTimeout(() => setSearchQuery(''), 50);
+          const searchInput = document.querySelector<HTMLInputElement>('input[type="search"], input[placeholder*="Search" i]');
+          searchInput?.focus();
+        }
+        window.history.replaceState({}, '', '/search');
+      } else if (action === 'watchlist') {
+        pwaShortcutHandledRef.current = true;
+        if (detectIsMobileDevice()) {
+          setIsMobileProfileOpen(true);
+        } else {
+          setActiveFilter('watchlist');
+        }
+        window.history.replaceState({}, '', '/mylist');
+      }
+    } catch {}
+  }, []);
+
+  // Dynamic Per-Page PWA Status Bar & <meta name="theme-color"> Controller (Admin Panel configurable)
+  const activePwaPageKey: PwaStatusBarPageKey = playingMedia
+    ? 'player'
+    : selectedShowForDetail || sharedTitleShow
+    ? 'detail'
+    : isLoginPageOpen
+    ? 'login'
+    : isMobileSearchOpen || Boolean(searchQuery.trim())
+    ? 'search'
+    : isMobileProfileOpen || isAccountModalOpen || isProfileLocked
+    ? 'profile'
+    : drawerDedicatedView === 'top_10_movies' || drawerDedicatedView === 'top_10_series'
+    ? 'top10'
+    : activeFilter === 'categories'
+    ? 'categories'
+    : 'home';
+
+  const activePwaStatusBarMode: PwaStatusBarMode =
+    adminSettings.pwaStatusBarConfig?.[activePwaPageKey] ||
+    DEFAULT_PWA_STATUS_BAR_CONFIG[activePwaPageKey];
+
+  useEffect(() => {
+    if (typeof document === 'undefined') return;
+    const targetColor =
+      activePwaStatusBarMode === 'black' || activePwaStatusBarMode === 'hidden'
+        ? '#000000'
+        : '#09090b';
+
+    let themeMeta = document.querySelector('meta[name="theme-color"]') as HTMLMetaElement | null;
+    if (!themeMeta) {
+      themeMeta = document.createElement('meta');
+      themeMeta.name = 'theme-color';
+      document.head.appendChild(themeMeta);
+    }
+    themeMeta.content = targetColor;
+
+    let appleStatusMeta = document.querySelector(
+      'meta[name="apple-mobile-web-app-status-bar-style"]'
+    ) as HTMLMetaElement | null;
+    if (!appleStatusMeta) {
+      appleStatusMeta = document.createElement('meta');
+      appleStatusMeta.name = 'apple-mobile-web-app-status-bar-style';
+      document.head.appendChild(appleStatusMeta);
+    }
+    appleStatusMeta.content = activePwaStatusBarMode === 'black' ? 'black' : 'black-translucent';
+    document.documentElement.dataset.pwaStatusBar = activePwaStatusBarMode;
+  }, [activePwaStatusBarMode]);
+
   // If in Admin Mode, render the standalone full-screen Admin Management GUI
   if (isAdminPanelOpen) {
     return (
@@ -3324,6 +3560,7 @@ export default function App() {
   if (isLoginPageOpen) {
     return (
       <>
+        <AppSplashScreen platformName={platformName} />
         <GlobalTooltip />
         <LoginPage
           shows={shows}
@@ -3352,6 +3589,7 @@ export default function App() {
           onAuthSuccess={({ email, password, name, logoRect }) => {
             let shouldShowPinLock = false;
             try {
+              localStorage.setItem('cineflix_is_logged_in', 'true');
               localStorage.setItem('cineflix_user_email', email);
               localStorage.setItem('cineflix_user_password', password);
               if (name && name.trim()) {
@@ -3432,9 +3670,33 @@ export default function App() {
         paddingTop: isOffline && !isMobile ? '52px' : undefined
       }}
       className={`min-h-screen text-zinc-100 flex flex-col font-sans selection:bg-red-600 selection:text-white ${
-        sharedTitleShow && !isMobile && !isShareOverlayClosing ? 'bg-[#181818]' : isMobile ? 'bg-black' : 'bg-[#141414]'
+        sharedTitleShow && !isMobile && !isShareOverlayClosing ? 'bg-[#181818]' : isMobile ? 'bg-[#09090b]' : 'bg-[#141414]'
       }`}
     >
+      {/* Standalone-Only Custom Branded Launch Splash Screen */}
+      <AppSplashScreen platformName={platformName} />
+
+      {/* Solid Black Top Safe-Area Backing Strip when Admin selects "Black" status bar for current page */}
+      {isMobile && activePwaStatusBarMode === 'black' && (
+        <div
+          aria-hidden="true"
+          className="fixed top-0 left-0 right-0 z-[255] h-[env(safe-area-inset-top)] bg-black pointer-events-none"
+        />
+      )}
+
+      {/* Custom-Designed In-App PWA Install Popout (Auto-hidden once installed) */}
+      <PWAInstallPopout
+        isOpen={pwaInstall.isPopoutOpen}
+        isIOS={pwaInstall.isIOS}
+        canPromptInstall={pwaInstall.canPromptInstall}
+        isInstalling={pwaInstall.isInstalling}
+        platformName={platformName}
+        onInstall={() => {
+          pwaInstall.promptInstall();
+        }}
+        onClose={() => pwaInstall.closePopout(true)}
+      />
+
       {/* Live Internet Connection Offline Alert Bar */}
       <OfflineAlertBar isOffline={isOffline} />
 
@@ -3502,6 +3764,23 @@ export default function App() {
         onOpenHamburgerDrawer={() => setIsHamburgerDrawerOpen(true)}
         desktopNavbarStyle={adminSettings.desktopNavbarStyle || 'classic'}
         hideNavbarOnFullSizeMoreInfo={Boolean(adminSettings.hideNavbarOnFullSizeMoreInfo)}
+        mobileTransparentBlurNavbar={isMobileTransparentBlurOn}
+        showMobileNotifications={adminSettings.showMobileNotifications !== false}
+        onOpenMobileNotifications={() => setIsNotificationOpen((prev) => !prev)}
+        isTop10Page={!isMobile && (drawerDedicatedView === 'top_10_series' || drawerDedicatedView === 'top_10_movies')}
+        onOpenTop10={(mode = 'series') => {
+          setIs404Page(false);
+          setSelectedSpecialFeed(null);
+          setSelectedCategoryFilter(null);
+          setSelectedGenreView(null);
+          setSelectedShowForDetail(null);
+          setSharedTitleShow(null);
+          setSearchQuery('');
+          setTop10AccessSource('direct');
+          setDrawerDedicatedView(mode === 'movies' ? 'top_10_movies' : 'top_10_series');
+          pushRoute(mode === 'movies' ? '/top10/movies' : '/top10/series');
+          window.scrollTo({ top: 0, behavior: 'instant' });
+        }}
         onShareBack={() => {
           if (shareBackStackRef.current.length > 0) {
             window.history.back();
@@ -3609,8 +3888,8 @@ export default function App() {
         );
       })()}
 
-      {/* Main Content Area: hidden while Full-Size Desktop More Info is active, un-hidden during transparent slide-down closing */}
-      <main className={`${sharedTitleShow && !isMobile && !isShareOverlayClosing ? 'hidden' : 'flex-1'} ${isMobile ? 'pb-18' : 'pb-0'}`}>
+      {/* Main Content Area: hidden while Full-Size Desktop More Info is active; offset right when mobile landscape left sidebar is active */}
+      <main className={`${sharedTitleShow && !isMobile && !isShareOverlayClosing ? 'hidden' : 'flex-1'} ${isMobileLandscape ? 'pl-14 pb-4' : isMobile ? 'pb-18' : 'pb-0'}`}>
         {is404Page ? (
           <NotFound404Page
             onGoHome={handleGoHome}
@@ -3628,19 +3907,65 @@ export default function App() {
             }}
             platformName={platformName}
           />
+        ) : drawerDedicatedView && !isMobile && (drawerDedicatedView === 'top_10_series' || drawerDedicatedView === 'top_10_movies') ? (
+          /* Desktop Top 10 Showcase Page: red-top-to-blue-bottom ambient glow, 5-per-row classical rank cards, Series/Movies pill; transparent footer only on direct /top10 slug */
+          <DesktopTop10Page
+            mode={drawerDedicatedView === 'top_10_movies' ? 'movies' : 'series'}
+            onChangeMode={(nextMode) => {
+              setDrawerDedicatedView(nextMode === 'movies' ? 'top_10_movies' : 'top_10_series');
+              if (top10AccessSource === 'direct') {
+                pushRoute(nextMode === 'movies' ? '/top10/movies' : '/top10/series');
+              }
+            }}
+            shows={shows}
+            onOpenDetails={(s) =>
+              handleOpenDetails(s, 'trailer', 'main', undefined, undefined, { sourceFeedType: 'other' })
+            }
+            footerSlot={
+              top10AccessSource === 'direct' ? (
+                <Footer
+                  shows={shows}
+                  onOpenAccount={() => {
+                    if (!isLoggedIn) {
+                      openLoginPage('login');
+                      return;
+                    }
+                    setIsAccountModalOpen(true);
+                    pushRoute('/account');
+                  }}
+                  onOpenSettings={() => {
+                    setIsAppSettingsModalOpen(true);
+                    pushRoute('/settings');
+                  }}
+                  onRequestContent={() => setIsRequestContentModalOpen(true)}
+                  onOpenCategories={() => handleSelectPage('categories')}
+                  platformName={platformName}
+                  transparentBg={true}
+                />
+              ) : undefined
+            }
+          />
         ) : drawerDedicatedView ? (
-          /* Dedicated Top 10 (Dexter reference mobile list design) & Vertical My List View */
+          /* Dedicated Top 10 (Mobile list design) & Vertical My List View */
           <div className="pt-16 sm:pt-20 pb-24 min-h-screen bg-black text-white animate-in fade-in duration-200">
             {/* Fixed Black Top Header */}
-            <div className="fixed top-0 inset-x-0 z-50 h-14 bg-black px-4 flex items-center justify-between border-b border-white/10 select-none">
+            <div className={`fixed top-0 ${isMobileLandscape ? 'left-14 right-0' : 'inset-x-0'} z-50 h-14 bg-black px-4 flex items-center justify-between border-b border-white/10 select-none`}>
               <div className="flex items-center gap-3">
                 <button
                   onClick={() => {
+                    const cameFromCategories =
+                      top10AccessSource === 'categories' &&
+                      (drawerDedicatedView === 'top_10_series' || drawerDedicatedView === 'top_10_movies');
                     setDrawerDedicatedView(null);
-                    pushRoute('/');
+                    if (cameFromCategories) {
+                      setActiveFilter('categories');
+                      pushRoute('/categories');
+                    } else {
+                      pushRoute('/');
+                    }
                   }}
                   className="p-1 -ml-1 text-white hover:text-white/80 active:scale-90 transition-transform cursor-pointer"
-                  aria-label="Back to home"
+                  aria-label="Back"
                 >
                   <ChevronLeft className="w-6 h-6 stroke-[2.5]" />
                 </button>
@@ -4286,10 +4611,32 @@ export default function App() {
                 <div
                   data-mobile-top-navbar="true"
                   style={{
-                    backgroundColor: mobileHeaderOpacity > 0.05 ? `rgba(0, 0, 0, ${mobileHeaderOpacity})` : 'transparent'
+                    ...(isMobileTransparentBlurOn
+                      ? mobileHeaderOpacity > 0.05
+                        ? {
+                            backgroundColor: 'rgba(20, 20, 24, 0.56)',
+                            backdropFilter: 'blur(22px) saturate(165%)',
+                            WebkitBackdropFilter: 'blur(22px) saturate(165%)',
+                            borderBottom: 'none'
+                          }
+                        : {
+                            backgroundColor: 'transparent',
+                            backdropFilter: 'none',
+                            WebkitBackdropFilter: 'none',
+                            borderBottom: 'none'
+                          }
+                      : {
+                          backgroundColor:
+                            mobileHeaderOpacity > 0.05 ? `rgba(0, 0, 0, ${mobileHeaderOpacity})` : 'transparent',
+                          borderBottom: 'none'
+                        }),
+                    transform:
+                      isMobileLandscape && mobileLandscapeTopBarHidden
+                        ? 'translate3d(0, -100%, 0)'
+                        : 'translate3d(0, 0, 0)'
                   }}
-                  className={`fixed top-0 inset-x-0 z-50 w-full px-4 h-14 flex items-center justify-between select-none transition-colors duration-150 border-0 ${
-                    mobileHeaderOpacity > 0.05 ? 'shadow-md' : 'shadow-none'
+                  className={`fixed top-0 ${isMobileLandscape ? 'left-14 right-0' : 'inset-x-0'} z-50 px-4 h-14 flex items-center justify-between select-none transition-[background-color,transform] duration-300 ease-out border-0 ${
+                    mobileHeaderOpacity > 0.05 && !isMobileTransparentBlurOn ? 'shadow-md' : 'shadow-none'
                   }`}
                 >
                   <div className="flex items-center gap-3">
@@ -4326,14 +4673,16 @@ export default function App() {
                   </div>
 
                   <div className="flex items-center gap-3">
-                    <button
-                      onClick={() => setIsNotificationOpen((prev) => !prev)}
-                      className="relative p-1 text-white hover:text-white/80 active:scale-90 transition-transform cursor-pointer"
-                      aria-label="Notifications"
-                    >
-                      <Bell className="w-5.5 h-5.5 text-white" />
-                      <span className="absolute top-1 right-1 w-2 h-2 rounded-full bg-red-600" />
-                    </button>
+                    {!isMobileLandscape && adminSettings.showMobileNotifications !== false && (
+                      <button
+                        onClick={() => setIsNotificationOpen((prev) => !prev)}
+                        className="relative p-1 text-white hover:text-white/80 active:scale-90 transition-transform cursor-pointer"
+                        aria-label="Notifications"
+                      >
+                        <Bell className="w-5.5 h-5.5 text-white" />
+                        <span className="absolute top-1 right-1 w-2 h-2 rounded-full bg-red-600" />
+                      </button>
+                    )}
                   </div>
                 </div>
               ) : (
@@ -4388,6 +4737,14 @@ export default function App() {
               resetKey={categoriesResetKey}
               initialCategory={selectedCategoryFromGenre}
               mobileCategoriesStyle={adminSettings.mobileCategoriesStyle || 'grid'}
+              onOpenTrendingTop10={() => {
+                setTop10AccessSource('categories');
+                setSelectedCategoryFilter(null);
+                setSelectedGenreView(null);
+                setIsCategoriesDetailOpen(false);
+                setDrawerDedicatedView('top_10_series');
+                window.scrollTo({ top: 0, behavior: 'instant' });
+              }}
             />
           </div>
         ) : (
@@ -4398,10 +4755,32 @@ export default function App() {
               <div
                 data-mobile-top-navbar="true"
                 style={{
-                  backgroundColor: mobileHeaderOpacity > 0.05 ? `rgba(0, 0, 0, ${mobileHeaderOpacity})` : 'transparent'
+                  ...(isMobileTransparentBlurOn
+                    ? mobileHeaderOpacity > 0.05
+                      ? {
+                          backgroundColor: 'rgba(20, 20, 24, 0.56)',
+                          backdropFilter: 'blur(22px) saturate(165%)',
+                          WebkitBackdropFilter: 'blur(22px) saturate(165%)',
+                          borderBottom: 'none'
+                        }
+                      : {
+                          backgroundColor: 'transparent',
+                          backdropFilter: 'none',
+                          WebkitBackdropFilter: 'none',
+                          borderBottom: 'none'
+                        }
+                    : {
+                        backgroundColor:
+                          mobileHeaderOpacity > 0.05 ? `rgba(0, 0, 0, ${mobileHeaderOpacity})` : 'transparent',
+                        borderBottom: 'none'
+                      }),
+                  transform:
+                    isMobileLandscape && mobileLandscapeTopBarHidden
+                      ? 'translate3d(0, -100%, 0)'
+                      : 'translate3d(0, 0, 0)'
                 }}
-                className={`fixed top-0 inset-x-0 z-50 w-full px-4 h-14 flex items-center justify-between select-none transition-colors duration-150 border-0 ${
-                  mobileHeaderOpacity > 0.05 ? 'shadow-md' : 'shadow-none'
+                className={`fixed top-0 ${isMobileLandscape ? 'left-14 right-0' : 'inset-x-0'} z-50 px-4 h-14 flex items-center justify-between select-none transition-[background-color,transform] duration-300 ease-out border-0 ${
+                  mobileHeaderOpacity > 0.05 && !isMobileTransparentBlurOn ? 'shadow-md' : 'shadow-none'
                 }`}
               >
                 {/* Left: Hamburger menu icon + Platform icon/logo */}
@@ -4438,16 +4817,18 @@ export default function App() {
                   </div>
                 </div>
 
-                {/* Right: Notification Bell button ONLY (without profile icon) */}
+                {/* Right: Notification Bell button ONLY in portrait when enabled in Admin Panel */}
                 <div className="flex items-center gap-3">
-                  <button
-                    onClick={() => setIsNotificationOpen((prev) => !prev)}
-                    className="relative p-1 text-white hover:text-white/80 active:scale-90 transition-transform cursor-pointer"
-                    aria-label="Notifications"
-                  >
-                    <Bell className="w-5.5 h-5.5 text-white" />
-                    <span className="absolute top-1 right-1 w-2 h-2 rounded-full bg-red-600" />
-                  </button>
+                  {!isMobileLandscape && adminSettings.showMobileNotifications !== false && (
+                    <button
+                      onClick={() => setIsNotificationOpen((prev) => !prev)}
+                      className="relative p-1 text-white hover:text-white/80 active:scale-90 transition-transform cursor-pointer"
+                      aria-label="Notifications"
+                    >
+                      <Bell className="w-5.5 h-5.5 text-white" />
+                      <span className="absolute top-1 right-1 w-2 h-2 rounded-full bg-red-600" />
+                    </button>
+                  )}
                 </div>
               </div>
             ) : (
@@ -4798,7 +5179,13 @@ export default function App() {
               }
 
               return (
-                <div className="relative z-20 space-y-5 sm:space-y-6 md:space-y-7 mt-2 md:mt-3">
+                <div
+                  className={`relative z-20 ${
+                    isMobileLandscape
+                      ? 'space-y-2.5 mt-1'
+                      : 'space-y-5 sm:space-y-6 md:space-y-7 mt-2 md:mt-3'
+                  }`}
+                >
                   {orderedRows.map((entry, idx) => {
                     if (entry.kind === 'single_special') {
                       return (
@@ -4908,6 +5295,12 @@ export default function App() {
                         feedIndex={idx}
                         isPaused={isHomepagePreviewPaused}
                         desktopPopoutStyle={adminSettings.desktopPopoutStyle || 'classic'}
+                        onOpenTop10Page={(mode) => {
+                          setTop10AccessSource('direct');
+                          setDrawerDedicatedView(mode === 'movies' ? 'top_10_movies' : 'top_10_series');
+                          pushRoute(mode === 'movies' ? '/top10/movies' : '/top10/series');
+                          window.scrollTo({ top: 0, behavior: 'instant' });
+                        }}
                       />
                     );
                   })}
@@ -4917,26 +5310,28 @@ export default function App() {
           </>
         )}
 
-        {/* Global Redesign Footer */}
-        <Footer
-          shows={shows}
-          onOpenAccount={() => {
-            if (!isLoggedIn) {
-              openLoginPage('login');
-              return;
-            }
-            setIsAccountModalOpen(true);
-            pushRoute('/account');
-          }}
-          onOpenSettings={() => {
-            setIsAppSettingsModalOpen(true);
-            pushRoute('/settings');
-          }}
-          onRequestContent={() => setIsRequestContentModalOpen(true)}
-          onOpenCategories={() => handleSelectPage('categories')}
-          platformName={platformName}
-          isMyListPage={activeFilter === 'watchlist' || Boolean(sharedTitleShow && !isMobile)}
-        />
+        {/* Global Redesign Footer (hidden on Desktop Top 10 page — direct /top10 renders its own transparent footer inside DesktopTop10Page, Categories Trending hides footer) */}
+        {!(!isMobile && (drawerDedicatedView === 'top_10_series' || drawerDedicatedView === 'top_10_movies')) && (
+          <Footer
+            shows={shows}
+            onOpenAccount={() => {
+              if (!isLoggedIn) {
+                openLoginPage('login');
+                return;
+              }
+              setIsAccountModalOpen(true);
+              pushRoute('/account');
+            }}
+            onOpenSettings={() => {
+              setIsAppSettingsModalOpen(true);
+              pushRoute('/settings');
+            }}
+            onRequestContent={() => setIsRequestContentModalOpen(true)}
+            onOpenCategories={() => handleSelectPage('categories')}
+            platformName={platformName}
+            isMyListPage={activeFilter === 'watchlist' || Boolean(sharedTitleShow && !isMobile)}
+          />
+        )}
       </main>
 
       {/* 4. Full Detailed Page / Modal */}
@@ -5186,6 +5581,7 @@ export default function App() {
           pushRoute('/');
         }}
         platformName={platformName}
+        shows={shows}
         userAvatar={userAvatar}
         userName={userName}
         userHandle={userHandle}
@@ -5212,7 +5608,7 @@ export default function App() {
         }}
       />
 
-      {/* 10. App Settings Modal (Playback, Data, Downloads, Audio) */}
+      {/* 10. App Settings Modal (Playback, Data, Downloads, Audio, PWA Install) */}
       <AppSettingsModal
         isOpen={isAppSettingsModalOpen}
         onClose={() => {
@@ -5223,6 +5619,16 @@ export default function App() {
         platformName={platformName}
         onClearWatchlist={handleClearWatchlist}
         onClearWatchHistory={handleClearWatchHistory}
+        isAppInstalled={pwaInstall.isInstalled}
+        canPromptInstall={pwaInstall.canPromptInstall}
+        isIOS={pwaInstall.isIOS}
+        onInstallApp={() => {
+          if (pwaInstall.canPromptInstall) {
+            pwaInstall.promptInstall();
+          } else {
+            pwaInstall.openPopout();
+          }
+        }}
       />
 
       {/* 11. Request Content Modal */}
@@ -5518,16 +5924,23 @@ export default function App() {
         }}
       />
 
-      {/* Mobile Floating / Bottom-Fixed Navigation Bar: stays visible behind PIN lock with empty avatar slot until PIN unlock completes */}
+      {/* Mobile Floating / Bottom-Fixed Navigation Bar (transforms into vertical left sidebar across all pages in landscape orientation) */}
       {isMobile && !isTablet && !actionSheetShow && !isMobileSeasonPickerOpen && !isMobileProfileEditOpen && !isMobileInfoSheetOpen && !playingMedia && !isHamburgerDrawerOpen && !isLoginPageOpen && (
         <MobileBottomNav
           activeTab={isMobileSearchOpen ? 'search' : isMobileProfileOpen ? 'profile' : 'home'}
           onSelectTab={handleMobileSelectTab}
           onTripleTapHome={handleTripleTapHome}
+          onOpenNotifications={() => setIsNotificationOpen((prev) => !prev)}
+          showNotifications={adminSettings.showMobileNotifications !== false}
+          hasUnreadNotifications={notifications.some((n) => n.unread)}
           userAvatar={userAvatar}
           platformName={platformName}
+          platformIconUrl={adminSettings.platformIconUrl}
+          customLogoUrl={adminSettings.customLogoUrl}
+          useCustomLogo={adminSettings.useCustomLogo}
           navbarStyle={adminSettings.mobileNavbarStyle || 'floating'}
           navbarTheme={adminSettings.mobileNavbarTheme || 'solid'}
+          transparentBlurNavbar={isMobileTransparentBlurOn}
           showLabels={adminSettings.mobileNavbarShowLabels !== false}
           isHiddenBehindLock={false}
           hideProfileAvatar={isProfileLocked}
@@ -5639,6 +6052,7 @@ export default function App() {
                 <button
                   onClick={() => {
                     setIsHamburgerDrawerOpen(false);
+                    setTop10AccessSource('direct');
                     setDrawerDedicatedView('top_10_movies');
                     pushRoute('/top10/movies');
                   }}
@@ -5650,6 +6064,7 @@ export default function App() {
                 <button
                   onClick={() => {
                     setIsHamburgerDrawerOpen(false);
+                    setTop10AccessSource('direct');
                     setDrawerDedicatedView('top_10_series');
                     pushRoute('/top10/series');
                   }}

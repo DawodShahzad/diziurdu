@@ -24,6 +24,10 @@ interface AppSettingsModalProps {
   platformName?: string;
   enableBiggerCards?: boolean;
   onToggleBiggerCards?: (enabled: boolean) => void;
+  isAppInstalled?: boolean;
+  canPromptInstall?: boolean;
+  isIOS?: boolean;
+  onInstallApp?: () => void;
 }
 
 export const AppSettingsModal: React.FC<AppSettingsModalProps> = ({
@@ -33,7 +37,11 @@ export const AppSettingsModal: React.FC<AppSettingsModalProps> = ({
   onClearWatchHistory,
   platformName = 'Dizi Urdu',
   enableBiggerCards: propBiggerCards,
-  onToggleBiggerCards
+  onToggleBiggerCards,
+  isAppInstalled = false,
+  canPromptInstall = false,
+  isIOS = false,
+  onInstallApp
 }) => {
   const [biggerCards, setBiggerCards] = useState<boolean>(() => {
     if (propBiggerCards !== undefined) return propBiggerCards;
@@ -123,7 +131,42 @@ export const AppSettingsModal: React.FC<AppSettingsModalProps> = ({
         )}
 
         {/* Vertically Grouped Android Settings List */}
-        <div className="flex-1 overflow-y-auto custom-scrollbar divide-y divide-white/[0.08] pb-12">
+        <div className="flex-1 overflow-y-auto custom-scrollbar divide-y divide-white/[0.08] pb-[max(env(safe-area-inset-bottom),48px)]">
+          {/* PWA Install / Download App Row (Hidden automatically once installed) */}
+          {!isAppInstalled && onInstallApp && (
+            <div className="py-2">
+              <h3 className="px-5 pt-3 pb-1 text-xs font-bold text-[#e50914] uppercase tracking-wider">
+                Get The App
+              </h3>
+              <div className="px-5 py-3 flex items-center justify-between gap-3">
+                <div className="flex items-center gap-3 min-w-0">
+                  <div className="w-10 h-10 rounded-xl bg-[#14151a] border border-white/10 p-1.5 flex items-center justify-center shrink-0">
+                    <img src="/pwa-192x192.png" alt={platformName} className="w-full h-full object-contain rounded-lg" />
+                  </div>
+                  <div className="min-w-0">
+                    <p className="text-sm font-semibold text-white truncate">Install {platformName} App</p>
+                    <p className="text-xs text-zinc-400 mt-0.5 leading-snug">
+                      {isIOS
+                        ? 'Add to Home Screen for fullscreen cinema mode'
+                        : 'Fullscreen standalone app with instant launch'}
+                    </p>
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => {
+                    onClose();
+                    onInstallApp();
+                  }}
+                  className="min-h-[40px] px-4 rounded-xl bg-[#e50914] hover:bg-[#c80812] active:scale-95 text-white text-xs font-bold flex items-center gap-1.5 shrink-0 cursor-pointer transition-all"
+                >
+                  <Download className="w-3.5 h-3.5" />
+                  <span>{canPromptInstall ? 'Install' : 'Download'}</span>
+                </button>
+              </div>
+            </div>
+          )}
+
           {/* Section 1: General & Playback */}
           <div className="py-2">
             <h3 className="px-5 pt-3 pb-1 text-xs font-bold text-[#3ea6ff] uppercase tracking-wider">
@@ -149,7 +192,7 @@ export const AppSettingsModal: React.FC<AppSettingsModalProps> = ({
             <div className="px-5 py-3 flex items-center justify-between">
               <div className="pr-4">
                 <p className="text-sm font-medium text-white">Bigger feed cards</p>
-                <p className="text-xs text-zinc-400 mt-0.5">Display 2 cards and edge of 3rd on mobile; 3 cards and edge of 4th on desktop</p>
+                <p className="text-xs text-zinc-400 mt-0.5">Display 2 cards and edge of 3rd per row in vertical orientation</p>
               </div>
               <AndroidSwitch checked={biggerCards} onChange={handleToggleBiggerCards} />
             </div>
@@ -406,29 +449,6 @@ export const AppSettingsModal: React.FC<AppSettingsModalProps> = ({
           {/* TAB 1: VIDEO PLAYBACK */}
           {activeTab === 'playback' && (
             <div className="space-y-6">
-              {/* Bigger Feed Cards Switch */}
-              <div className="flex items-center justify-between p-3.5 rounded-xl bg-[#181920] border border-white/5">
-                <div>
-                  <span className="font-bold text-white text-sm block">Bigger Feed Cards</span>
-                  <span className="text-zinc-400 text-xs">
-                    Display 3 cards and edge of 4th on desktop; 2 cards and edge of 3rd on mobile
-                  </span>
-                </div>
-                <button
-                  type="button"
-                  onClick={handleToggleBiggerCards}
-                  className={`w-11 h-6 rounded-full transition-colors relative cursor-pointer ${
-                    biggerCards ? 'bg-red-600' : 'bg-zinc-700'
-                  }`}
-                >
-                  <div
-                    className={`w-4 h-4 rounded-full bg-white absolute top-1 transition-transform ${
-                      biggerCards ? 'left-6' : 'left-1'
-                    }`}
-                  />
-                </button>
-              </div>
-
               {/* Cellular Data Usage */}
               <div className="space-y-2">
                 <label className="text-white font-bold block text-sm">Cellular Data Usage</label>
@@ -547,6 +567,33 @@ export const AppSettingsModal: React.FC<AppSettingsModalProps> = ({
           {/* TAB 2: DOWNLOADS */}
           {activeTab === 'downloads' && (
             <div className="space-y-4">
+              {!isAppInstalled && onInstallApp && (
+                <div className="p-4 rounded-xl bg-[#181920] border border-[#e50914]/35 flex items-center justify-between gap-4">
+                  <div className="flex items-center gap-3 min-w-0">
+                    <div className="w-10 h-10 rounded-xl bg-[#09090b] border border-white/10 p-1.5 shrink-0">
+                      <img src="/pwa-192x192.png" alt={platformName} className="w-full h-full object-contain rounded-lg" />
+                    </div>
+                    <div className="min-w-0">
+                      <span className="font-bold text-white block text-sm">Install {platformName} App</span>
+                      <span className="text-zinc-400 text-[11px]">
+                        Launch fullscreen without browser bars and enable offline catalog caching
+                      </span>
+                    </div>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      onClose();
+                      onInstallApp();
+                    }}
+                    className="px-4 py-2.5 rounded-xl bg-[#e50914] hover:bg-[#c80812] text-white font-bold text-xs flex items-center gap-1.5 shrink-0 cursor-pointer transition-colors"
+                  >
+                    <Download className="w-3.5 h-3.5" />
+                    <span>{canPromptInstall ? 'Install App' : 'Download App'}</span>
+                  </button>
+                </div>
+              )}
+
               <div className="flex items-center justify-between p-3 rounded-xl bg-[#181920] border border-white/5">
                 <div>
                   <span className="font-bold text-white block">Wi-Fi Only Downloads</span>

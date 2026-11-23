@@ -7,6 +7,8 @@ import { attachHlsVideo } from '../utils/hlsHelper';
 import { WatchProgressItem } from '../utils/watchProgress';
 import { MediaImage } from './MediaImage';
 import { ModernRankNumber } from './ModernRankNumber';
+import { useDeviceLayout } from '../utils/deviceLayout';
+import { useTopmostAutoPreview } from '../utils/autoPreviewCoordinator';
 
 interface FeedStripProps {
   feed: FeedConfig;
@@ -36,6 +38,7 @@ interface FeedStripProps {
   feedIndex?: number;
   isPaused?: boolean;
   desktopPopoutStyle?: 'classic' | 'overlay_red' | 'immersive_fade';
+  onOpenTop10Page?: (mode: 'series' | 'movies') => void;
 }
 
 // Global Active Feed Strip tracking:
@@ -93,8 +96,39 @@ export const FeedStrip: React.FC<FeedStripProps> = ({
   onToggleLike,
   feedIndex = 0,
   isPaused = false,
-  desktopPopoutStyle = 'classic'
+  desktopPopoutStyle = 'classic',
+  onOpenTop10Page
 }) => {
+  const { isMobile: detectedMobile, isLandscape, height: viewportHeight } = useDeviceLayout();
+  const isShortLandscape = Boolean((isMobile || detectedMobile) && isLandscape && viewportHeight <= 560);
+  const [userBiggerCards, setUserBiggerCards] = useState<boolean>(() => {
+    try {
+      return localStorage.getItem('cineflix_bigger_cards') === 'true';
+    } catch {
+      return false;
+    }
+  });
+
+  useEffect(() => {
+    const syncBiggerCards = () => {
+      try {
+        setUserBiggerCards(localStorage.getItem('cineflix_bigger_cards') === 'true');
+      } catch {
+        setUserBiggerCards(false);
+      }
+    };
+    window.addEventListener('cineflix_bigger_cards_changed', syncBiggerCards);
+    window.addEventListener('storage', syncBiggerCards);
+    return () => {
+      window.removeEventListener('cineflix_bigger_cards_changed', syncBiggerCards);
+      window.removeEventListener('storage', syncBiggerCards);
+    };
+  }, []);
+
+  // Bigger feed cards ONLY apply in mobile vertical/portrait orientation (never landscape, never desktop)
+  const isMobileLandscapeLayout = Boolean((isMobile || detectedMobile) && isLandscape);
+  const effectiveBiggerCards = Boolean((isMobile || detectedMobile) && !isLandscape && userBiggerCards);
+
   const effectiveTop10Style: 'classic' | 'modern' | 'inside_card' =
     top10RankStyle || (modernTop10RankList === false ? 'classic' : 'modern');
   const isContinueWatchingFeed =
@@ -746,7 +780,22 @@ export const FeedStrip: React.FC<FeedStripProps> = ({
     return () => clearTimeout(timer);
   }, [isMobileSpecialFeedCyclic, showCount]);
 
-  // Strict check: full active card must sit completely between top navbar and bottom navbar (never touching either)
+  const isMobileSpecialPreviewEligible = Boolean(
+    feed.isSpecialFeed &&
+      isMobile &&
+      activeMobileShow?.trailerUrl &&
+      isStripInViewport &&
+      isMobileCardClearBetweenNavbars &&
+      !isModalOpen &&
+      !isPaused
+  );
+  const isTopmostMobileSpecialPreview = useTopmostAutoPreview(
+    `feed-strip-special-${feed.id}`,
+    feedStripRef,
+    isMobileSpecialPreviewEligible
+  );
+
+  // Strict check: full active card must sit cleanly between top and bottom navbars (and ignore left landscape sidebar for vertical bounds)
   const evaluateMobileSpecialCardClearance = useCallback(() => {
     if (!feed.isSpecialFeed || !isMobile) {
       setIsMobileCardClearBetweenNavbars(true);
@@ -771,21 +820,44 @@ export const FeedStrip: React.FC<FeedStripProps> = ({
     });
 
     let bottomLimit = vh;
+    let leftLimit = 0;
     document.querySelectorAll<HTMLElement>('[data-mobile-bottom-navbar="true"]').forEach((navEl) => {
+      if (navEl.hasAttribute('data-mobile-landscape-sidebar')) {
+        const sr = navEl.getBoundingClientRect();
+        if (sr.width > 0 && sr.right > 0) {
+          leftLimit = Math.max(leftLimit, sr.right);
+        }
+        return;
+      }
       const nr = navEl.getBoundingClientRect();
       if (nr.width > 0 && nr.height > 0 && nr.top < vh && nr.bottom > vh / 2) {
         bottomLimit = Math.min(bottomLimit, nr.top);
       }
     });
 
-    const clearance = 2;
-    const isClear =
-      rect.width > 0 &&
-      rect.height > 0 &&
-      rect.top > topLimit + clearance &&
-      rect.bottom < bottomLimit - clearance &&
-      rect.left >= 0 &&
-      rect.right <= vw;
+    let isClear = false;
+    if (isLandscape) {
+      const visibleTop = Math.max(rect.top, 0);
+      const visibleBottom = Math.min(rect.bottom, vh);
+      const visibleH = Math.max(0, visibleBottom - visibleTop);
+      const visibleLeft = Math.max(rect.left, leftLimit);
+      const visibleRight = Math.min(rect.right, vw);
+      const visibleW = Math.max(0, visibleRight - visibleLeft);
+      isClear =
+        rect.width > 0 &&
+        rect.height > 0 &&
+        visibleH / rect.height >= 0.5 &&
+        visibleW / rect.width >= 0.5;
+    } else {
+      const clearance = 2;
+      isClear =
+        rect.width > 0 &&
+        rect.height > 0 &&
+        rect.top > topLimit + clearance &&
+        rect.bottom < bottomLimit - clearance &&
+        rect.left >= leftLimit &&
+        rect.right <= vw;
+    }
 
     setIsMobileCardClearBetweenNavbars(isClear);
     if (!isClear) {
@@ -801,7 +873,7 @@ export const FeedStrip: React.FC<FeedStripProps> = ({
         mobileVideoRef.current.pause();
       }
     }
-  }, [feed.isSpecialFeed, isMobile, mobileVirtualIndex]);
+  }, [feed.isSpecialFeed, isMobile, isLandscape, mobileVirtualIndex]);
 
   // Monitor viewport intersection & scroll position between mobile navbars
   useEffect(() => {
@@ -848,9 +920,9 @@ export const FeedStrip: React.FC<FeedStripProps> = ({
     };
   }, []);
 
-  // 1.5-second poster display before starting preview + loading indicator (only while full card clears navbars)
+  // 1.5-second poster display before starting preview + loading indicator (only when topmost auto-preview row)
   useEffect(() => {
-    if (!feed.isSpecialFeed || !isMobile || !isStripInViewport || !isMobileCardClearBetweenNavbars || isModalOpen || isPaused) {
+    if (!feed.isSpecialFeed || !isMobile || !isStripInViewport || !isMobileCardClearBetweenNavbars || !isTopmostMobileSpecialPreview || isModalOpen || isPaused) {
       setIsPosterCountdownDone(false);
       setIsMobileVideoLoading(false);
       setPreviewProgressPercent(0);
@@ -877,9 +949,9 @@ export const FeedStrip: React.FC<FeedStripProps> = ({
       if (posterCountdownTimerRef.current) window.clearTimeout(posterCountdownTimerRef.current);
       if (progressIntervalRef.current) window.clearInterval(progressIntervalRef.current);
     };
-  }, [mobileVirtualIndex, feed.isSpecialFeed, isMobile, isStripInViewport, isMobileCardClearBetweenNavbars, isModalOpen, isPaused]);
+  }, [mobileVirtualIndex, feed.isSpecialFeed, isMobile, isStripInViewport, isMobileCardClearBetweenNavbars, isTopmostMobileSpecialPreview, isModalOpen, isPaused]);
 
-  // Video attachment effect for active mobile special feed card (starts ONLY after 1.5s poster countdown + navbar clearance)
+  // Video attachment effect for active mobile special feed card (starts ONLY after 1.5s poster countdown + topmost priority)
   useEffect(() => {
     if (
       !feed.isSpecialFeed ||
@@ -887,6 +959,7 @@ export const FeedStrip: React.FC<FeedStripProps> = ({
       !activeMobileShow?.trailerUrl ||
       !isStripInViewport ||
       !isMobileCardClearBetweenNavbars ||
+      !isTopmostMobileSpecialPreview ||
       isModalOpen ||
       isPaused ||
       !isPosterCountdownDone
@@ -918,6 +991,7 @@ export const FeedStrip: React.FC<FeedStripProps> = ({
     activeMobileShow?.trailerUrl,
     isStripInViewport,
     isMobileCardClearBetweenNavbars,
+    isTopmostMobileSpecialPreview,
     isModalOpen,
     isPaused,
     isPosterCountdownDone
@@ -1602,9 +1676,32 @@ export const FeedStrip: React.FC<FeedStripProps> = ({
       >
         {/* Header Container */}
         <div className="relative z-30 w-full pl-2.5 sm:pl-4 md:pl-8 xl:pl-12 pr-2.5 sm:pr-4 md:pr-8 xl:pr-12 mb-1 sm:mb-1.5">
-          <h3 className="text-[15px] sm:text-base md:text-[17px] font-semibold text-white/95 tracking-tight">
-            {feed.title}
-          </h3>
+          {!isMobile && onOpenTop10Page ? (
+            <button
+              type="button"
+              onClick={() =>
+                onOpenTop10Page(
+                  feed.categoryKey === 'top_10_movies' || feed.title.toLowerCase().includes('movie')
+                    ? 'movies'
+                    : 'series'
+                )
+              }
+              className="group/t10 inline-flex items-center gap-1.5 text-[15px] sm:text-base md:text-[17px] font-semibold text-white/95 hover:text-white tracking-tight cursor-pointer"
+            >
+              <span>{feed.title}</span>
+              <ChevronRight className="w-4 h-4 text-zinc-400 group-hover/t10:text-white group-hover/t10:translate-x-0.5 transition-all" />
+            </button>
+          ) : (
+            <h3
+              className={`text-white/95 tracking-tight ${
+                isMobileLandscapeLayout
+                  ? 'text-[13.5px] font-normal'
+                  : 'text-[15px] sm:text-base md:text-[17px] font-semibold'
+              }`}
+            >
+              {feed.title}
+            </h3>
+          )}
         </div>
 
         {/* Row Container */}
@@ -1838,7 +1935,13 @@ export const FeedStrip: React.FC<FeedStripProps> = ({
           {!isRowInViewport ? (
             <div className="w-36 sm:w-44 h-5 sm:h-6 rounded skeleton-wave" />
           ) : (
-            <h3 className="text-[15px] sm:text-base md:text-[17px] font-semibold text-white/95 tracking-tight">
+            <h3
+              className={`text-white/95 tracking-tight ${
+                isMobileLandscapeLayout
+                  ? 'text-[13.5px] font-normal'
+                  : 'text-[15px] sm:text-base md:text-[17px] font-semibold'
+              }`}
+            >
               {feed.title}
             </h3>
           )}
@@ -1856,7 +1959,9 @@ export const FeedStrip: React.FC<FeedStripProps> = ({
                 cardAspectRatio === '2:3'
                   ? 'w-[calc((100vw-24px)/3.22)] sm:w-[140px] aspect-[2/3] rounded-[6px] md:rounded-[10px]'
                   : cardAspectRatio === '9:16'
-                  ? 'w-[calc((100vw-24px)/2.5)] sm:w-[180px] md:w-[calc((100vw-112px)/4.05)] md:aspect-video aspect-[9/16] rounded-[6px] md:rounded-[10px]'
+                  ? isShortLandscape
+                    ? 'w-[210px] aspect-video rounded-[6px] md:rounded-[10px]'
+                    : 'w-[calc((100vw-24px)/2.5)] sm:w-[180px] md:w-[calc((100vw-112px)/4.05)] md:aspect-video aspect-[9/16] rounded-[6px] md:rounded-[10px]'
                   : 'w-[calc((100vw-20px)/2.12)] sm:w-[265px] md:w-[290px] lg:w-[calc((100vw-112px)/4.05)] max-w-[340px] aspect-video rounded-[6px] md:rounded-[10px]'
               }`}
             />
@@ -1950,6 +2055,7 @@ export const FeedStrip: React.FC<FeedStripProps> = ({
                 deferImageLoad={!loadedCardIndices.has(index)}
                 skeletonDelayMs={index * 150}
                 popoutStyle={desktopPopoutStyle}
+                biggerCards={effectiveBiggerCards}
               />
             ))}
           </div>

@@ -3,6 +3,7 @@ import { useState, useEffect } from 'react';
 export interface DeviceLayoutInfo {
   isMobile: boolean;
   isTablet: boolean;
+  isLandscape: boolean;
   width: number;
   height: number;
 }
@@ -45,7 +46,8 @@ export const useDeviceLayout = (): DeviceLayoutInfo => {
     const h = typeof window !== 'undefined' ? window.innerHeight : 800;
     const isMobile = detectIsMobileDevice();
     const isTablet = !isMobile && w < 1024;
-    return { isMobile, isTablet, width: w, height: h };
+    const isLandscape = w > h;
+    return { isMobile, isTablet, isLandscape, width: w, height: h };
   });
 
   useEffect(() => {
@@ -54,13 +56,15 @@ export const useDeviceLayout = (): DeviceLayoutInfo => {
       const h = window.innerHeight;
       const isMobile = detectIsMobileDevice();
       const isTablet = !isMobile && w < 1024;
+      const isLandscape = w > h;
       setLayout((prev) =>
         prev.isMobile === isMobile &&
         prev.isTablet === isTablet &&
+        prev.isLandscape === isLandscape &&
         prev.width === w &&
         prev.height === h
           ? prev
-          : { isMobile, isTablet, width: w, height: h }
+          : { isMobile, isTablet, isLandscape, width: w, height: h }
       );
     };
 

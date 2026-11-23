@@ -3,6 +3,7 @@ import { Show, AdminSettings } from '../types';
 import { Search, ChevronLeft, ChevronRight, Play, Plus, Check, X } from 'lucide-react';
 import { MediaImage } from './MediaImage';
 import { SearchAdCard } from './SearchAdCard';
+import { useDeviceLayout } from '../utils/deviceLayout';
 
 interface MobileSearchModalProps {
   isOpen: boolean;
@@ -31,6 +32,8 @@ export const MobileSearchModal: React.FC<MobileSearchModalProps> = ({
   adminSettings,
   onNavigateInternal
 }) => {
+  const { isMobile, isLandscape } = useDeviceLayout();
+  const isMobileLandscape = isMobile && isLandscape;
   const [query, setQuery] = useState<string>(initialQuery);
   const [committedExactQuery, setCommittedExactQuery] = useState<string>('');
   const [randomSearchAdIdx, setRandomSearchAdIdx] = useState<number>(() => Math.floor(Math.random() * 6));
@@ -223,7 +226,7 @@ export const MobileSearchModal: React.FC<MobileSearchModalProps> = ({
 
   return (
     <div
-      className="fixed inset-0 z-50 bg-black flex flex-col animate-in fade-in duration-200 overscroll-contain"
+      className={`fixed top-0 right-0 bottom-0 ${isMobileLandscape ? 'left-14' : 'left-0'} z-50 bg-black flex flex-col animate-in fade-in duration-200 overscroll-contain`}
       onTouchMove={(e) => {
         e.stopPropagation();
       }}

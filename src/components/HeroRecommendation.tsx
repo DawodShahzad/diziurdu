@@ -5,8 +5,9 @@ import { ShowTitleLogo } from './ShowTitleLogo';
 import { getActiveArtwork } from '../utils/artworkRotator';
 import { attachHlsVideo } from '../utils/hlsHelper';
 import { MediaImage } from './MediaImage';
-import { detectIsMobileDevice } from '../utils/deviceLayout';
+import { detectIsMobileDevice, useDeviceLayout } from '../utils/deviceLayout';
 import { notifyPreviewStarted } from '../utils/previewResumeTracker';
+import { useTopmostAutoPreview } from '../utils/autoPreviewCoordinator';
 
 interface HeroRecommendationProps {
   show: Show;
@@ -56,23 +57,18 @@ export const HeroRecommendation: React.FC<HeroRecommendationProps> = ({
   const [isPreviewEnded, setIsPreviewEnded] = useState<boolean>(false);
   const [isIntersecting, setIsIntersecting] = useState<boolean>(false);
 
-  // Mobile layout detection (handles portrait & rotated landscape phones):
-  const [detectedMobile, setDetectedMobile] = useState<boolean>(() => detectIsMobileDevice());
-
-  useEffect(() => {
-    const handleResize = () => setDetectedMobile(detectIsMobileDevice());
-    window.addEventListener('resize', handleResize);
-    window.addEventListener('orientationchange', handleResize);
-    return () => {
-      window.removeEventListener('resize', handleResize);
-      window.removeEventListener('orientationchange', handleResize);
-    };
-  }, []);
-
-  const isMobileLayout = isMobile !== undefined ? isMobile : detectedMobile;
-  const isPosterNoPreviewMobile = isMobileLayout && mobileRecommendationStyle === 'poster_no_preview';
-  const isLandscapeMobile = isMobileLayout && mobileRecommendationStyle === 'landscape';
-  const isPortraitMobile = isMobileLayout && (mobileRecommendationStyle === 'portrait' || !mobileRecommendationStyle);
+  // Mobile layout & orientation detection (handles portrait & rotated landscape phones):
+  const { isMobile: hookIsMobile, isLandscape } = useDeviceLayout();
+  const isMobileLayout = isMobile !== undefined ? isMobile : hookIsMobile;
+  const isMobileLandscapeOrientation = Boolean(isMobileLayout && isLandscape);
+  const isPosterNoPreviewMobile =
+    isMobileLayout && !isMobileLandscapeOrientation && mobileRecommendationStyle === 'poster_no_preview';
+  const isLandscapeMobile =
+    isMobileLayout && !isMobileLandscapeOrientation && mobileRecommendationStyle === 'landscape';
+  const isPortraitMobile =
+    isMobileLayout &&
+    !isMobileLandscapeOrientation &&
+    (mobileRecommendationStyle === 'portrait' || !mobileRecommendationStyle);
 
   // Desktop zoom >= 150% detection (narrow desktop viewport <= 480px, excluding mobile phones)
   const checkIsZoomed = () => {
@@ -150,6 +146,17 @@ export const HeroRecommendation: React.FC<HeroRecommendationProps> = ({
   const previewTimerRef = useRef<number | null>(null);
   const hasTriggeredShrinkRef = useRef<boolean>(false);
 
+  const isHeroPreviewSupported =
+    !isPortraitMobile && !isPosterNoPreviewMobile && Boolean(show.trailerUrl);
+  const isHeroPreviewEligible = Boolean(
+    isHeroPreviewSupported && isIntersecting && !isEffectivelyPaused && !isPreviewEnded
+  );
+  const isTopmostAutoPreview = useTopmostAutoPreview(
+    'hero-recommendation',
+    cardRef,
+    isHeroPreviewEligible
+  );
+
   // Monitor visibility of recommendation card relative to navigation bar:
   // Preview pauses when 40% of the poster/video gets under the navigation bar
   useEffect(() => {
@@ -158,7 +165,7 @@ export const HeroRecommendation: React.FC<HeroRecommendationProps> = ({
       if (!card) return;
       const rect = card.getBoundingClientRect();
       const navEl = document.querySelector('header') || document.querySelector('nav');
-      const navBottom = navEl ? navEl.getBoundingClientRect().bottom : 68;
+      const navBottom = navEl ? Math.min(navEl.getBoundingClientRect().bottom, 76) : 68;
 
       // Amount of the card that has scrolled under the navigation bar
       const amountUnderNav = Math.max(0, navBottom - rect.top);
@@ -175,7 +182,7 @@ export const HeroRecommendation: React.FC<HeroRecommendationProps> = ({
       window.removeEventListener('scroll', handleScrollCheck);
       window.removeEventListener('resize', handleScrollCheck);
     };
-  }, [show.id]);
+  }, [show.id, isMobileLandscapeOrientation]);
 
   const [isBackdropLoaded, setIsBackdropLoaded] = useState<boolean>(false);
   const imgRef = useRef<HTMLImageElement>(null);
@@ -218,9 +225,10 @@ export const HeroRecommendation: React.FC<HeroRecommendationProps> = ({
   }, [backdropSrc]);
 
   // The preview on recommendation:
-  // 1. Mobile Portrait (2:3 card): NEVER autoplay trailer in background
-  // 2. Mobile Landscape (16:9 card): Show backdrop for 3 seconds then play preview
-  // 3. Desktop / Tablet: Show backdrop for 2 seconds + loading time
+  // 1. Mobile Portrait (2:3 card / poster_no_preview): NEVER autoplay trailer in background
+  // 2. Mobile Landscape orientation (Single Special style): 1.5s backdrop then play preview
+  // 3. Mobile 16:9 recommendation (portrait): Show backdrop for 3 seconds then play preview
+  // 4. Desktop / Tablet: Show backdrop for 2 seconds + loading time
   useEffect(() => {
     if (!isBackdropLoaded) return;
 
@@ -228,14 +236,12 @@ export const HeroRecommendation: React.FC<HeroRecommendationProps> = ({
       window.clearTimeout(previewTimerRef.current);
     }
 
-    // On mobile portrait mode: do NOT autoplay trailer in background
-    if (isPortraitMobile) {
+    if (isPortraitMobile || isPosterNoPreviewMobile) {
       setShouldLoadPreview(false);
       return;
     }
 
-    // Delay: 3000ms (3 seconds) on mobile landscape, 2000ms on desktop/tablet
-    const previewDelay = isLandscapeMobile ? 3000 : 2000;
+    const previewDelay = isMobileLandscapeOrientation ? 1500 : isLandscapeMobile ? 3000 : 2000;
 
     previewTimerRef.current = window.setTimeout(() => {
       setShouldLoadPreview(true);
@@ -244,11 +250,11 @@ export const HeroRecommendation: React.FC<HeroRecommendationProps> = ({
     return () => {
       if (previewTimerRef.current) window.clearTimeout(previewTimerRef.current);
     };
-  }, [isBackdropLoaded, show.id, isPortraitMobile, isLandscapeMobile]);
+  }, [isBackdropLoaded, show.id, isPortraitMobile, isPosterNoPreviewMobile, isLandscapeMobile, isMobileLandscapeOrientation]);
 
   // Video attachment effect supporting .m3u8 HLS and direct video
   useEffect(() => {
-    if (isPortraitMobile || !shouldLoadPreview || isPreviewEnded || !show.trailerUrl) {
+    if (isPortraitMobile || isPosterNoPreviewMobile || !shouldLoadPreview || isPreviewEnded || !show.trailerUrl) {
       setIsVideoPlaying(false);
       return;
     }
@@ -256,7 +262,7 @@ export const HeroRecommendation: React.FC<HeroRecommendationProps> = ({
     if (!video) return;
 
     const cleanup = attachHlsVideo(video, show.trailerUrl, {
-      autoPlay: true,
+      autoPlay: isTopmostAutoPreview,
       muted: isMuted
     });
 
@@ -264,7 +270,7 @@ export const HeroRecommendation: React.FC<HeroRecommendationProps> = ({
       setIsVideoPlaying(false);
       if (cleanup) cleanup();
     };
-  }, [shouldLoadPreview, isPreviewEnded, show.trailerUrl, isPortraitMobile]);
+  }, [shouldLoadPreview, isPreviewEnded, show.trailerUrl, isPortraitMobile, isPosterNoPreviewMobile, isMobileLandscapeOrientation]);
 
   // Sync mute state directly without restarting video playback
   useEffect(() => {
@@ -276,15 +282,13 @@ export const HeroRecommendation: React.FC<HeroRecommendationProps> = ({
     }
   }, [isMuted]);
 
-  // Viewport & hover playback coordinator:
-  // Automatically plays when visible on screen, pauses when scrolled out of view or feed card hovered or modal open,
-  // and resumes from where it left off when visible again!
+  // Viewport & hover playback coordinator (respects topmost auto-preview priority across all layouts):
   const isPausedByTabRef = useRef<boolean>(false);
 
   useEffect(() => {
     if (!shouldLoadPreview || isPreviewEnded) return;
 
-    const shouldBePlaying = isIntersecting && !isEffectivelyPaused;
+    const shouldBePlaying = isIntersecting && !isEffectivelyPaused && isTopmostAutoPreview;
 
     if (shouldBePlaying) {
       if (videoRef.current && videoRef.current.paused && !document.hidden) {
@@ -298,7 +302,7 @@ export const HeroRecommendation: React.FC<HeroRecommendationProps> = ({
         setIsVideoPlaying(false);
       }
     }
-  }, [shouldLoadPreview, isPreviewEnded, isIntersecting, isEffectivelyPaused]);
+  }, [shouldLoadPreview, isPreviewEnded, isIntersecting, isEffectivelyPaused, isTopmostAutoPreview]);
 
   // Tab switch handler: When user switches browser tab, pause preview; when user reopens tab, resume where left off!
   useEffect(() => {
@@ -476,17 +480,170 @@ export const HeroRecommendation: React.FC<HeroRecommendationProps> = ({
         </div>
       )}
 
-      {/* Floating Hero Card with ambient shadow reflection matching show theme (full bleed edge-to-edge on mobile when isPosterNoPreviewMobile) */}
+      {/* Floating Hero Card with ambient shadow reflection matching show theme */}
       <div
         className={`w-full ${
-          isPosterNoPreviewMobile
+          isMobileLandscapeOrientation
+            ? 'px-3 sm:px-4'
+            : isPosterNoPreviewMobile
             ? 'px-0 sm:px-4 md:px-8 xl:px-12'
             : isPortraitMobile
             ? 'px-8 sm:px-10 md:px-8 xl:px-12'
             : 'px-2.5 sm:px-4 md:px-8 xl:px-12'
         } relative z-10`}
       >
-        {isPosterNoPreviewMobile ? (
+        {isMobileLandscapeOrientation ? (() => {
+          /* ========================================================================= */
+          /* MOBILE LANDSCAPE ORIENTATION HERO:                                        */
+          /* Desktop Single Special Feed design (no arrows, no action buttons,         */
+          /* exact 2:3 recommendation card border container, live video preview)       */
+          /* ========================================================================= */
+          const landscapeSpecialBackdrop =
+            show.desktopSpecialSingleFeedUrl ||
+            show.backdropUrl2 ||
+            backdropSrc ||
+            show.posterLandscapeUrl ||
+            '';
+          const landscapeRuntimeLabel =
+            show.type === 'series'
+              ? `${show.seasons?.length || 1} ${(show.seasons?.length || 1) === 1 ? 'Season' : 'Seasons'}`
+              : show.durationOrSeasons || 'Movie';
+          const landscapeAnnouncement =
+            show.announcementPill || show.shortDescription || show.synopsis;
+
+          return (
+            <div
+              ref={cardRef}
+              onClick={() => onOpenDetails(show, { sourceFeedType: 'other' })}
+              className="relative w-full rounded-[14px] sm:rounded-[18px] overflow-hidden bg-black h-[220px] sm:h-[260px] flex items-end cursor-pointer select-none shadow-[0_24px_60px_-15px_rgba(0,0,0,0.95)]"
+            >
+              {/* Exact same subtle inner overlay border as 2:3 recommendation card */}
+              <div className="absolute inset-0 rounded-[inherit] pointer-events-none z-30 border-[1.8px] border-zinc-400/[0.09]" />
+
+              {/* Right Side Backdrop + Auto-Playing Video Preview Container */}
+              <div className="absolute top-0 bottom-0 right-0 h-full max-w-[78%] aspect-video overflow-hidden bg-black pointer-events-none">
+                <MediaImage
+                  imageRef={imgRef}
+                  src={landscapeSpecialBackdrop}
+                  fallbackTitle={show.title}
+                  hideFallback={isVideoPlaying}
+                  fallbackClassName="absolute inset-0 w-full h-full bg-black flex items-center justify-center p-4 text-center select-none"
+                  loading="eager"
+                  decoding="async"
+                  onLoad={() => setIsBackdropLoaded(true)}
+                  onError={() => setIsBackdropLoaded(true)}
+                  className={`absolute inset-0 w-full h-full object-cover object-center transition-opacity duration-500 ${
+                    isVideoPlaying ? 'opacity-0' : 'opacity-100'
+                  }`}
+                />
+
+                {shouldLoadPreview && !videoError && !isPreviewEnded && show.trailerUrl && (
+                  <video
+                    ref={videoRef}
+                    poster={landscapeSpecialBackdrop}
+                    autoPlay={isTopmostAutoPreview}
+                    muted={isMuted}
+                    playsInline
+                    controlsList="nodownload nofullscreen noremoteplayback"
+                    disablePictureInPicture
+                    onContextMenu={(e) => e.preventDefault()}
+                    onPlaying={() => {
+                      notifyPreviewStarted(`hero-rec::${show.id}`);
+                      setIsVideoPlaying(true);
+                      handleAutoplayStarted();
+                    }}
+                    onEnded={handlePreviewEnded}
+                    onError={() => {
+                      setVideoError(true);
+                      setShouldLoadPreview(false);
+                      setIsVideoPlaying(false);
+                    }}
+                    className={`absolute inset-0 w-full h-full object-cover object-center transition-opacity duration-500 ${
+                      isVideoPlaying ? 'opacity-100' : 'opacity-0 pointer-events-none'
+                    }`}
+                  />
+                )}
+
+                {/* Smooth Left-to-Right Seamless Dissolve into Pure Black */}
+                <div
+                  className="absolute inset-y-0 left-0 w-28 sm:w-36 pointer-events-none z-10"
+                  style={{
+                    background:
+                      'linear-gradient(to right, #000000 0%, rgba(0,0,0,0.92) 24%, rgba(0,0,0,0.54) 54%, rgba(0,0,0,0.16) 80%, transparent 100%)'
+                  }}
+                />
+              </div>
+
+              {/* Left Column Content: anchored at bottom (no bottom padding), logo frame reduced 10%, ZERO action buttons */}
+              <div className="relative z-20 w-[48%] h-full px-5 sm:px-7 pt-4 pb-2 flex flex-col items-start justify-end gap-1.5 pointer-events-none">
+                <div className="relative origin-left w-[158px] sm:w-[194px] max-w-full aspect-[2.5/1] overflow-hidden shrink-0 flex items-end">
+                  <ShowTitleLogo show={show} fillContainer={true} align="left" />
+                </div>
+
+                <div className="flex items-center gap-1.5 text-[11px] sm:text-xs text-zinc-300 font-semibold flex-wrap">
+                  {show.maturityRating && (
+                    <span className="px-1.5 py-0.5 rounded bg-white/10 text-white font-bold text-[10px]">
+                      {show.maturityRating}
+                    </span>
+                  )}
+                  <span>{landscapeRuntimeLabel}</span>
+                  {show.genres && show.genres.length > 0 && (
+                    <>
+                      <span>•</span>
+                      <span className="text-zinc-300">{show.genres.slice(0, 2).join(', ')}</span>
+                    </>
+                  )}
+                </div>
+
+                {landscapeAnnouncement && (
+                  <p className="text-[11px] sm:text-xs text-zinc-200 line-clamp-2 max-w-[300px] leading-snug font-medium">
+                    {landscapeAnnouncement}
+                  </p>
+                )}
+              </div>
+
+              {/* Top-Right Mute / Replay Control */}
+              {isPreviewEnded ? (
+                <div className="absolute top-3 right-3 z-30">
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      handleReplayPreview();
+                    }}
+                    className="w-8 h-8 rounded-full bg-black/40 hover:bg-black/60 text-white border-0 flex items-center justify-center cursor-pointer shadow-md"
+                    aria-label="Replay preview"
+                  >
+                    <RotateCcw className="w-3.5 h-3.5 text-white" />
+                  </button>
+                </div>
+              ) : shouldLoadPreview && !videoError && isVideoPlaying && !isPreviewEnded ? (
+                <div
+                  className="absolute top-3 right-3 z-30"
+                  onClick={(e) => e.stopPropagation()}
+                  onPointerDown={(e) => e.stopPropagation()}
+                  onTouchStart={(e) => e.stopPropagation()}
+                >
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      toggleSound();
+                    }}
+                    onPointerDown={(e) => e.stopPropagation()}
+                    onTouchStart={(e) => e.stopPropagation()}
+                    className="relative before:content-[''] before:absolute before:-inset-3 w-8 h-8 rounded-full bg-black/25 hover:bg-black/40 text-white border-0 flex items-center justify-center cursor-pointer shadow-md"
+                    aria-label="Toggle sound"
+                  >
+                    {isMuted ? (
+                      <VolumeX className="w-3.5 h-3.5 text-white" />
+                    ) : (
+                      <Volume2 className="w-3.5 h-3.5 text-white" />
+                    )}
+                  </button>
+                </div>
+              ) : null}
+            </div>
+          );
+        })() : isPosterNoPreviewMobile ? (
           /* ========================================================================= */
           /* POSTER RECOMMENDATION WITHOUT PREVIEW (Edge-to-edge, no ambiance, larger logo) */
           /* ========================================================================= */

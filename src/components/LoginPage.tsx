@@ -559,7 +559,7 @@ export const LoginPage: React.FC<LoginPageProps> = ({
                   : forgotMode
                   ? 'Send Reset Link'
                   : authMode === 'create'
-                  ? 'Create Account'
+                  ? 'Sign Up'
                   : 'Login'}
               </button>
             </form>
@@ -589,7 +589,7 @@ export const LoginPage: React.FC<LoginPageProps> = ({
                     }}
                     className="text-white font-bold hover:underline cursor-pointer"
                   >
-                    Create Account
+                    Sign Up
                   </button>
                 </p>
               ) : (
@@ -724,7 +724,7 @@ export const LoginPage: React.FC<LoginPageProps> = ({
             )}
           </button>
 
-          {/* Right: Circular-corner Create Account / Login Button */}
+          {/* Right: Crisp White Rounded-Full Pill Sign Up / Login Button */}
           <button
             type="button"
             onClick={() => {
@@ -733,9 +733,9 @@ export const LoginPage: React.FC<LoginPageProps> = ({
               setErrorMsg(null);
               setAuthMode((prev) => (prev === 'login' ? 'create' : 'login'));
             }}
-            className="z-10 px-5 py-2 rounded-full bg-white/[0.14] hover:bg-white/[0.22] text-white text-xs sm:text-[13px] font-bold tracking-tight transition-all active:scale-95 cursor-pointer backdrop-blur-sm"
+            className="z-10 px-5 py-2 rounded-full bg-white hover:bg-zinc-200 text-black text-xs sm:text-[13.5px] font-bold tracking-tight shadow-md transition-all active:scale-95 cursor-pointer"
           >
-            {authMode === 'login' ? 'Create Account' : 'Login'}
+            {authMode === 'login' ? 'Sign Up' : 'Login'}
           </button>
         </div>
       </header>
@@ -749,7 +749,7 @@ export const LoginPage: React.FC<LoginPageProps> = ({
               {forgotMode
                 ? 'Reset Password'
                 : authMode === 'create'
-                ? 'Create Account'
+                ? 'Sign Up'
                 : 'Login Now'}
             </h1>
             {forgotMode && (
@@ -849,7 +849,7 @@ export const LoginPage: React.FC<LoginPageProps> = ({
                 : forgotMode
                 ? 'Send Reset Link'
                 : authMode === 'create'
-                ? 'Create Account'
+                ? 'Sign Up'
                 : 'Login'}
             </button>
           </form>

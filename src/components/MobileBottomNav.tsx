@@ -1,15 +1,24 @@
 import React, { useRef } from 'react';
-import { Search } from 'lucide-react';
+import { Search, Bell } from 'lucide-react';
 import { useDeviceLayout } from '../utils/deviceLayout';
+import { DiziLogo } from './DiziLogo';
+import { triggerHaptic } from '../utils/haptics';
 
 export interface MobileBottomNavProps {
   activeTab: 'home' | 'trends' | 'search' | 'profile';
   onSelectTab: (tab: 'home' | 'trends' | 'search' | 'profile') => void;
   onTripleTapHome?: () => void;
+  onOpenNotifications?: () => void;
+  showNotifications?: boolean;
+  hasUnreadNotifications?: boolean;
   userAvatar?: string;
   platformName?: string;
+  platformIconUrl?: string;
+  customLogoUrl?: string;
+  useCustomLogo?: boolean;
   navbarStyle?: 'floating' | 'bottom_fixed';
   navbarTheme?: 'solid' | 'glass';
+  transparentBlurNavbar?: boolean;
   showLabels?: boolean;
   isHiddenBehindLock?: boolean;
   hideProfileAvatar?: boolean;
@@ -19,22 +28,31 @@ export const MobileBottomNav: React.FC<MobileBottomNavProps> = ({
   activeTab,
   onSelectTab,
   onTripleTapHome,
+  onOpenNotifications,
+  showNotifications = true,
+  hasUnreadNotifications = false,
   userAvatar = 'https://images.unsplash.com/photo-1553284965-83fd3e82fa5a?auto=format&fit=crop&w=120&q=80',
+  platformName = 'Dizi',
+  platformIconUrl,
+  customLogoUrl,
+  useCustomLogo = false,
   navbarStyle = 'floating',
   navbarTheme = 'solid',
+  transparentBlurNavbar = false,
   showLabels = true,
   isHiddenBehindLock = false,
   hideProfileAvatar = false
 }) => {
-  const { isMobile } = useDeviceLayout();
+  const { isMobile, isLandscape } = useDeviceLayout();
   if (!isMobile) return null;
 
   const isBottomFixed = navbarStyle === 'bottom_fixed';
-  const isGlass = navbarTheme === 'glass';
+  const isTransparentBlur = Boolean(transparentBlurNavbar || navbarTheme === 'glass');
 
-  // Triple-tap tracker on Home button: only triple-tap reloads/rotates feed; single or double tap navigates to home
+  // Triple-tap tracker on Home button: only triple-tap reloads/rotates feed; single tap navigates to home or scrolls to top
   const homeTapTimesRef = useRef<number[]>([]);
   const handleHomeClick = () => {
+    triggerHaptic(10);
     const now = Date.now();
     homeTapTimesRef.current = homeTapTimesRef.current.filter((t) => now - t < 1200);
     homeTapTimesRef.current.push(now);
@@ -49,31 +67,169 @@ export const MobileBottomNav: React.FC<MobileBottomNavProps> = ({
     onSelectTab('home');
   };
 
+  const handleTabSelect = (tab: 'home' | 'trends' | 'search' | 'profile') => {
+    triggerHaptic(10);
+    onSelectTab(tab);
+  };
+
+  // =========================================================================
+  // MOBILE LANDSCAPE ORIENTATION:
+  // Vertical left-side navigation sidebar visible across ALL pages, with
+  // platform header icon on top and crisp vertical icon stack:
+  // Home -> Search -> Notification (if enabled) -> Profile
+  // =========================================================================
+  if (isLandscape) {
+    const headerIconSrc = platformIconUrl?.trim() || (useCustomLogo && customLogoUrl ? customLogoUrl.trim() : '');
+    return (
+      <aside
+        data-mobile-bottom-navbar={isHiddenBehindLock ? undefined : 'true'}
+        data-mobile-landscape-sidebar="true"
+        aria-label="Mobile Navigation"
+        style={
+          isTransparentBlur
+            ? {
+                backgroundColor: 'rgba(14, 15, 19, 0.72)',
+                backdropFilter: 'blur(22px) saturate(155%)',
+                WebkitBackdropFilter: 'blur(22px) saturate(155%)',
+                border: 'none'
+              }
+            : { border: 'none' }
+        }
+        className={`fixed top-0 bottom-0 left-0 z-[160] w-14 flex flex-col items-center py-3 select-none transition-opacity duration-300 border-0 ${
+          isHiddenBehindLock ? 'opacity-0 pointer-events-none' : 'opacity-100 pointer-events-auto'
+        } ${isTransparentBlur ? '' : 'bg-black'}`}
+      >
+        {/* Top: Platform Header Icon */}
+        <button
+          type="button"
+          onClick={handleHomeClick}
+          className="w-10 h-10 mb-2 flex items-center justify-center shrink-0 cursor-pointer active:scale-90 transition-transform"
+          aria-label={`${platformName} Home`}
+        >
+          {headerIconSrc ? (
+            <img
+              src={headerIconSrc}
+              alt={platformName}
+              referrerPolicy="no-referrer"
+              className="w-7 h-7 max-w-[34px] max-h-[34px] object-contain"
+            />
+          ) : (
+            <DiziLogo variant="red" size="sm" className="w-8 h-6 object-contain" />
+          )}
+        </button>
+
+        {/* Vertical Nav Stack: Home -> Search -> Notification -> Profile */}
+        <nav className="flex-1 flex flex-col items-center justify-center gap-4 w-full">
+          {/* 1. Home (exact same icon & current tab styling as bottom navbar) */}
+          <button
+            type="button"
+            onClick={handleHomeClick}
+            className={`w-10 h-10 flex items-center justify-center rounded-full transition-colors cursor-pointer ${
+              activeTab === 'home' ? 'text-white' : 'text-zinc-400 hover:text-zinc-200'
+            }`}
+            aria-label="Home"
+          >
+            <svg
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth={activeTab === 'home' ? '2.4' : '2'}
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              className="w-5.5 h-5.5"
+            >
+              <path d="M3 9.5L12 3l9 6.5V20a1.5 1.5 0 0 1-1.5 1.5h-15A1.5 1.5 0 0 1 3 20V9.5z" />
+              <line x1="9.5" y1="15" x2="14.5" y2="15" strokeWidth="2.5" />
+            </svg>
+          </button>
+
+          {/* 2. Search */}
+          <button
+            type="button"
+            onClick={() => handleTabSelect('search')}
+            className={`w-10 h-10 flex items-center justify-center rounded-full transition-colors cursor-pointer ${
+              activeTab === 'search' ? 'text-white' : 'text-zinc-400 hover:text-zinc-200'
+            }`}
+            aria-label="Search"
+          >
+            <Search
+              className={`w-5.5 h-5.5 ${activeTab === 'search' ? 'stroke-[2.5]' : 'stroke-[2]'}`}
+            />
+          </button>
+
+          {/* 3. Notification (controlled by admin setting) */}
+          {showNotifications && (
+            <button
+              type="button"
+              onClick={() => {
+                triggerHaptic(10);
+                onOpenNotifications?.();
+              }}
+              className="relative w-10 h-10 flex items-center justify-center rounded-full text-zinc-400 hover:text-zinc-200 active:scale-90 transition-all cursor-pointer"
+              aria-label="Notifications"
+            >
+              <Bell className="w-5.5 h-5.5 stroke-[2]" />
+              {hasUnreadNotifications && (
+                <span className="absolute top-2 right-2 w-2 h-2 rounded-full bg-red-600" />
+              )}
+            </button>
+          )}
+
+          {/* 4. Profile */}
+          <button
+            type="button"
+            onClick={() => handleTabSelect('profile')}
+            className={`w-10 h-10 flex items-center justify-center rounded-full transition-colors cursor-pointer ${
+              activeTab === 'profile' ? 'text-white' : 'text-zinc-400 hover:text-zinc-200'
+            }`}
+            aria-label="Profile and My List"
+          >
+            <img
+              data-mobile-nav-avatar="true"
+              src={userAvatar}
+              alt="Profile"
+              className={`w-6 h-6 rounded-full object-cover ${
+                hideProfileAvatar ? 'opacity-0' : 'opacity-100'
+              } ${activeTab === 'profile' ? 'ring-2 ring-white shadow-sm' : 'ring-0'}`}
+            />
+          </button>
+        </nav>
+      </aside>
+    );
+  }
+
   // Dynamic icon sizing: when labels are hidden beneath icons, increase icon sizes for balanced presence
   const iconSizeClass = showLabels ? 'w-5 h-5' : 'w-6.5 h-6.5';
   const iconWrapperClass = showLabels ? 'w-5.5 h-5.5' : 'w-7 h-7';
 
+  // Sleek dark translucent blur style (no container border when transparent mode is enabled)
+  const frostedBottomBarStyle: React.CSSProperties = {
+    backgroundColor: 'rgba(14, 15, 18, 0.72)',
+    backdropFilter: 'blur(22px) saturate(155%)',
+    WebkitBackdropFilter: 'blur(22px) saturate(155%)',
+    border: 'none',
+    boxShadow: '0 -8px 28px rgba(0, 0, 0, 0.48)'
+  };
+
+  const frostedFloatingPillStyle: React.CSSProperties = {
+    borderRadius: '9999px',
+    backgroundColor: 'rgba(15, 16, 19, 0.72)',
+    backdropFilter: 'blur(22px) saturate(155%)',
+    WebkitBackdropFilter: 'blur(22px) saturate(155%)',
+    border: 'none',
+    boxShadow: '0 12px 34px rgba(0, 0, 0, 0.62)'
+  };
+
   if (isBottomFixed) {
     return (
       <div
-        style={
-          isGlass
-            ? {
-                backgroundColor: 'rgba(14, 16, 22, 0.16)',
-                backdropFilter: 'blur(8px) saturate(165%) brightness(1.06)',
-                WebkitBackdropFilter: 'blur(8px) saturate(165%) brightness(1.06)',
-                borderTop: '1px solid rgba(255, 255, 255, 0.22)',
-                boxShadow:
-                  '0 -8px 28px rgba(0, 0, 0, 0.45), inset 0 1px 0 rgba(255, 255, 255, 0.35)'
-              }
-            : undefined
-        }
-        className={`fixed bottom-0 left-0 right-0 z-[120] w-full transition-opacity duration-500 ${
+        style={isTransparentBlur ? frostedBottomBarStyle : { border: 'none' }}
+        className={`fixed bottom-0 left-0 right-0 z-[120] w-full transition-opacity duration-500 border-0 ${
           isHiddenBehindLock ? 'opacity-0 pointer-events-none' : 'opacity-100 pointer-events-auto'
         } ${
-          isGlass
+          isTransparentBlur
             ? ''
-            : 'bg-[#0a0a0a] border-t border-white/10 shadow-[0_-2px_12px_rgba(0,0,0,0.85)]'
+            : 'bg-[#0a0a0a] shadow-[0_-2px_12px_rgba(0,0,0,0.85)]'
         } ${
           showLabels
             ? 'pb-[max(env(safe-area-inset-bottom),8px)] pt-1'
@@ -90,21 +246,15 @@ export const MobileBottomNav: React.FC<MobileBottomNavProps> = ({
           {/* 1. Home Tab */}
           <button
             onClick={handleHomeClick}
-            className={`flex flex-col items-center justify-center cursor-pointer flex-1 h-full rounded-full transition-all ${
-              activeTab === 'home'
-                ? isGlass
-                  ? 'text-[#1ab2ff]'
-                  : 'text-white'
-                : isGlass
-                ? 'text-white/90 hover:text-white'
-                : 'text-zinc-400 hover:text-zinc-200'
+            className={`flex flex-col items-center justify-center cursor-pointer flex-1 h-full rounded-full transition-colors ${
+              activeTab === 'home' ? 'text-white' : 'text-zinc-400 hover:text-zinc-200'
             }`}
             aria-label="Home"
           >
             <div className={`${iconWrapperClass} flex items-center justify-center`}>
               <svg
                 viewBox="0 0 24 24"
-                fill={isGlass && activeTab === 'home' ? 'currentColor' : 'none'}
+                fill="none"
                 stroke="currentColor"
                 strokeWidth={activeTab === 'home' ? '2.4' : '2'}
                 strokeLinecap="round"
@@ -112,9 +262,7 @@ export const MobileBottomNav: React.FC<MobileBottomNavProps> = ({
                 className={iconSizeClass}
               >
                 <path d="M3 9.5L12 3l9 6.5V20a1.5 1.5 0 0 1-1.5 1.5h-15A1.5 1.5 0 0 1 3 20V9.5z" />
-                {!(isGlass && activeTab === 'home') && (
-                  <line x1="9.5" y1="15" x2="14.5" y2="15" strokeWidth="2.5" />
-                )}
+                <line x1="9.5" y1="15" x2="14.5" y2="15" strokeWidth="2.5" />
               </svg>
             </div>
             {showLabels && (
@@ -124,15 +272,9 @@ export const MobileBottomNav: React.FC<MobileBottomNavProps> = ({
 
           {/* 2. Search Tab */}
           <button
-            onClick={() => onSelectTab('search')}
-            className={`flex flex-col items-center justify-center cursor-pointer flex-1 h-full rounded-full transition-all ${
-              activeTab === 'search'
-                ? isGlass
-                  ? 'text-[#1ab2ff]'
-                  : 'text-white'
-                : isGlass
-                ? 'text-white/90 hover:text-white'
-                : 'text-zinc-400 hover:text-zinc-200'
+            onClick={() => handleTabSelect('search')}
+            className={`flex flex-col items-center justify-center cursor-pointer flex-1 h-full rounded-full transition-colors ${
+              activeTab === 'search' ? 'text-white' : 'text-zinc-400 hover:text-zinc-200'
             }`}
             aria-label="Search"
           >
@@ -148,17 +290,11 @@ export const MobileBottomNav: React.FC<MobileBottomNavProps> = ({
             )}
           </button>
 
-          {/* 4. Profile / My Dizi Tab */}
+          {/* 3. Profile / My Dizi Tab */}
           <button
-            onClick={() => onSelectTab('profile')}
-            className={`flex flex-col items-center justify-center cursor-pointer flex-1 h-full rounded-full transition-all ${
-              activeTab === 'profile'
-                ? isGlass
-                  ? 'text-[#1ab2ff]'
-                  : 'text-white'
-                : isGlass
-                ? 'text-white/90 hover:text-white'
-                : 'text-zinc-400 hover:text-zinc-200'
+            onClick={() => handleTabSelect('profile')}
+            className={`flex flex-col items-center justify-center cursor-pointer flex-1 h-full rounded-full transition-colors ${
+              activeTab === 'profile' ? 'text-white' : 'text-zinc-400 hover:text-zinc-200'
             }`}
             aria-label="Profile and My List"
           >
@@ -169,13 +305,7 @@ export const MobileBottomNav: React.FC<MobileBottomNavProps> = ({
                 alt="Profile"
                 className={`${iconSizeClass} rounded-full object-cover ${
                   hideProfileAvatar ? 'opacity-0' : 'opacity-100'
-                } ${
-                  activeTab === 'profile'
-                    ? isGlass
-                      ? 'ring-2 ring-[#1ab2ff] shadow-sm'
-                      : 'ring-2 ring-white shadow-sm'
-                    : 'ring-0'
-                }`}
+                } ${activeTab === 'profile' ? 'ring-2 ring-white shadow-sm' : 'ring-0'}`}
               />
             </div>
             {showLabels && (
@@ -187,76 +317,40 @@ export const MobileBottomNav: React.FC<MobileBottomNavProps> = ({
     );
   }
 
-  const glassActivePillStyle: React.CSSProperties = {
-    background:
-      'linear-gradient(180deg, rgba(255, 255, 255, 0.14) 0%, rgba(255, 255, 255, 0.05) 100%)',
-    boxShadow:
-      'inset 0 0.5px 0 rgba(255, 255, 255, 0.36), 0 2px 8px rgba(0, 0, 0, 0.14)'
-  };
-
   return (
     <div
-      className={`fixed bottom-4 left-1/2 -translate-x-1/2 z-[120] transition-opacity duration-500 ${
+      className={`fixed bottom-[max(env(safe-area-inset-bottom),16px)] left-1/2 -translate-x-1/2 z-[120] transition-opacity duration-500 ${
         isHiddenBehindLock ? 'opacity-0 pointer-events-none' : 'opacity-100 pointer-events-auto'
       }`}
     >
-      {/* Floating Nav Pill: Solid Dark or High-Transparency Crystal Glass UI */}
+      {/* Floating Nav Pill: Solid Dark or Translucent Dark Frosted Blur */}
       <nav
         data-mobile-bottom-navbar={isHiddenBehindLock ? undefined : 'true'}
         aria-label="Mobile Navigation"
         style={
-          isGlass
-            ? {
-                borderRadius: '9999px',
-                border: '1px solid rgba(255, 255, 255, 0.24)',
-                background: 'rgba(14, 16, 22, 0.14)',
-                backdropFilter: 'blur(8px) saturate(165%) brightness(1.08)',
-                WebkitBackdropFilter: 'blur(8px) saturate(165%) brightness(1.08)',
-                boxShadow:
-                  '0 12px 34px rgba(0, 0, 0, 0.45), inset 0 1px 0 rgba(255, 255, 255, 0.44), inset 0 -0.5px 0 rgba(255, 255, 255, 0.16)'
-              }
+          isTransparentBlur
+            ? frostedFloatingPillStyle
             : {
-                border: '1px solid #2a2a2e',
+                border: 'none',
                 borderRadius: '9999px'
               }
         }
-        className={`relative overflow-hidden flex items-center justify-between ${
-          isGlass ? 'w-[248px] p-1' : 'w-[220px] px-3.5 py-1.5 bg-[#0a0a0a] shadow-[0_12px_36px_rgba(0,0,0,0.95)]'
-        } ${showLabels ? (isGlass ? 'h-[60px]' : 'h-[52px]') : isGlass ? 'h-[52px]' : 'h-[48px]'} select-none transition-all`}
+        className={`relative overflow-hidden flex items-center justify-between w-[228px] px-3.5 py-1.5 border-0 ${
+          isTransparentBlur ? '' : 'bg-[#0a0a0a] shadow-[0_12px_36px_rgba(0,0,0,0.95)]'
+        } ${showLabels ? 'h-[54px]' : 'h-[48px]'} select-none transition-all`}
       >
-        {/* Subtle top optical glass sheen */}
-        {isGlass && (
-          <div
-            aria-hidden="true"
-            className="pointer-events-none absolute inset-x-3 top-0 h-1/2 rounded-full"
-            style={{
-              background:
-                'linear-gradient(180deg, rgba(255, 255, 255, 0.08) 0%, transparent 100%)'
-            }}
-          />
-        )}
-
         {/* 1. Home Tab */}
         <button
           onClick={handleHomeClick}
-          style={isGlass && activeTab === 'home' ? glassActivePillStyle : undefined}
-          className={`relative z-10 flex flex-col items-center justify-center cursor-pointer transition-all shrink-0 rounded-full ${
-            isGlass
-              ? `w-[82px] h-full ${
-                  activeTab === 'home'
-                    ? 'text-[#1ab2ff]'
-                    : 'text-white/95 hover:text-white'
-                }`
-              : `w-14 ${showLabels ? 'h-10' : 'h-9'} ${
-                  activeTab === 'home' ? 'text-white' : 'text-zinc-400 hover:text-zinc-200'
-                }`
-          }`}
+          className={`relative z-10 flex flex-col items-center justify-center cursor-pointer transition-colors shrink-0 rounded-full w-14 ${
+            showLabels ? 'h-10' : 'h-9'
+          } ${activeTab === 'home' ? 'text-white' : 'text-zinc-400 hover:text-zinc-200'}`}
           aria-label="Home"
         >
           <div className={`${iconWrapperClass} flex items-center justify-center`}>
             <svg
               viewBox="0 0 24 24"
-              fill={isGlass && activeTab === 'home' ? 'currentColor' : 'none'}
+              fill="none"
               stroke="currentColor"
               strokeWidth={activeTab === 'home' ? '2.4' : '2'}
               strokeLinecap="round"
@@ -264,9 +358,7 @@ export const MobileBottomNav: React.FC<MobileBottomNavProps> = ({
               className={iconSizeClass}
             >
               <path d="M3 9.5L12 3l9 6.5V20a1.5 1.5 0 0 1-1.5 1.5h-15A1.5 1.5 0 0 1 3 20V9.5z" />
-              {!(isGlass && activeTab === 'home') && (
-                <line x1="9.5" y1="15" x2="14.5" y2="15" strokeWidth="2.5" />
-              )}
+              <line x1="9.5" y1="15" x2="14.5" y2="15" strokeWidth="2.5" />
             </svg>
           </div>
           {showLabels && (
@@ -276,19 +368,10 @@ export const MobileBottomNav: React.FC<MobileBottomNavProps> = ({
 
         {/* 2. Search Tab */}
         <button
-          onClick={() => onSelectTab('search')}
-          style={isGlass && activeTab === 'search' ? glassActivePillStyle : undefined}
-          className={`relative z-10 flex flex-col items-center justify-center cursor-pointer transition-all shrink-0 rounded-full ${
-            isGlass
-              ? `w-[78px] h-full ${
-                  activeTab === 'search'
-                    ? 'text-[#1ab2ff]'
-                    : 'text-white/95 hover:text-white'
-                }`
-              : `w-14 ${showLabels ? 'h-10' : 'h-9'} ${
-                  activeTab === 'search' ? 'text-white' : 'text-zinc-400 hover:text-zinc-200'
-                }`
-          }`}
+          onClick={() => handleTabSelect('search')}
+          className={`relative z-10 flex flex-col items-center justify-center cursor-pointer transition-colors shrink-0 rounded-full w-14 ${
+            showLabels ? 'h-10' : 'h-9'
+          } ${activeTab === 'search' ? 'text-white' : 'text-zinc-400 hover:text-zinc-200'}`}
           aria-label="Search"
         >
           <div className={`${iconWrapperClass} flex items-center justify-center`}>
@@ -303,21 +386,12 @@ export const MobileBottomNav: React.FC<MobileBottomNavProps> = ({
           )}
         </button>
 
-        {/* 4. Profile / My Dizi Tab */}
+        {/* 3. Profile / My Dizi Tab */}
         <button
-          onClick={() => onSelectTab('profile')}
-          style={isGlass && activeTab === 'profile' ? glassActivePillStyle : undefined}
-          className={`relative z-10 flex flex-col items-center justify-center cursor-pointer transition-all shrink-0 rounded-full ${
-            isGlass
-              ? `w-[78px] h-full ${
-                  activeTab === 'profile'
-                    ? 'text-[#1ab2ff]'
-                    : 'text-white/95 hover:text-white'
-                }`
-              : `w-14 ${showLabels ? 'h-10' : 'h-9'} ${
-                  activeTab === 'profile' ? 'text-white' : 'text-zinc-400 hover:text-zinc-200'
-                }`
-          }`}
+          onClick={() => handleTabSelect('profile')}
+          className={`relative z-10 flex flex-col items-center justify-center cursor-pointer transition-colors shrink-0 rounded-full w-14 ${
+            showLabels ? 'h-10' : 'h-9'
+          } ${activeTab === 'profile' ? 'text-white' : 'text-zinc-400 hover:text-zinc-200'}`}
           aria-label="Profile and My List"
         >
           <div className={`${iconWrapperClass} flex items-center justify-center relative`}>
@@ -327,13 +401,7 @@ export const MobileBottomNav: React.FC<MobileBottomNavProps> = ({
               alt="Profile"
               className={`${iconSizeClass} rounded-full object-cover ${
                 hideProfileAvatar ? 'opacity-0' : 'opacity-100'
-              } ${
-                activeTab === 'profile'
-                  ? isGlass
-                    ? 'ring-2 ring-[#1ab2ff] shadow-sm'
-                    : 'ring-2 ring-white shadow-sm'
-                  : 'ring-0'
-              }`}
+              } ${activeTab === 'profile' ? 'ring-2 ring-white shadow-sm' : 'ring-0'}`}
             />
           </div>
           {showLabels && (

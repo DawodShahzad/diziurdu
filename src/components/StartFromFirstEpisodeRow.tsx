@@ -29,12 +29,23 @@ const getFirstEpisode = (show: Show): Episode | null => {
   );
 };
 
+const FIRST_EP_SHUFFLE_STORAGE_KEY = 'cineflix_first_ep_random_10_v1';
+const TEN_MINUTES_MS = 10 * 60 * 1000;
+
+const fisherYatesShuffle = <T,>(arr: T[]): T[] => {
+  const copy = [...arr];
+  for (let i = copy.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [copy[i], copy[j]] = [copy[j], copy[i]];
+  }
+  return copy;
+};
+
 let hasStartEp1RowLoaded = false;
 const cachedStartEp1Indices = new Set<number>([0, 1, 2, 3, 4]);
 
 export const StartFromFirstEpisodeRow: React.FC<StartFromFirstEpisodeRowProps> = ({
   shows,
-  selectedShowIds,
   onPlayEpisode,
   onOpenDetails,
   watchlist = [],
@@ -52,30 +63,69 @@ export const StartFromFirstEpisodeRow: React.FC<StartFromFirstEpisodeRowProps> =
   const [isRowInViewport, setIsRowInViewport] = useState(hasStartEp1RowLoaded || !deferInitialLoad);
   const [loadedIndices, setLoadedIndices] = useState<Set<number>>(() => new Set(cachedStartEp1Indices));
 
+  // Show 10 random series in shuffled order; refreshes with a new random 10 shuffle after 10 minutes on page refresh
   const items = useMemo(() => {
-    const episodic = shows.filter((s) => {
-      const ep1 = getFirstEpisode(s);
-      return Boolean(ep1);
+    const eligibleSeries = shows.filter((s) => {
+      if (s.type !== 'series') return false;
+      return Boolean(getFirstEpisode(s));
     });
 
-    let ordered: Show[] = [];
-    if (selectedShowIds && selectedShowIds.length > 0) {
-      ordered = selectedShowIds
-        .map((id) => episodic.find((s) => s.id === id))
-        .filter((s): s is Show => Boolean(s));
-    }
-    if (ordered.length === 0) {
-      ordered = episodic;
+    if (eligibleSeries.length === 0) return [];
+
+    const byId = new Map<string, Show>(eligibleSeries.map((s) => [s.id, s]));
+    let selectedShows: Show[] = [];
+
+    try {
+      const raw = localStorage.getItem(FIRST_EP_SHUFFLE_STORAGE_KEY);
+      if (raw) {
+        const parsed = JSON.parse(raw) as { timestamp?: number; ids?: string[] };
+        if (
+          typeof parsed.timestamp === 'number' &&
+          Array.isArray(parsed.ids) &&
+          Date.now() - parsed.timestamp < TEN_MINUTES_MS
+        ) {
+          const validFromCache = parsed.ids
+            .map((id) => byId.get(id))
+            .filter((s): s is Show => Boolean(s));
+          if (validFromCache.length > 0) {
+            selectedShows = validFromCache.slice(0, 10);
+            if (selectedShows.length < 10 && eligibleSeries.length > selectedShows.length) {
+              const existingIds = new Set(selectedShows.map((s) => s.id));
+              const remaining = fisherYatesShuffle(
+                eligibleSeries.filter((s) => !existingIds.has(s.id))
+              );
+              selectedShows = [...selectedShows, ...remaining].slice(0, 10);
+            }
+          }
+        }
+      }
+    } catch {
+      // Ignore storage read errors
     }
 
-    return ordered
+    if (selectedShows.length === 0) {
+      selectedShows = fisherYatesShuffle(eligibleSeries).slice(0, 10);
+      try {
+        localStorage.setItem(
+          FIRST_EP_SHUFFLE_STORAGE_KEY,
+          JSON.stringify({
+            timestamp: Date.now(),
+            ids: selectedShows.map((s) => s.id)
+          })
+        );
+      } catch {
+        // Ignore storage write errors
+      }
+    }
+
+    return selectedShows
       .map((show) => {
         const ep = getFirstEpisode(show);
         if (!ep) return null;
         return { show, episode: ep };
       })
       .filter((item): item is { show: Show; episode: Episode } => Boolean(item));
-  }, [shows, selectedShowIds]);
+  }, [shows]);
 
   // Feed-by-feed vertical gating (cached once loaded)
   useEffect(() => {
@@ -230,14 +280,6 @@ export const StartFromFirstEpisodeRow: React.FC<StartFromFirstEpisodeRowProps> =
                 className="w-full aspect-video rounded-[6px] md:rounded-[10px] skeleton-wave"
                 style={{ animationDelay: `${i * 150}ms` }}
               />
-              <div
-                className="mt-2 w-2/3 h-4 rounded skeleton-wave"
-                style={{ animationDelay: `${i * 150}ms` }}
-              />
-              <div
-                className="mt-1.5 w-1/3 h-3 rounded skeleton-wave"
-                style={{ animationDelay: `${i * 150}ms` }}
-              />
             </div>
           ))}
         </div>
@@ -279,8 +321,6 @@ export const StartFromFirstEpisodeRow: React.FC<StartFromFirstEpisodeRowProps> =
           >
             {items.map(({ show, episode }, index) => {
               const epThumb = episode.thumbnailUrl || show.posterLandscapeUrl || show.backdropUrl || '';
-              const primaryGenre = show.genres?.[0] || 'Drama';
-              const maturity = show.maturityRating || '16+';
               const epDuration = episode.duration || '45m';
               const deferImage = !loadedIndices.has(index);
 
@@ -309,8 +349,6 @@ export const StartFromFirstEpisodeRow: React.FC<StartFromFirstEpisodeRowProps> =
                     popoutStyle={desktopPopoutStyle}
                     customPosterUrl={epThumb}
                     durationChip={epDuration}
-                    episodeTitle={episode.title || 'Episode 1'}
-                    episodeSublabel={`${primaryGenre} • ${maturity}`}
                     showOverlayLogoOnCard={true}
                     deferImageLoad={deferImage}
                     skeletonDelayMs={index * 150}

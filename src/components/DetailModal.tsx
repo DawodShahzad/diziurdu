@@ -8,8 +8,9 @@ import { normalizeActorKey } from '../utils/actorIndex';
 import { attachHlsVideo } from '../utils/hlsHelper';
 import { MediaImage } from './MediaImage';
 import { AdTileBanner } from './AdTileBanner';
-import { detectIsMobileDevice } from '../utils/deviceLayout';
+import { detectIsMobileDevice, useDeviceLayout } from '../utils/deviceLayout';
 import { notifyPreviewStarted } from '../utils/previewResumeTracker';
+import { shareShowNative } from '../utils/haptics';
 import {
   X,
   Plus,
@@ -141,6 +142,9 @@ export const DetailModal: React.FC<DetailModalProps> = ({
       </div>
     );
   };
+
+  const { isMobile: detectedMobileForLandscape, isLandscape: isDetailLandscape } = useDeviceLayout();
+  const isDetailMobileLandscape = detectedMobileForLandscape && isDetailLandscape;
 
   // Local watchlist state synced with watchlist prop for instantaneous responsive UI feedback
   const [localWatchlist, setLocalWatchlist] = useState<string[]>(watchlist || []);
@@ -1498,9 +1502,16 @@ export const DetailModal: React.FC<DetailModalProps> = ({
     }
   };
 
-  const handleShare = (e?: React.MouseEvent) => {
+  const handleShare = async (e?: React.MouseEvent) => {
     e?.stopPropagation();
-    setIsShareModalOpen(true);
+    const handledNatively = await shareShowNative(
+      show,
+      adminSettings?.platformName || 'Dizi Urdu',
+      detectIsMobileDevice()
+    );
+    if (!handledNatively) {
+      setIsShareModalOpen(true);
+    }
   };
 
   // Core play execution logic
@@ -1997,7 +2008,7 @@ export const DetailModal: React.FC<DetailModalProps> = ({
               }
             : undefined
         }
-        className={`fixed inset-0 z-50 overflow-y-auto overflow-x-hidden custom-scrollbar outline-none transition-colors duration-250 ${
+        className={`fixed top-0 right-0 bottom-0 ${isDetailMobileLandscape ? 'left-14' : 'left-0'} z-50 overflow-y-auto overflow-x-hidden custom-scrollbar outline-none transition-colors duration-250 ${
           isMobileLayout
             ? ''
             : isClosingDesktop

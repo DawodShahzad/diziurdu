@@ -12,6 +12,7 @@ interface FooterProps {
   onOpenCategories?: () => void;
   platformName?: string;
   isMyListPage?: boolean;
+  transparentBg?: boolean;
 }
 
 type FooterModalTab =
@@ -34,7 +35,8 @@ export const Footer: React.FC<FooterProps> = ({
   onRequestContent,
   onOpenCategories,
   platformName = 'Dizi Urdu',
-  isMyListPage = false
+  isMyListPage = false,
+  transparentBg = false
 }) => {
   const [activeModal, setActiveModal] = useState<FooterModalTab>(null);
   const [contactSubmitted, setContactSubmitted] = useState(false);
@@ -51,14 +53,18 @@ export const Footer: React.FC<FooterProps> = ({
 
   if (isMobile) return null;
 
-  // Unified Minimal Desktop Footer: zero divider line, subtle ultra-smooth eased fade into page base color (no hard lines or banding)
+  // Unified Minimal Desktop Footer: zero divider line, subtle ultra-smooth eased fade into page base color (or transparent when requested)
   return (
     <footer
-      className="relative w-full mt-10 pt-14 px-6 sm:px-8 lg:px-12 pb-10 select-none border-0"
-      style={{
-        background:
-          'linear-gradient(to top, rgba(0, 0, 0, 0.44) 0%, rgba(0, 0, 0, 0.36) 14%, rgba(0, 0, 0, 0.27) 29%, rgba(0, 0, 0, 0.18) 45%, rgba(0, 0, 0, 0.11) 61%, rgba(0, 0, 0, 0.05) 77%, rgba(0, 0, 0, 0.015) 90%, rgba(0, 0, 0, 0) 100%)'
-      }}
+      className={`relative w-full ${transparentBg ? 'mt-4 bg-transparent' : 'mt-10'} pt-14 px-6 sm:px-8 lg:px-12 pb-10 select-none border-0`}
+      style={
+        transparentBg
+          ? { background: 'transparent' }
+          : {
+              background:
+                'linear-gradient(to top, rgba(0, 0, 0, 0.44) 0%, rgba(0, 0, 0, 0.36) 14%, rgba(0, 0, 0, 0.27) 29%, rgba(0, 0, 0, 0.18) 45%, rgba(0, 0, 0, 0.11) 61%, rgba(0, 0, 0, 0.05) 77%, rgba(0, 0, 0, 0.015) 90%, rgba(0, 0, 0, 0) 100%)'
+            }
+      }
     >
       <div className="max-w-[1780px] mx-auto flex flex-col md:flex-row md:items-end justify-between gap-6">
         {/* Left: Brand Logo + Copyright */}

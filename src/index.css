@@ -3,6 +3,8 @@
 @layer base {
   html {
     font-size: 17px;
+    overscroll-behavior-y: contain;
+    -webkit-tap-highlight-color: transparent;
   }
   @media (max-width: 640px) {
     html {
@@ -12,10 +14,11 @@
 
   @media (max-width: 767px) {
     html, body {
-      background-color: #000000 !important;
+      background-color: #09090b !important;
       touch-action: pan-x pan-y;
       -ms-touch-action: pan-x pan-y;
       overscroll-behavior-x: none;
+      overscroll-behavior-y: contain;
     }
   }
 
@@ -25,6 +28,24 @@
     background-color: #141414;
     color: #e5e7eb;
     letter-spacing: -0.01em;
+    overscroll-behavior-y: contain;
+    -webkit-tap-highlight-color: transparent;
+    -webkit-user-select: none;
+    user-select: none;
+  }
+
+  /* Keep text selection enabled inside inputs, textareas, and editable fields */
+  input,
+  textarea,
+  [contenteditable="true"] {
+    -webkit-user-select: text !important;
+    user-select: text !important;
+  }
+
+  button,
+  a,
+  [role="button"] {
+    -webkit-tap-highlight-color: transparent;
   }
 
   h1, h2, h3, h4, .font-display {

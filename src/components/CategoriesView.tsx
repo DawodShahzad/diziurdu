@@ -22,6 +22,7 @@ interface CategoriesViewProps {
   resetKey?: number;
   initialCategory?: CategoryItem | null;
   mobileCategoriesStyle?: 'grid' | 'stacked_cards';
+  onOpenTrendingTop10?: () => void;
 }
 
 export const CATEGORIES_DATA: CategoryItem[] = INITIAL_CATEGORIES || [];
@@ -39,9 +40,11 @@ export const CategoriesView: React.FC<CategoriesViewProps> = ({
   onCategorySelectionChange,
   resetKey,
   initialCategory,
-  mobileCategoriesStyle = 'grid'
+  mobileCategoriesStyle = 'grid',
+  onOpenTrendingTop10
 }) => {
-  const { isMobile } = useDeviceLayout();
+  const { isMobile, isLandscape } = useDeviceLayout();
+  const isMobileLandscape = isMobile && isLandscape;
   const [selectedCategory, setSelectedCategory] = useState<CategoryItem | null>(initialCategory || null);
   const categoryScrollPosRef = useRef<number>(0);
 
@@ -120,7 +123,7 @@ export const CategoriesView: React.FC<CategoriesViewProps> = ({
         <div className={isMobile ? 'pt-2' : 'pt-2'}>
           {/* Mobile Fixed Header matching Top 10 List Page */}
           {isMobile ? (
-            <div className="fixed top-0 inset-x-0 z-50 h-14 bg-black px-4 flex items-center justify-between border-b border-white/10 select-none">
+            <div className={`fixed top-0 ${isMobileLandscape ? 'left-14 right-0' : 'inset-x-0'} z-50 h-14 bg-black px-4 flex items-center justify-between border-b border-white/10 select-none`}>
               <div className="flex items-center gap-3 min-w-0">
                 <button
                   onClick={() => {
@@ -182,17 +185,90 @@ export const CategoriesView: React.FC<CategoriesViewProps> = ({
             ))}
           </div>
         </div>
-      ) : activeCategories.length === 0 ? (
-        <div className="py-24 text-center text-zinc-500">
-          <p className="text-base font-medium text-zinc-400">No categories found in database.</p>
-          <p className="text-xs text-zinc-500 mt-1">Add categories from the Admin Panel or link your full_backup.json.</p>
-        </div>
       ) : (
-        /* Main Categories View */
+        /* Main Categories View (always renders Trending Top 10 as 1st card) */
         <div className="w-full">
-          {/* Mobile Stacked Landscape Cards Option (matching image_471696e6.png) */}
+          {(() => {
+            const topTrendingShows = [...shows]
+              .sort((a, b) => (b.points || 0) - (a.points || 0))
+              .slice(0, 4);
+            const trendingPrimaryImg =
+              topTrendingShows[0]?.backdropUrl ||
+              topTrendingShows[0]?.posterLandscapeUrl ||
+              topTrendingShows[0]?.posterVerticalUrl ||
+              '';
+            const trendingCollage = topTrendingShows
+              .map((s) => s.posterLandscapeUrl || s.backdropUrl || s.posterVerticalUrl)
+              .filter(Boolean);
+
+            return (
+              <>
+          {/* Mobile Stacked Landscape Cards Option */}
           {isMobile && mobileCategoriesStyle === 'stacked_cards' && (
             <div className="space-y-3 pb-4">
+              {/* 1st Card: Trending -> Opens Top 10 Page */}
+              {onOpenTrendingTop10 && (
+                <div
+                  key="stacked-trending-top10"
+                  onClick={() => onOpenTrendingTop10()}
+                  className="group relative w-full h-[106px] rounded-[10px] overflow-hidden bg-[#141416] border border-white/[0.08] flex items-center justify-between cursor-pointer active:scale-[0.985] transition-all duration-200 shadow-lg"
+                >
+                  <div className="absolute right-0 top-0 bottom-0 w-[64%] overflow-hidden pointer-events-none">
+                    {trendingCollage.length >= 2 ? (
+                      <div className="w-full h-full grid grid-cols-2 grid-rows-2 gap-1 rotate-[-10deg] scale-125 opacity-90">
+                        {[0, 1, 2, 3].map((slotIdx) => (
+                          <div key={slotIdx} className="w-full h-full overflow-hidden rounded-[3px] bg-zinc-900">
+                            <img
+                              src={trendingCollage[slotIdx % trendingCollage.length]}
+                              alt=""
+                              referrerPolicy="no-referrer"
+                              className="w-full h-full object-cover"
+                            />
+                          </div>
+                        ))}
+                      </div>
+                    ) : trendingPrimaryImg ? (
+                      <MediaImage
+                        src={trendingPrimaryImg}
+                        fallbackTitle="Trending"
+                        hideFallback={true}
+                        className="w-full h-full object-cover object-center"
+                      />
+                    ) : (
+                      <div
+                        className="w-full h-full"
+                        style={{
+                          background:
+                            'linear-gradient(135deg, rgba(220,18,30,0.65) 0%, rgba(16,66,210,0.65) 100%)'
+                        }}
+                      />
+                    )}
+                    <div
+                      className="absolute inset-0 pointer-events-none"
+                      style={{
+                        background:
+                          'linear-gradient(90deg, #141416 0%, rgba(20,20,22,0.92) 18%, rgba(20,20,22,0.45) 52%, rgba(0,0,0,0.22) 100%)'
+                      }}
+                    />
+                  </div>
+
+                  <div className="relative z-10 flex-1 pl-4 pr-3 py-3 min-w-0 max-w-[60%]">
+                    <h3 className="text-white font-bold text-[17px] tracking-tight truncate leading-snug drop-shadow">
+                      Trending
+                    </h3>
+                    <p className="text-zinc-400 text-[12px] font-medium truncate mt-0.5 leading-snug">
+                      Top 10 Series & Movies
+                    </p>
+                  </div>
+
+                  <div className="relative z-10 pr-3.5 shrink-0">
+                    <div className="w-7 h-7 rounded-full bg-zinc-900/80 border border-white/15 flex items-center justify-center text-white/90 shadow-md">
+                      <ChevronRight className="w-4 h-4 stroke-[2.2]" />
+                    </div>
+                  </div>
+                </div>
+              )}
+
               {activeCategories.map((cat) => {
                 const matchedShows = getShowsForCategory(cat);
                 const subtitleText =
@@ -290,6 +366,64 @@ export const CategoriesView: React.FC<CategoriesViewProps> = ({
                 : 'grid-cols-3 lg:grid-cols-4 gap-4 lg:gap-5'
             }`}
           >
+            {/* 1st Card: Trending -> Opens Top 10 Page */}
+            {onOpenTrendingTop10 && (
+              <div
+                key="category-trending-top10"
+                onClick={() => onOpenTrendingTop10()}
+                className={`group relative ${
+                  isMobile ? 'aspect-[2/3] bg-black' : 'aspect-[16/9] bg-[#16171d]'
+                } w-full rounded-2xl overflow-hidden border border-zinc-400/[0.09] cursor-pointer shadow-md transition-all duration-200 active:scale-95 hover:border-zinc-300/30`}
+              >
+                {trendingPrimaryImg ? (
+                  <MediaImage
+                    src={
+                      isMobile
+                        ? topTrendingShows[0]?.posterVerticalUrl || trendingPrimaryImg
+                        : trendingPrimaryImg
+                    }
+                    fallbackTitle="Trending"
+                    hideFallback={true}
+                    className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
+                  />
+                ) : (
+                  <div
+                    className="w-full h-full"
+                    style={{
+                      background:
+                        'radial-gradient(ellipse 90% 80% at 85% 15%, rgba(220,18,30,0.72), transparent 72%), radial-gradient(ellipse 90% 80% at 15% 90%, rgba(16,80,235,0.72), #090b14 78%)'
+                    }}
+                  />
+                )}
+
+                {/* Subtle Red-to-Blue Trending Ambient Tint */}
+                <div
+                  className="absolute inset-0 pointer-events-none"
+                  style={{
+                    background:
+                      'linear-gradient(135deg, rgba(210,16,28,0.28) 0%, rgba(0,0,0,0.18) 52%, rgba(14,72,224,0.34) 100%)'
+                  }}
+                />
+
+                {/* Dark Gradient Overlay for bottom text legibility */}
+                <div className="absolute inset-0 bg-gradient-to-t from-black/95 via-black/40 to-transparent group-hover:from-black/95 transition-all" />
+
+                <div
+                  className="absolute inset-0 pointer-events-none z-10"
+                  style={{
+                    background:
+                      'radial-gradient(ellipse 80% 70% at 50% 100%, rgba(0,0,0,0.7) 0%, rgba(0,0,0,0.3) 45%, rgba(0,0,0,0.05) 75%, transparent 100%)'
+                  }}
+                />
+
+                <div className="absolute bottom-2.5 left-2.5 right-2.5 sm:bottom-3 sm:left-3 sm:right-3 z-20 flex items-end">
+                  <h3 className="text-white font-extrabold text-xs sm:text-sm md:text-base tracking-wide drop-shadow-[0_2px_8px_rgba(0,0,0,0.95)] line-clamp-2 leading-tight">
+                    Trending
+                  </h3>
+                </div>
+              </div>
+            )}
+
             {activeCategories.map((cat) => {
               return (
                 <div
@@ -335,6 +469,9 @@ export const CategoriesView: React.FC<CategoriesViewProps> = ({
             })}
           </div>
           )}
+              </>
+            );
+          })()}
         </div>
       )}
     </div>

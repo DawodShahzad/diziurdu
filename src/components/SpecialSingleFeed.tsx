@@ -1,9 +1,10 @@
-import React, { useState, useRef, useEffect, useCallback, useMemo } from 'react';
+import React, { useState, useRef, useEffect, useCallback, useMemo, useId } from 'react';
 import { Show, DetailsOriginMeta } from '../types';
 import { ChevronLeft, ChevronRight, Volume2, VolumeX, Loader2, Play, Plus, Check, Info } from 'lucide-react';
 import { MediaImage } from './MediaImage';
-import { detectIsMobileDevice } from '../utils/deviceLayout';
+import { detectIsMobileDevice, useDeviceLayout } from '../utils/deviceLayout';
 import { notifyPreviewStarted } from '../utils/previewResumeTracker';
+import { useTopmostAutoPreview } from '../utils/autoPreviewCoordinator';
 
 interface SpecialSingleFeedProps {
   shows: Show[];
@@ -43,26 +44,10 @@ export const SpecialSingleFeed: React.FC<SpecialSingleFeedProps> = ({
   const [currentIndex, setCurrentIndex] = useState<number>(0);
   const [slideDirection, setSlideDirection] = useState<'next' | 'prev'>('next');
 
-  // Device-aware mobile detection (stays mobile even in phone landscape orientation)
-  const [isMobileScreen, setIsMobileScreen] = useState<boolean>(() => {
-    if (typeof window !== 'undefined') {
-      return detectIsMobileDevice();
-    }
-    return Boolean(isMobile);
-  });
-
-  useEffect(() => {
-    const handleResize = () => {
-      setIsMobileScreen(detectIsMobileDevice());
-    };
-    handleResize();
-    window.addEventListener('resize', handleResize);
-    window.addEventListener('orientationchange', handleResize);
-    return () => {
-      window.removeEventListener('resize', handleResize);
-      window.removeEventListener('orientationchange', handleResize);
-    };
-  }, []);
+  // Device-aware mobile & orientation detection (stays mobile even in phone landscape orientation)
+  const { isMobile: hookIsMobile, isLandscape } = useDeviceLayout();
+  const isMobileScreen = hookIsMobile || Boolean(isMobile);
+  const autoPreviewSlotId = `special-single-feed-${useId()}`;
 
   const [isVideoLoading, setIsVideoLoading] = useState<boolean>(false);
   const [isVideoPlaying, setIsVideoPlaying] = useState<boolean>(false);
@@ -79,7 +64,8 @@ export const SpecialSingleFeed: React.FC<SpecialSingleFeedProps> = ({
     }
     return !isMobile;
   });
-  const [desktopMediaAspect, setDesktopMediaAspect] = useState<number>(16 / 9);
+  const [desktopPosterAspect, setDesktopPosterAspect] = useState<number>(16 / 9);
+  const [desktopVideoAspect, setDesktopVideoAspect] = useState<number>(16 / 9);
   const [desktopShowcaseSize, setDesktopShowcaseSize] = useState<{ w: number; h: number }>({ w: 1200, h: 430 });
   const [isDesktop50Visible, setIsDesktop50Visible] = useState<boolean>(true);
 
@@ -98,19 +84,39 @@ export const SpecialSingleFeed: React.FC<SpecialSingleFeedProps> = ({
   feedShowsRef.current = feedShows;
   const currentIndexRef = useRef(currentIndex);
   currentIndexRef.current = currentIndex;
+  const activeShowForPreview = feedShows[currentIndex];
+  const hasActiveTrailer = Boolean(
+    activeShowForPreview?.trailerUrl || (activeShowForPreview as any)?.streamUrl
+  );
+  const isAutoPreviewEligible = Boolean(
+    !isSearchSpotlight &&
+      hasActiveTrailer &&
+      isInViewport &&
+      (isMobileScreen ? isMobileCardFullyExposed : isDesktop50Visible) &&
+      !isPaused &&
+      (!isAnyOtherCardHovered || isMobileScreen)
+  );
+  const isTopmostAutoPreview = useTopmostAutoPreview(
+    autoPreviewSlotId,
+    containerRef,
+    isAutoPreviewEligible
+  );
+
   const readinessRef = useRef({
     isInViewport: true,
     isDesktop50Visible: true,
     isPaused: false,
     isAnyOtherCardHovered: false,
-    isSearchSpotlight: false
+    isSearchSpotlight: false,
+    isTopmostAutoPreview: true
   });
   readinessRef.current = {
     isInViewport,
     isDesktop50Visible,
     isPaused,
     isAnyOtherCardHovered,
-    isSearchSpotlight
+    isSearchSpotlight,
+    isTopmostAutoPreview
   };
   const desktopPlaybackStateRef = useRef({
     isVideoPlaying: false,
@@ -287,13 +293,14 @@ export const SpecialSingleFeed: React.FC<SpecialSingleFeedProps> = ({
     }
   };
 
-  // Restore cached poster aspect ratio immediately when active show changes
+  // Restore cached poster & video aspect ratios when active show changes (poster NEVER adopts video width)
   useEffect(() => {
     const activeId = feedShows[currentIndex]?.id;
-    setDesktopMediaAspect((activeId && desktopPosterAspectRef.current[activeId]) || 16 / 9);
+    setDesktopPosterAspect((activeId && desktopPosterAspectRef.current[activeId]) || 16 / 9);
+    setDesktopVideoAspect((activeId && desktopVideoAspectRef.current[activeId]) || 16 / 9);
   }, [currentIndex, feedShows]);
 
-  // Strict check: full mobile card must sit completely between top and bottom navbars (never touching either)
+  // Strict check: full mobile card must sit cleanly between top and bottom navbars (and ignore left landscape sidebar for vertical bounds)
   const evaluateMobileCardExposure = useCallback(() => {
     if (!isMobileScreen) {
       setIsMobileCardFullyExposed(true);
@@ -324,21 +331,45 @@ export const SpecialSingleFeed: React.FC<SpecialSingleFeedProps> = ({
     });
 
     let bottomLimit = vh;
+    let leftLimit = 0;
     document.querySelectorAll<HTMLElement>('[data-mobile-bottom-navbar="true"]').forEach((navEl) => {
+      if (navEl.hasAttribute('data-mobile-landscape-sidebar')) {
+        const sr = navEl.getBoundingClientRect();
+        if (sr.width > 0 && sr.right > 0) {
+          leftLimit = Math.max(leftLimit, sr.right);
+        }
+        return;
+      }
       const nr = navEl.getBoundingClientRect();
       if (nr.width > 0 && nr.height > 0 && nr.top < vh && nr.bottom > vh / 2) {
         bottomLimit = Math.min(bottomLimit, nr.top);
       }
     });
 
-    const clearance = 2;
-    const fullyExposed =
-      rect.width > 0 &&
-      rect.height > 0 &&
-      rect.left >= 0 &&
-      rect.right <= vw &&
-      rect.top > topLimit + clearance &&
-      rect.bottom < bottomLimit - clearance;
+    let fullyExposed = false;
+    if (isLandscape) {
+      // In short mobile landscape viewports, allow playback whenever >50% of the card is visibly on screen
+      const visibleTop = Math.max(rect.top, 0);
+      const visibleBottom = Math.min(rect.bottom, vh);
+      const visibleH = Math.max(0, visibleBottom - visibleTop);
+      const visibleLeft = Math.max(rect.left, leftLimit);
+      const visibleRight = Math.min(rect.right, vw);
+      const visibleW = Math.max(0, visibleRight - visibleLeft);
+      fullyExposed =
+        rect.width > 0 &&
+        rect.height > 0 &&
+        visibleH / rect.height >= 0.5 &&
+        visibleW / rect.width >= 0.5;
+    } else {
+      const clearance = 2;
+      fullyExposed =
+        rect.width > 0 &&
+        rect.height > 0 &&
+        rect.left >= leftLimit &&
+        rect.right <= vw &&
+        rect.top > topLimit + clearance &&
+        rect.bottom < bottomLimit - clearance;
+    }
 
     setIsMobileCardFullyExposed(fullyExposed);
     if (!fullyExposed) {
@@ -353,7 +384,7 @@ export const SpecialSingleFeed: React.FC<SpecialSingleFeedProps> = ({
         if (v && !v.paused) v.pause();
       });
     }
-  }, [currentIndex, isMobileScreen, isSearchSpotlight, clearPreviewEndTimers]);
+  }, [currentIndex, isMobileScreen, isLandscape, isSearchSpotlight, clearPreviewEndTimers]);
 
   const scheduleDesktopPreviewStart = useCallback(() => {
     if (isSearchSpotlight) return;
@@ -375,6 +406,7 @@ export const SpecialSingleFeed: React.FC<SpecialSingleFeedProps> = ({
       Boolean(activeTrailer) &&
       r.isInViewport &&
       isDesktop50VisibleRef.current &&
+      r.isTopmostAutoPreview &&
       !document.hidden &&
       !r.isPaused &&
       !r.isAnyOtherCardHovered;
@@ -416,6 +448,7 @@ export const SpecialSingleFeed: React.FC<SpecialSingleFeedProps> = ({
     const isReadyForPreview =
       isInViewport &&
       (isMobileScreen ? isMobileCardFullyExposed : isDesktop50VisibleRef.current) &&
+      isTopmostAutoPreview &&
       !document.hidden &&
       !isPaused &&
       (!isAnyOtherCardHovered || isMobileScreen);
@@ -443,6 +476,7 @@ export const SpecialSingleFeed: React.FC<SpecialSingleFeedProps> = ({
     isInViewport,
     isMobileScreen,
     isMobileCardFullyExposed,
+    isTopmostAutoPreview,
     isPaused,
     isAnyOtherCardHovered,
     isSearchSpotlight,
@@ -463,8 +497,8 @@ export const SpecialSingleFeed: React.FC<SpecialSingleFeedProps> = ({
   }, [isDesktop50Visible, isMobileScreen, isSearchSpotlight, scheduleDesktopPreviewStart]);
 
   // Desktop page scroll visibility rule:
-  // Do NOT pause during normal scrolling; ONLY pause, fade out to pure black, and restore original-size poster
-  // when 50% or more of the card sits under the top navbar or below the bottom screen edge.
+  // Whenever the container hits the top navbar or bottom screen edge, pause preview, fade cleanly through black,
+  // and restore the poster at its exact original position and natural poster width (never stretched to video width).
   const evaluateDesktopExposure = useCallback(() => {
     if (isMobileScreen || isSearchSpotlight) return;
     const cardEl = desktopShowcaseRef.current;
@@ -490,20 +524,28 @@ export const SpecialSingleFeed: React.FC<SpecialSingleFeedProps> = ({
       }
     }
 
+    const availableBand = Math.max(0, vh - navBottom);
     const visibleTop = Math.max(rect.top, navBottom, 0);
     const visibleBottom = Math.min(rect.bottom, vh);
     const visibleHeight = Math.max(0, visibleBottom - visibleTop);
     const visibleRatio = rect.height > 0 ? visibleHeight / rect.height : 0;
-    const isExposedOver50 = visibleRatio > 0.5;
 
-    if (isExposedOver50 === isDesktop50VisibleRef.current) {
+    // Trigger fade-back as soon as the container hits the top navbar or bottom screen edge
+    // (fallback to >=85% visibility only if viewport itself is shorter than the card)
+    const isClearOfEdges =
+      rect.height > 0 &&
+      (availableBand >= rect.height + 2
+        ? rect.top >= navBottom && rect.bottom <= vh
+        : visibleRatio >= 0.85);
+
+    if (isClearOfEdges === isDesktop50VisibleRef.current) {
       return;
     }
 
-    isDesktop50VisibleRef.current = isExposedOver50;
-    setIsDesktop50Visible(isExposedOver50);
+    isDesktop50VisibleRef.current = isClearOfEdges;
+    setIsDesktop50Visible(isClearOfEdges);
 
-    if (!isExposedOver50) {
+    if (!isClearOfEdges) {
       if (startPreviewTimerRef.current) {
         window.clearTimeout(startPreviewTimerRef.current);
         startPreviewTimerRef.current = null;
@@ -514,7 +556,6 @@ export const SpecialSingleFeed: React.FC<SpecialSingleFeedProps> = ({
       }
       desktopPlayInitiatedRef.current = false;
 
-      const activeId = feedShows[currentIndex]?.id;
       const curState = desktopPlaybackStateRef.current;
       const hadActivePreview =
         curState.isVideoPlaying || curState.shouldPlayVideo || curState.isPosterFaded;
@@ -531,9 +572,7 @@ export const SpecialSingleFeed: React.FC<SpecialSingleFeedProps> = ({
           window.clearTimeout(desktopBlackFadeTimerRef.current);
         }
         desktopBlackFadeTimerRef.current = window.setTimeout(() => {
-          // Restore poster's original aspect ratio while everything is pure black
           setShouldPlayVideo(false);
-          setDesktopMediaAspect((activeId && desktopPosterAspectRef.current[activeId]) || 16 / 9);
           requestAnimationFrame(() => {
             requestAnimationFrame(() => {
               setIsDesktopScrollBlackFade(false);
@@ -541,10 +580,10 @@ export const SpecialSingleFeed: React.FC<SpecialSingleFeedProps> = ({
             });
           });
           desktopBlackFadeTimerRef.current = null;
-        }, 460);
+        }, 380);
       }
     }
-  }, [isMobileScreen, isSearchSpotlight, feedShows, currentIndex]);
+  }, [isMobileScreen, isSearchSpotlight]);
 
   useEffect(() => {
     if (isMobileScreen || isSearchSpotlight) return;
@@ -569,9 +608,9 @@ export const SpecialSingleFeed: React.FC<SpecialSingleFeedProps> = ({
     return () => window.clearTimeout(timer);
   }, [isMobileScreen, isVideoPlaying, currentIndex]);
 
-  // Pause all preview videos immediately when isPaused is true or when user hovers over another card below
+  // Pause all preview videos immediately when isPaused is true, another card is hovered, or another auto-preview row is topmost
   useEffect(() => {
-    if (isPaused || isAnyOtherCardHovered || isSearchSpotlight) {
+    if (isPaused || isAnyOtherCardHovered || isSearchSpotlight || !isTopmostAutoPreview) {
       desktopPlayInitiatedRef.current = false;
       setShouldPlayVideo(false);
       setIsVideoPlaying(false);
@@ -584,7 +623,7 @@ export const SpecialSingleFeed: React.FC<SpecialSingleFeedProps> = ({
         if (v && !v.paused) v.pause();
       });
     }
-  }, [isPaused, isAnyOtherCardHovered, isSearchSpotlight]);
+  }, [isPaused, isAnyOtherCardHovered, isSearchSpotlight, isTopmostAutoPreview]);
 
   // Mark video as playing once frames start rolling
   const handleVideoPlaying = () => {
@@ -610,7 +649,7 @@ export const SpecialSingleFeed: React.FC<SpecialSingleFeedProps> = ({
       desktopPosterFadeTimerRef.current = null;
       const vidRatio = desktopVideoAspectRef.current[showId];
       if (vidRatio) {
-        setDesktopMediaAspect(vidRatio);
+        setDesktopVideoAspect(vidRatio);
       }
       vidEl.muted = effectiveMuted;
       vidEl.play().catch(() => {
@@ -721,11 +760,9 @@ export const SpecialSingleFeed: React.FC<SpecialSingleFeedProps> = ({
     setIsVideoLoading(false);
 
     if (!isMobileScreen) {
-      const activeId = feedShows[currentIndex]?.id;
       setIsDesktopPosterFadedForPreview(true);
       previewFadeCleanupTimerRef.current = window.setTimeout(() => {
         setShouldPlayVideo(false);
-        setDesktopMediaAspect((activeId && desktopPosterAspectRef.current[activeId]) || 16 / 9);
         requestAnimationFrame(() => {
           requestAnimationFrame(() => {
             setIsDesktopPosterFadedForPreview(false);
@@ -850,11 +887,13 @@ export const SpecialSingleFeed: React.FC<SpecialSingleFeedProps> = ({
       ? `Watch S1 E1`
       : 'Watch Now';
 
+  const isMobileLandscapeMode = Boolean(isMobileScreen && isLandscape);
+
   return (
     <section
       ref={containerRef}
       onWheel={handleWheel}
-      className={`relative w-full my-2 sm:my-3 select-none overflow-visible ${className}`}
+      className={`relative w-full ${isMobileLandscapeMode ? 'my-1' : 'my-2 sm:my-3'} select-none overflow-visible ${className}`}
     >
       {/* Mobile Ambient Glare */}
       {isMobileScreen && (
@@ -869,7 +908,13 @@ export const SpecialSingleFeed: React.FC<SpecialSingleFeedProps> = ({
       {/* Feed Section Title - omitted in Search Spotlight mode */}
       {!isSearchSpotlight && (
         <div className="px-3.5 sm:px-4 md:px-8 xl:px-12 mb-1 sm:mb-1.5 relative z-10">
-          <h2 className="text-white/95 font-semibold text-[15px] sm:text-base md:text-[17px] tracking-tight">
+          <h2
+            className={`text-white/95 tracking-tight ${
+              isMobileLandscapeMode
+                ? 'font-normal text-[13.5px]'
+                : 'font-semibold text-[15px] sm:text-base md:text-[17px]'
+            }`}
+          >
             Previews for you
           </h2>
         </div>
@@ -879,11 +924,34 @@ export const SpecialSingleFeed: React.FC<SpecialSingleFeedProps> = ({
       {/* DESKTOP LAYOUT: Original Prime Video Single-Show Horizontal Showcase       */}
       {/* ========================================================================= */}
       {!isMobileScreen && (() => {
-        const estimatedMediaW = Math.min(desktopShowcaseSize.w * 0.8, desktopShowcaseSize.h * desktopMediaAspect);
+        const activeDisplayAspect =
+          isVideoPlaying && !isDesktopScrollBlackFade ? desktopVideoAspect : desktopPosterAspect;
+        const estimatedMediaW = Math.min(desktopShowcaseSize.w * 0.8, desktopShowcaseSize.h * activeDisplayAspect);
         const leftBlackPx = Math.max(0, desktopShowcaseSize.w - estimatedMediaW);
         const leftBlackRatio = leftBlackPx / Math.max(1, desktopShowcaseSize.w);
         const ambientWidthPx = Math.max(115, Math.round(leftBlackPx * 0.84));
         const ambientOpacity = Math.min(0.22, Math.max(0.08, leftBlackRatio * 0.42));
+
+        const stageTransformStyle: React.CSSProperties = {
+          opacity:
+            desktopNavPhase === 'exiting' || desktopNavPhase === 'entering-prepare' ? 0 : 1,
+          transform:
+            desktopNavPhase === 'exiting'
+              ? slideDirection === 'next'
+                ? 'translate3d(-32px, 0, 0)'
+                : 'translate3d(32px, 0, 0)'
+              : desktopNavPhase === 'entering-prepare'
+              ? slideDirection === 'next'
+                ? 'translate3d(42px, 0, 0)'
+                : 'translate3d(-42px, 0, 0)'
+              : 'translate3d(0, 0, 0)',
+          transition:
+            desktopNavPhase === 'entering-prepare'
+              ? 'none'
+              : desktopNavPhase === 'exiting'
+              ? 'opacity 230ms ease-out, transform 230ms cubic-bezier(0.22, 1, 0.36, 1)'
+              : 'opacity 360ms ease-out, transform 360ms cubic-bezier(0.22, 1, 0.36, 1)'
+        };
 
         return (
           <div className={`relative w-full group/specialsingle ${isSearchSpotlight ? 'px-4 md:px-8 xl:px-12' : 'max-w-[1850px] mx-auto px-8 md:px-12 xl:px-16'}`}>
@@ -901,45 +969,24 @@ export const SpecialSingleFeed: React.FC<SpecialSingleFeedProps> = ({
                 }}
               />
 
-              {/* Right Side Backdrop + Video Preview Container */}
+              {/* Layer A: Independent Poster Container — ALWAYS locked to original poster position & natural poster aspect width (NEVER expands to video max width) */}
               <div
-                className="absolute top-0 bottom-0 right-0 h-full max-w-[80%] overflow-hidden bg-black pointer-events-none rounded-r-2xl"
+                className="absolute top-0 bottom-0 right-0 h-full max-w-[80%] overflow-hidden bg-black pointer-events-none rounded-r-2xl z-[2]"
                 style={{
-                  aspectRatio: String(desktopMediaAspect),
+                  aspectRatio: String(desktopPosterAspect),
                   width: 'auto'
                 }}
               >
-                {/* Unified Slide/Fade Transition Stage */}
                 <div
-                  key={`desktop-stage-${desktopShow.id}`}
-                  style={{
-                    opacity:
-                      desktopNavPhase === 'exiting' || desktopNavPhase === 'entering-prepare'
-                        ? 0
-                        : 1,
-                    transform:
-                      desktopNavPhase === 'exiting'
-                        ? slideDirection === 'next'
-                          ? 'translate3d(-32px, 0, 0)'
-                          : 'translate3d(32px, 0, 0)'
-                        : desktopNavPhase === 'entering-prepare'
-                        ? slideDirection === 'next'
-                          ? 'translate3d(42px, 0, 0)'
-                          : 'translate3d(-42px, 0, 0)'
-                        : 'translate3d(0, 0, 0)',
-                    transition:
-                      desktopNavPhase === 'entering-prepare'
-                        ? 'none'
-                        : desktopNavPhase === 'exiting'
-                        ? 'opacity 230ms ease-out, transform 230ms cubic-bezier(0.22, 1, 0.36, 1)'
-                        : 'opacity 360ms ease-out, transform 360ms cubic-bezier(0.22, 1, 0.36, 1)'
-                  }}
+                  key={`desktop-poster-stage-${desktopShow.id}`}
+                  style={stageTransformStyle}
                   className="absolute inset-0 w-full h-full bg-black will-change-transform"
                 >
-                  {/* Active Poster Image Wrapper: ONLY fades to black once video is buffered & ready */}
                   <div
-                    className={`absolute inset-0 w-full h-full z-[2] bg-black transition-opacity duration-[380ms] ease-out ${
-                      isVideoPlaying || isDesktopPosterFadedForPreview ? 'opacity-0' : 'opacity-100'
+                    className={`absolute inset-0 w-full h-full bg-black transition-opacity duration-[380ms] ease-out ${
+                      isVideoPlaying || isDesktopPosterFadedForPreview || isDesktopScrollBlackFade
+                        ? 'opacity-0'
+                        : 'opacity-100'
                     }`}
                   >
                     <MediaImage
@@ -952,9 +999,7 @@ export const SpecialSingleFeed: React.FC<SpecialSingleFeedProps> = ({
                         if (img.naturalWidth > 0 && img.naturalHeight > 0) {
                           const ratio = img.naturalWidth / img.naturalHeight;
                           desktopPosterAspectRef.current[desktopShow.id] = ratio;
-                          if (!isVideoPlaying && !isDesktopPosterFadedForPreview) {
-                            setDesktopMediaAspect(ratio);
-                          }
+                          setDesktopPosterAspect(ratio);
                         }
                       }}
                       fallbackClassName="w-full h-full bg-black flex items-center justify-center p-6 text-center select-none"
@@ -962,9 +1007,32 @@ export const SpecialSingleFeed: React.FC<SpecialSingleFeedProps> = ({
                       className="w-full h-full object-cover object-center"
                     />
                   </div>
+                </div>
 
-                  {/* Preview Video: skipped completely in Search Spotlight; buffers cleanly before fading poster */}
-                  {!isSearchSpotlight && desktopTrailer && shouldPlayVideo && isInViewport && isDesktop50Visible && !isPaused && (
+                {/* Smooth Left-to-Right Seamless Dissolve over Poster */}
+                <div
+                  className="absolute inset-y-0 left-0 w-36 lg:w-44 pointer-events-none z-10"
+                  style={{
+                    background:
+                      'linear-gradient(to right, #000000 0%, rgba(0,0,0,0.92) 24%, rgba(0,0,0,0.54) 54%, rgba(0,0,0,0.16) 80%, transparent 100%)'
+                  }}
+                />
+              </div>
+
+              {/* Layer B: Independent Video Preview Container — uses its own video aspect width without ever widening the poster layer */}
+              {!isSearchSpotlight && desktopTrailer && shouldPlayVideo && isInViewport && isDesktop50Visible && !isPaused && (
+                <div
+                  className="absolute top-0 bottom-0 right-0 h-full max-w-[80%] overflow-hidden bg-black pointer-events-none rounded-r-2xl z-[3]"
+                  style={{
+                    aspectRatio: String(desktopVideoAspect),
+                    width: 'auto'
+                  }}
+                >
+                  <div
+                    key={`desktop-video-stage-${desktopShow.id}`}
+                    style={stageTransformStyle}
+                    className="absolute inset-0 w-full h-full bg-black will-change-transform"
+                  >
                     <video
                       ref={(el) => {
                         videoRefs.current[currentIndex] = el;
@@ -977,7 +1045,9 @@ export const SpecialSingleFeed: React.FC<SpecialSingleFeedProps> = ({
                       onLoadedMetadata={(e) => {
                         const vid = e.currentTarget;
                         if (vid.videoWidth > 0 && vid.videoHeight > 0) {
-                          desktopVideoAspectRef.current[desktopShow.id] = vid.videoWidth / vid.videoHeight;
+                          const ratio = vid.videoWidth / vid.videoHeight;
+                          desktopVideoAspectRef.current[desktopShow.id] = ratio;
+                          setDesktopVideoAspect(ratio);
                         }
                       }}
                       onWaiting={() => setIsVideoLoading(true)}
@@ -1000,25 +1070,25 @@ export const SpecialSingleFeed: React.FC<SpecialSingleFeedProps> = ({
                         isVideoPlaying && !isDesktopScrollBlackFade ? 'opacity-100' : 'opacity-0'
                       }`}
                     />
-                  )}
+                  </div>
+
+                  {/* Full Black Fade Layer when container hits top navbar / bottom edge */}
+                  <div
+                    className={`absolute inset-0 bg-black pointer-events-none z-[4] transition-opacity duration-300 ${
+                      isDesktopScrollBlackFade ? 'opacity-100' : 'opacity-0'
+                    }`}
+                  />
+
+                  {/* Smooth Left-to-Right Seamless Dissolve over Video */}
+                  <div
+                    className="absolute inset-y-0 left-0 w-36 lg:w-44 pointer-events-none z-10"
+                    style={{
+                      background:
+                        'linear-gradient(to right, #000000 0%, rgba(0,0,0,0.92) 24%, rgba(0,0,0,0.54) 54%, rgba(0,0,0,0.16) 80%, transparent 100%)'
+                    }}
+                  />
                 </div>
-
-                {/* Full Black Fade Layer when >=50% scrolled out pauses desktop preview */}
-                <div
-                  className={`absolute inset-0 bg-black pointer-events-none z-[4] transition-opacity duration-300 ${
-                    isDesktopScrollBlackFade ? 'opacity-100' : 'opacity-0'
-                  }`}
-                />
-
-                {/* Smooth Left-to-Right Seamless Dissolve */}
-                <div
-                  className="absolute inset-y-0 left-0 w-36 lg:w-44 pointer-events-none z-10"
-                  style={{
-                    background:
-                      'linear-gradient(to right, #000000 0%, rgba(0,0,0,0.92) 24%, rgba(0,0,0,0.54) 54%, rgba(0,0,0,0.16) 80%, transparent 100%)'
-                  }}
-                />
-              </div>
+              )}
 
               {/* Left Column Content without zoom animation */}
               <div
@@ -1079,7 +1149,7 @@ export const SpecialSingleFeed: React.FC<SpecialSingleFeedProps> = ({
                   {onToggleWatchlist && (
                     <button
                       onClick={() => onToggleWatchlist(desktopShow.id)}
-                      className="w-9 h-9 lg:w-10 lg:h-10 rounded-full bg-zinc-800/80 hover:bg-zinc-700/90 text-white border border-white/15 flex items-center justify-center cursor-pointer transition-colors"
+                      className="w-9 h-9 lg:w-10 lg:h-10 rounded-full bg-zinc-800/35 hover:bg-zinc-700/50 text-white border border-white/15 flex items-center justify-center cursor-pointer transition-colors"
                       aria-label={desktopIsInWatchlist ? 'Remove from Watchlist' : 'Add to Watchlist'}
                       title={desktopIsInWatchlist ? 'In My List' : 'Add to My List'}
                     >
@@ -1089,7 +1159,7 @@ export const SpecialSingleFeed: React.FC<SpecialSingleFeedProps> = ({
 
                   <button
                     onClick={(e) => onOpenDetails(desktopShow, { element: e.currentTarget, sourceFeedType: 'other', posterUrl: desktopBackdrop })}
-                    className="w-9 h-9 lg:w-10 lg:h-10 rounded-full bg-zinc-800/80 hover:bg-zinc-700/90 text-white border border-white/15 flex items-center justify-center cursor-pointer transition-colors"
+                    className="w-9 h-9 lg:w-10 lg:h-10 rounded-full bg-zinc-800/35 hover:bg-zinc-700/50 text-white border border-white/15 flex items-center justify-center cursor-pointer transition-colors"
                     aria-label="More Info"
                     title="More Info"
                   >
@@ -1123,7 +1193,7 @@ export const SpecialSingleFeed: React.FC<SpecialSingleFeedProps> = ({
               <button
                 onClick={handlePrev}
                 aria-label="Previous show"
-                className="group/nav absolute left-0.5 md:left-2 xl:left-3 top-1/2 -translate-y-1/2 z-30 w-10 h-16 bg-transparent border-0 text-white/75 hover:text-white flex items-center justify-center cursor-pointer transition-all duration-200 select-none"
+                className="group/nav absolute left-0.5 md:left-2 xl:left-3 top-1/2 -translate-y-1/2 z-30 w-10 h-16 bg-transparent border-0 text-white/75 hover:text-white flex items-center justify-center cursor-pointer opacity-0 group-hover/specialsingle:opacity-100 focus-visible:opacity-100 transition-opacity duration-200 select-none"
               >
                 <ChevronLeft className="w-8 h-8 md:w-9 md:h-9 stroke-[2.2] drop-shadow-[0_2px_6px_rgba(0,0,0,0.8)] group-active/nav:scale-75 transition-transform duration-100" />
               </button>
@@ -1133,7 +1203,7 @@ export const SpecialSingleFeed: React.FC<SpecialSingleFeedProps> = ({
               <button
                 onClick={handleNext}
                 aria-label="Next show"
-                className="group/nav absolute right-0.5 md:right-2 xl:right-3 top-1/2 -translate-y-1/2 z-30 w-10 h-16 bg-transparent border-0 text-white/75 hover:text-white flex items-center justify-center cursor-pointer transition-all duration-200 select-none"
+                className="group/nav absolute right-0.5 md:right-2 xl:right-3 top-1/2 -translate-y-1/2 z-30 w-10 h-16 bg-transparent border-0 text-white/75 hover:text-white flex items-center justify-center cursor-pointer opacity-0 group-hover/specialsingle:opacity-100 focus-visible:opacity-100 transition-opacity duration-200 select-none"
               >
                 <ChevronRight className="w-8 h-8 md:w-9 md:h-9 stroke-[2.2] drop-shadow-[0_2px_6px_rgba(0,0,0,0.8)] group-active/nav:scale-75 transition-transform duration-100" />
               </button>

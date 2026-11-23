@@ -15,6 +15,7 @@ import {
   clearCardPreviewTime,
   getResumableCardPreviewTime
 } from '../utils/previewResumeTracker';
+import { useDeviceLayout } from '../utils/deviceLayout';
 
 interface ShowCardProps {
   show: Show;
@@ -217,6 +218,10 @@ export const ShowCard: React.FC<ShowCardProps> = ({
   episodeSublabel,
   showOverlayLogoOnCard = false
 }) => {
+  const { isMobile: isMobileDevice, isLandscape: isMobileLandscape, height: viewportHeight } = useDeviceLayout();
+  const effectiveBiggerCards = Boolean(biggerCards && isMobileDevice && !isMobileLandscape);
+  const isCompactLandscapeMobile = Boolean(isMobileDevice && isMobileLandscape);
+  const isShortLandscapeMobile = Boolean(isMobileDevice && isMobileLandscape && viewportHeight <= 560);
   const [isHovered, setIsHovered] = useState<boolean>(false);
   const [shouldLoadVideo, setShouldLoadVideo] = useState<boolean>(false);
   const [isVideoPlaying, setIsVideoPlaying] = useState<boolean>(false);
@@ -870,7 +875,9 @@ export const ShowCard: React.FC<ShowCardProps> = ({
       setIsRightEdgeCard(false);
       setRightEdgeExpansionShift(0);
       setExpandedWidth(null);
-      onHoverPreviewEnd?.();
+      if (!isSwitchingToAnother) {
+        onHoverPreviewEnd?.();
+      }
     },
     [cancelStretchHover, cardInstanceId, onHoverPreviewEnd, saveCurrentPreviewTime]
   );
@@ -911,6 +918,17 @@ export const ShowCard: React.FC<ShowCardProps> = ({
     const deltaW = Math.max(0, expW - normalW);
     setExpandedWidth(expW);
 
+    // Pause any other stretch preview video element immediately so 2 previews can NEVER play at once
+    if (typeof document !== 'undefined') {
+      document.querySelectorAll<HTMLVideoElement>('video[data-stretch-preview="true"]').forEach((vid) => {
+        if (vid !== stretchVideoRef.current && !vid.paused) {
+          try {
+            vid.pause();
+          } catch {}
+        }
+      });
+    }
+
     // Smoothly collapse any previously stretched card in sync (immediately turns into original space & poster)
     globalStretchCollapseMap.forEach((collapseFn, id) => {
       if (id !== cardInstanceId) {
@@ -920,6 +938,7 @@ export const ShowCard: React.FC<ShowCardProps> = ({
 
     globalActiveStretchedCardId = cardInstanceId;
     globalActiveStretchedIndex = myIndex;
+    onHoverPreviewStart?.();
     isHoveredRef.current = true;
     isCollapsingStretchRef.current = false;
     setIsHovered(true);
@@ -928,9 +947,11 @@ export const ShowCard: React.FC<ShowCardProps> = ({
     setIsVideoPlaying(false);
     setIsStretchPointerActive(true);
 
-    // Show backdrop directly for 1.5 seconds, then show preview
+    // Show backdrop directly for 1.5 seconds, then show preview ONLY if this card is still the single active stretched card
     if (stretchVideoTimerRef.current) window.clearTimeout(stretchVideoTimerRef.current);
     stretchVideoTimerRef.current = window.setTimeout(() => {
+      stretchVideoTimerRef.current = null;
+      if (globalActiveStretchedCardId !== cardInstanceId || !isHoveredRef.current) return;
       setShouldLoadVideo(true);
     }, 1500);
 
@@ -1006,7 +1027,7 @@ export const ShowCard: React.FC<ShowCardProps> = ({
     }
 
     globalActiveStretchedIndex = myIndex;
-  }, [cardInstanceId]);
+  }, [cardInstanceId, onHoverPreviewStart]);
 
   const closePopout = (immediate = false) => {
     if (isStretchable) return;
@@ -1545,8 +1566,13 @@ export const ShowCard: React.FC<ShowCardProps> = ({
     cancelStretchHover();
     onIncrementPoints(show.id);
     const meta = buildOriginMeta();
-    // When the user clicks on the feed card before the popout is shown, open the more info page immediately!
     closePopout(true);
+    // Keep Watching cards directly resume playback from where the user left off in both Desktop & Mobile layouts
+    if (isContinueWatching) {
+      onPlay(show);
+      return;
+    }
+    // When the user clicks on the feed card before the popout is shown, open the more info page immediately!
     onOpenDetails(show, meta);
   };
 
@@ -1609,7 +1635,11 @@ export const ShowCard: React.FC<ShowCardProps> = ({
           e.preventDefault();
           sessionStorage.setItem('dizi_focus_play_on_next_tab', 'true');
           onIncrementPoints(show.id);
-          onOpenDetails(show, buildOriginMeta());
+          if (isContinueWatching) {
+            onPlay(show);
+          } else {
+            onOpenDetails(show, buildOriginMeta());
+          }
         } else if (e.key === ' ') {
           e.preventDefault();
           if (!disablePopout) openPopout();
@@ -1707,7 +1737,7 @@ export const ShowCard: React.FC<ShowCardProps> = ({
 
               {/* Layer 2: 16:9 Backdrop media container directly showing backdrop on stretch */}
               <div
-                className={`absolute inset-0 overflow-hidden ${
+                className={`absolute inset-0 overflow-hidden bg-black isolate [transform:translateZ(0)] ${
                   isHovered ? 'opacity-100' : 'opacity-0 pointer-events-none'
                 }`}
                 style={{
@@ -1719,15 +1749,16 @@ export const ShowCard: React.FC<ShowCardProps> = ({
                   fallbackTitle={show.title}
                   hideFallback={isVideoPlaying}
                   deferLoad={!isHovered && deferImageLoad}
-                  className={`w-full h-full object-cover ${
-                    isVideoPlaying ? 'opacity-0' : 'opacity-100'
+                  className={`w-full h-full object-cover scale-[1.01] transition-opacity duration-200 ${
+                    isVideoPlaying ? 'opacity-0 invisible' : 'opacity-100 visible'
                   }`}
                 />
 
-                {/* Video preview for stretchable feed (fills 100% of container edge-to-edge) */}
-                {isStretchable && shouldLoadVideo && popoutVideoSrc && (
+                {/* Video preview for stretchable feed: strictly single active preview + overscanned to cover 100% of all edges with zero image bleed */}
+                {isStretchable && isHovered && shouldLoadVideo && popoutVideoSrc && (
                   <video
                     ref={stretchVideoRef}
+                    data-stretch-preview="true"
                     src={popoutVideoSrc}
                     autoPlay
                     playsInline
@@ -1739,8 +1770,14 @@ export const ShowCard: React.FC<ShowCardProps> = ({
                       applyResumeSeekIfAvailable(stretchVideoRef.current);
                     }}
                     onCanPlay={() => {
+                      if (globalActiveStretchedCardId !== cardInstanceId || !isHoveredRef.current) return;
                       const v = stretchVideoRef.current;
                       if (v) {
+                        document.querySelectorAll<HTMLVideoElement>('video[data-stretch-preview="true"]').forEach((other) => {
+                          if (other !== v && !other.paused) {
+                            try { other.pause(); } catch {}
+                          }
+                        });
                         applyResumeSeekIfAvailable(v);
                         v.muted = isMuted;
                         const p = v.play();
@@ -1754,6 +1791,7 @@ export const ShowCard: React.FC<ShowCardProps> = ({
                       setIsVideoPlaying(true);
                     }}
                     onLoadedData={() => {
+                      if (globalActiveStretchedCardId !== cardInstanceId || !isHoveredRef.current) return;
                       const v = stretchVideoRef.current;
                       if (v) {
                         applyResumeSeekIfAvailable(v);
@@ -1769,6 +1807,10 @@ export const ShowCard: React.FC<ShowCardProps> = ({
                       setIsVideoPlaying(true);
                     }}
                     onPlaying={() => {
+                      if (globalActiveStretchedCardId !== cardInstanceId || !isHoveredRef.current) {
+                        try { stretchVideoRef.current?.pause(); } catch {}
+                        return;
+                      }
                       notifyPreviewStarted(previewCardKey);
                       setIsVideoPlaying(true);
                     }}
@@ -1784,7 +1826,7 @@ export const ShowCard: React.FC<ShowCardProps> = ({
                       setShouldLoadVideo(false);
                     }}
                     onError={() => setIsVideoPlaying(false)}
-                    className={`absolute inset-0 w-full h-full max-w-none max-h-none object-cover object-center z-10 transition-opacity duration-300 ${
+                    className={`absolute -inset-[2px] w-[calc(100%+4px)] h-[calc(100%+4px)] max-w-none max-h-none object-cover object-center scale-[1.02] z-10 transition-opacity duration-300 ${
                       isVideoPlaying ? 'opacity-100' : 'opacity-0 pointer-events-none'
                     }`}
                   />
@@ -1801,17 +1843,19 @@ export const ShowCard: React.FC<ShowCardProps> = ({
 
                 {/* Bottom-left Content */}
                 <div className="absolute left-3.5 bottom-3.5 right-14 z-20 flex flex-col items-start select-none">
-                  {/* Fixed Netflix 2.5:1 Title Logo overlay (40% of 16:9 expanded card width minus 10px) */}
+                  {/* Fixed Netflix 2.5:1 Title Logo overlay (reduced 10%) */}
                   <div
                     style={{
-                      width: expandedWidth ? `${Math.max(80, Math.round(expandedWidth * 0.4) - 10)}px` : 'calc(40% - 10px)'
+                      width: expandedWidth
+                        ? `${Math.max(72, Math.round((expandedWidth * 0.4 - 10) * 0.9))}px`
+                        : 'calc(36% - 9px)'
                     }}
                     className="relative aspect-[2.5/1] overflow-hidden shrink-0 mb-2 pointer-events-none transition-opacity duration-300"
                   >
                     <ShowTitleLogo show={show} fillContainer={true} align="left" className="drop-shadow-md" />
                   </div>
 
-                  {/* Action Buttons: Play / Resume with progress underline, Add to List, Info (matching image_f72bd3ca.png) */}
+                  {/* Action Buttons: Play / Resume + Add to List (low opacity background, Info button omitted in stretchable feed) */}
                   <div className="flex items-center gap-2">
                     <button
                       onClick={handlePlayClick}
@@ -1833,17 +1877,10 @@ export const ShowCard: React.FC<ShowCardProps> = ({
                     </button>
                     <button
                       onClick={handleWatchlistClick}
-                      className="w-7 h-7 sm:w-8 sm:h-8 rounded-full bg-black/60 hover:bg-black/80 text-white border border-white/30 flex items-center justify-center shadow-md cursor-pointer"
+                      className="w-7 h-7 sm:w-8 sm:h-8 rounded-full bg-black/30 hover:bg-black/45 text-white border border-white/20 flex items-center justify-center shadow-md cursor-pointer transition-colors"
                       aria-label="Watchlist"
                     >
                       {isInWatchlist ? <Check className="w-3.5 h-3.5 stroke-[2.5]" /> : <Plus className="w-3.5 h-3.5" />}
-                    </button>
-                    <button
-                      onClick={handleInfoClick}
-                      className="w-7 h-7 sm:w-8 sm:h-8 rounded-full bg-black/60 hover:bg-black/80 text-white border border-white/30 flex items-center justify-center shadow-md cursor-pointer"
-                      aria-label="Details"
-                    >
-                      <Info className="w-3.5 h-3.5" />
                     </button>
                   </div>
 
@@ -1889,10 +1926,17 @@ export const ShowCard: React.FC<ShowCardProps> = ({
               )}
             </div>
           ) : aspectRatio === '9:16' ? (
-            /* Feed Card in 1:2 aspect ratio (on mobile & tablet for stretchable feed) */
-            <div data-card-thumb="true" className="relative z-10 w-[calc((100vw-32px)/2.14)] sm:w-[185px] md:w-[218px] aspect-[1/2] rounded-[6px] overflow-hidden bg-[#181818] border-0 shadow-none transition-all duration-300">
+            /* Feed Card in 1:2 aspect ratio (turns into 16:9 on short mobile landscape screens) */
+            <div
+              data-card-thumb="true"
+              className={`relative z-10 ${
+                isShortLandscapeMobile
+                  ? 'w-[210px] aspect-video'
+                  : 'w-[calc((100vw-32px)/2.14)] sm:w-[185px] md:w-[218px] aspect-[1/2]'
+              } rounded-[6px] overflow-hidden bg-[#181818] border-0 shadow-none transition-all duration-300`}
+            >
               <MediaImage
-                src={verticalPosterSrc}
+                src={isShortLandscapeMobile ? (posterLandscapeUrl || verticalPosterSrc) : verticalPosterSrc}
                 fallbackTitle={show.title}
                 deferLoad={deferImageLoad}
                 skeletonDelayMs={skeletonDelayMs}
@@ -1909,10 +1953,16 @@ export const ShowCard: React.FC<ShowCardProps> = ({
               )}
             </div>
           ) : aspectRatio === '2:3' ? (
-            /* 2. Feed Card in 2:3 aspect ratio - shows 3 full cards + edge of 4th card in mobile layout */
+            /* 2. Feed Card in 2:3 aspect ratio:
+               - Mobile Portrait + Bigger Cards: 2 full cards + edge of 3rd
+               - Mobile Landscape: ALWAYS compact/smaller regardless of Bigger Cards
+               - Default Mobile Portrait: 3 full cards + edge of 4th
+            */
             <div data-card-thumb="true" className={`relative z-10 ${
-              biggerCards
-                ? 'w-[calc((100vw-24px)/2.25)] sm:w-[185px] md:w-[220px]'
+              isCompactLandscapeMobile
+                ? 'w-[126px]'
+                : effectiveBiggerCards
+                ? 'w-[calc((100vw-24px)/2.18)]'
                 : 'w-[calc((100vw-24px)/3.22)] sm:w-[155px] md:w-[185px]'
             } aspect-[2/3] rounded-[6px] overflow-hidden bg-[#181818] border-0 ${
               rankNumber !== undefined ? 'shadow-[-14px_0_26px_rgba(0,0,0,0.9)]' : 'shadow-none'
@@ -1937,7 +1987,7 @@ export const ShowCard: React.FC<ShowCardProps> = ({
             </div>
           ) : isWatchlistLandscape ? (
             /* My List in Mobile layout (fallback landscape if explicitly requested) */
-            <div className="relative w-[calc((100vw-24px)/2.18)] sm:w-[260px] md:w-[290px] flex flex-col shrink-0">
+            <div className={`relative ${isCompactLandscapeMobile ? 'w-[210px]' : 'w-[calc((100vw-24px)/2.18)] sm:w-[260px] md:w-[290px]'} flex flex-col shrink-0`}>
               <div data-card-thumb="true" className="relative w-full aspect-video rounded-[7px] sm:rounded-[6px] md:rounded-[10px] overflow-hidden bg-[#111] sm:bg-[#181818] border-0 shadow-none transition-all duration-300">
                 <MediaImage
                   src={posterLandscapeUrl}
@@ -1951,13 +2001,13 @@ export const ShowCard: React.FC<ShowCardProps> = ({
             </div>
           ) : isContinueWatching ? (
             /* 3. Keep Watching:
-               - On Mobile: 2 full cards + edge of 3rd, progress bar inside card at bottom, subtle rounded-[7px] corners,
-                 and below card: S1 E1  24 min left + 3 vertical dots menu button
-               - On Desktop & Tablet: Progress bar below card
+               - On Mobile Portrait: 2 full cards + edge of 3rd
+               - On Mobile Landscape: compact smaller cards
+               - On Desktop & Tablet: standard 16:9 width
             */
             <div className={`relative ${
-              biggerCards
-                ? 'w-[calc((100vw-20px)/2.12)] sm:w-[295px] md:w-[340px] lg:w-[calc((100vw-112px)/3.35)] max-w-[420px]'
+              isCompactLandscapeMobile
+                ? 'w-[210px]'
                 : 'w-[calc((100vw-20px)/2.12)] sm:w-[265px] md:w-[290px] lg:w-[calc((100vw-112px)/4.05)] max-w-[340px]'
             } flex flex-col shrink-0`}>
               <div data-card-thumb="true" className="relative w-full aspect-video rounded-[7px] sm:rounded-[6px] md:rounded-[10px] overflow-hidden bg-[#111] sm:bg-[#181818] border-0 shadow-none transition-all duration-300">
@@ -2016,12 +2066,10 @@ export const ShowCard: React.FC<ShowCardProps> = ({
             <div className={`relative z-10 flex flex-col ${
               cardSize === 'full' || cardSize === 'special'
                 ? 'w-full'
+                : isCompactLandscapeMobile
+                ? 'w-[210px]'
                 : cardSize === 'small'
-                ? biggerCards
-                  ? 'w-[calc((100vw-20px)/2.12)] sm:w-[285px] md:w-[320px] lg:w-[calc((100vw-112px)/3.35)] max-w-[420px]'
-                  : 'w-[calc((100vw-20px)/2.12)] sm:w-[245px] md:w-[270px] lg:w-[calc((100vw-112px)/4.05)] max-w-[340px]'
-                : biggerCards
-                ? 'w-[calc((100vw-20px)/2.12)] sm:w-[295px] md:w-[340px] lg:w-[calc((100vw-112px)/3.35)] max-w-[420px]'
+                ? 'w-[calc((100vw-20px)/2.12)] sm:w-[245px] md:w-[270px] lg:w-[calc((100vw-112px)/4.05)] max-w-[340px]'
                 : 'w-[calc((100vw-20px)/2.12)] sm:w-[265px] md:w-[290px] lg:w-[calc((100vw-112px)/4.05)] max-w-[340px]'
             }`}>
               <div data-card-thumb="true" className="relative w-full aspect-video rounded-[6px] md:rounded-[10px] overflow-hidden bg-[#181818] border-0 shadow-none group-focus-visible/item:ring-2 group-focus-visible/item:ring-red-600 group-focus-visible/item:ring-offset-2 group-focus-visible/item:ring-offset-[#141414] transition-all duration-300">

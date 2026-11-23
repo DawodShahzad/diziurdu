@@ -1,5 +1,5 @@
 {
-  "exported_at": "2026-11-08T18:12:10.828Z",
+  "exported_at": "2026-11-23T19:32:37.438Z",
   "app": "Dizi Urdu",
   "version": "2.0",
   "shows": [
@@ -499,8 +499,8 @@
         "HDR10",
         "Dolby Atmos"
       ],
-      "points": 1218,
-      "all_time_score": 1218,
+      "points": 1220,
+      "all_time_score": 1220,
       "play_events": [
         {
           "timestamp": 1792667322711
@@ -555,6 +555,12 @@
         },
         {
           "timestamp": 1793705684320
+        },
+        {
+          "timestamp": 1795461369569
+        },
+        {
+          "timestamp": 1795461369573
         }
       ],
       "whereToWatchEnabled": false,
@@ -6550,7 +6556,7 @@
         "HDR10",
         "5.1 Audio"
       ],
-      "points": 4631,
+      "points": 4633,
       "cast": [
         {
           "id": "cast-120879",
@@ -6876,7 +6882,7 @@
           "Hollywood stunt coordinator Dusan Hyska directed the sword and boarding choreographies."
         ]
       },
-      "all_time_score": 4631,
+      "all_time_score": 4633,
       "play_events": [
         {
           "timestamp": 1791649029070
@@ -7066,6 +7072,12 @@
         },
         {
           "timestamp": 1793019374246
+        },
+        {
+          "timestamp": 1795462257248
+        },
+        {
+          "timestamp": 1795462257249
         }
       ],
       "titleLogoUrl": "https://ik.imagekit.io/dizi/61d56190-af4c-4b72-9b2e-c82cd0eb71dd%20(1).png",
@@ -7319,11 +7331,176 @@
       }
     ],
     "useCustomLogo": true,
-    "customLogoUrl": "https://res.cloudinary.com/hxk2tqpu/image/upload/v1792642595/new-Photoroom.png",
+    "customLogoUrl": "https://res.cloudinary.com/hxk2tqpu/image/upload/v1793092247/Untitled_-_November_15_2025_at_12.sdf25.58-6.png",
     "showTop10Badges": false,
-    "mobileNavbarStyle": "bottom_fixed",
+    "mobileNavbarStyle": "floating",
     "mobileNavbarShowLabels": false,
-    "mobileRecommendationStyle": "portrait"
+    "mobileRecommendationStyle": "portrait",
+    "pwaStatusBarConfig": {
+      "home": "transparent",
+      "player": "hidden",
+      "top10": "black",
+      "profile": "black",
+      "detail": "black",
+      "categories": "black"
+    },
+    "platformIconUrl": "https://res.cloudinary.com/hxk2tqpu/image/upload/v1795019888/Untitled_-_November_15_2025_at_12.sdsefdaf25.58-6.png",
+    "mobileTransparentBlurNavbar": true,
+    "mobileNavbarTheme": "glass",
+    "mobileCategoriesStyle": "stacked_cards",
+    "top10RankStyle": "classic",
+    "modernTop10RankList": false,
+    "useFullSizeMoreInfoByDefault": true,
+    "useNoPreviewButtonsFor2x3Recommendation": true,
+    "desktopPopoutStyle": "immersive_fade",
+    "desktopNavbarStyle": "floating_glass",
+    "signupTileEnabled": true,
+    "signupTileLayouts": [
+      "desktop",
+      "tablet",
+      "mobile"
+    ],
+    "signupTileContainerMode": "contained",
+    "signupTileImageUrl": "https://assets.nflxext.com/ffe/siteui/akira/games/education/games-tab-education-07-16-25-ltr.webp",
+    "signupTileUseCustomLogo": true,
+    "signupTileCustomLogoUrl": "https://res.cloudinary.com/hxk2tqpu/image/upload/v1795019888/Untitled_-_November_15_2025_at_12.sdsefdaf25.58-6.png",
+    "signupTileButtonText": "Sign Up Now",
+    "signupTileSubtitle": "To watch more show like this ",
+    "alertPosterIsAd": true,
+    "alertPosterEnabled": false,
+    "alertPosterButtonAction": "close",
+    "alertPosterLayouts": [
+      "desktop",
+      "tablet",
+      "mobile"
+    ],
+    "alertPosterVideoUrl": "https://test-videos.co.uk/vids/bigbuckbunny/mp4/h264/1080/Big_Buck_Bunny_1080_10s_30MB.mp4",
+    "hideMobileDetailActionLabels": true,
+    "mobileAutoFullscreenLandscapeEmbed": true,
+    "hideFullSizeEpisodeTitles": true,
+    "loginDesktopBgMode": "video",
+    "loginBackgroundImageUrl": "https://assets.nflxext.com/ffe/siteui/akira/games/education/games-tab-education-07-16-25-ltr.webp",
+    "loginDesktopVideoUrl": "https://test-videos.co.uk/vids/bigbuckbunny/mp4/h264/1080/Big_Buck_Bunny_1080_10s_30MB.mp4",
+    "loginDesktopVideoPlayMode": "once_with_image_fade",
+    "loginMobileBgMode": "video",
+    "loginMobileVideoUrl": "https://test-videos.co.uk/vids/bigbuckbunny/mp4/h264/1080/Big_Buck_Bunny_1080_10s_30MB.mp4",
+    "loginMobileMediaUrl": "https://assets.nflxext.com/ffe/siteui/akira/games/education/games-tab-education-07-16-25-ltr.webp",
+    "loginMobileVideoPlayMode": "once_with_image_fade",
+    "hideNavbarOnFullSizeMoreInfo": true,
+    "managedGenres": [
+      {
+        "id": "action",
+        "name": "Action",
+        "displayName": "ACTION",
+        "imageUrl": "https://images.unsplash.com/photo-1518837695005-2083093ee35b?auto=format&fit=crop&w=600&q=80",
+        "keywords": [
+          "action",
+          "combat",
+          "warrior",
+          "battle",
+          "adventure"
+        ],
+        "enabled": true
+      },
+      {
+        "id": "comedy",
+        "name": "Comedy",
+        "displayName": "COMEDY",
+        "imageUrl": "https://images.unsplash.com/photo-1517457373958-b7bdd4587205?auto=format&fit=crop&w=600&q=80",
+        "keywords": [
+          "comedy",
+          "humor",
+          "sitcom",
+          "funny",
+          "romantic comedy"
+        ],
+        "enabled": true
+      },
+      {
+        "id": "crime",
+        "name": "Crime",
+        "displayName": "CRIME",
+        "imageUrl": "https://images.unsplash.com/photo-1509198397868-475647b2a1e5?auto=format&fit=crop&w=600&q=80",
+        "keywords": [
+          "crime",
+          "mafia",
+          "detective",
+          "underworld",
+          "police"
+        ],
+        "enabled": true
+      },
+      {
+        "id": "documentaries",
+        "name": "Documentaries",
+        "displayName": "DOCUMENTARIES",
+        "imageUrl": "https://images.unsplash.com/photo-1461360370896-922624d12aa1?auto=format&fit=crop&w=600&q=80",
+        "keywords": [
+          "documentary",
+          "history",
+          "biography",
+          "docuseries",
+          "true story"
+        ],
+        "enabled": true
+      },
+      {
+        "id": "drama",
+        "name": "Drama",
+        "displayName": "DRAMA",
+        "imageUrl": "https://images.unsplash.com/photo-1519501025264-65ba15a82390?auto=format&fit=crop&w=600&q=80",
+        "keywords": [
+          "drama",
+          "emotional",
+          "family saga",
+          "tragedy",
+          "relationships"
+        ],
+        "enabled": true
+      },
+      {
+        "id": "romance",
+        "name": "Romance",
+        "displayName": "ROMANCE",
+        "imageUrl": "https://images.unsplash.com/photo-1518199266791-5375a83190b7?auto=format&fit=crop&w=600&q=80",
+        "keywords": [
+          "romance",
+          "love",
+          "romantic",
+          "passion",
+          "romantic dramas"
+        ],
+        "enabled": true
+      },
+      {
+        "id": "historical",
+        "name": "Historical Epics",
+        "displayName": "HISTORICAL",
+        "imageUrl": "https://images.unsplash.com/photo-1461360370896-922624d12aa1?auto=format&fit=crop&w=600&q=80",
+        "keywords": [
+          "historical",
+          "ottoman",
+          "empire",
+          "ancient",
+          "historical epics"
+        ],
+        "enabled": true
+      },
+      {
+        "id": "thriller",
+        "name": "Thriller",
+        "displayName": "THRILLER",
+        "imageUrl": "https://images.unsplash.com/photo-1478760329108-5c3ed9d495a0?auto=format&fit=crop&w=600&q=80",
+        "keywords": [
+          "thriller",
+          "suspense",
+          "mystery",
+          "psychological",
+          "investigation"
+        ],
+        "enabled": true
+      }
+    ]
   },
   "categoriesList": [
     {

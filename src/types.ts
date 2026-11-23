@@ -379,8 +379,10 @@ export interface AdminSettings {
 
   platformIconUrl?: string; // Custom platform icon/logo displayed in header and drawer
   mobileNavbarStyle?: 'floating' | 'bottom_fixed'; // Floating pill island vs full-width fixed bottom dock
-  mobileNavbarTheme?: 'solid' | 'glass'; // Solid dark vs Liquid Glass translucent frosted UI
+  mobileNavbarTheme?: 'solid' | 'glass'; // Solid dark vs Frosted Transparent Blur UI
+  mobileTransparentBlurNavbar?: boolean; // Turn on transparent dark frosted blur for both top and bottom mobile navbars
   mobileNavbarShowLabels?: boolean; // Show or hide text labels under mobile navbar buttons
+  showMobileNotifications?: boolean; // Toggle notification button visibility in mobile portrait top navbar and landscape left sidebar
   mobileRecommendationStyle?: 'portrait' | 'landscape' | 'poster_no_preview'; // 2:3 portrait card vs 16:9 widescreen vs poster hero with top bar & drawer
   useNoPreviewButtonsFor2x3Recommendation?: boolean; // Use the no-preview poster hero button style (Watch + circular +) for 2:3 recommendation
   useFullSizeMoreInfoByDefault?: boolean; // Open Full Size More Info Page by default on desktop when browsing normally (in addition to /share links)
@@ -516,7 +518,22 @@ export interface AdminSettings {
   mobileAutoFullscreenLandscapeEmbed?: boolean;
   hideFullSizeEpisodeTitles?: boolean;
   hideNavbarOnFullSizeMoreInfo?: boolean;
+
+  // PWA Per-Page Status Bar Control ('transparent' | 'black' | 'hidden')
+  pwaStatusBarConfig?: PwaStatusBarConfig;
 }
+
+export type PwaStatusBarMode = 'transparent' | 'black' | 'hidden';
+export type PwaStatusBarPageKey =
+  | 'home'
+  | 'detail'
+  | 'player'
+  | 'categories'
+  | 'top10'
+  | 'search'
+  | 'profile'
+  | 'login';
+export type PwaStatusBarConfig = Partial<Record<PwaStatusBarPageKey, PwaStatusBarMode>>;
 
 export interface WatchHistoryItem {
   showId: string;

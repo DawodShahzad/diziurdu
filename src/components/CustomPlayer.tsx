@@ -8,9 +8,11 @@ import {
   RotateCcw,
   RotateCw,
   Check,
-  ChevronLeft
+  ChevronLeft,
+  PictureInPicture2
 } from 'lucide-react';
 import { attachHlsVideo, setHlsQuality } from '../utils/hlsHelper';
+import { triggerHaptic } from '../utils/haptics';
 
 export interface CustomPlayerProps {
   videoUrl: string;
@@ -57,7 +59,12 @@ export const CustomPlayer: React.FC<CustomPlayerProps> = ({
   const [volume, setVolume] = useState<number>(0.85);
   const [isMuted, setIsMuted] = useState<boolean>(false);
   const [isFullscreen, setIsFullscreen] = useState<boolean>(false);
+  const [isPiPSupported, setIsPiPSupported] = useState<boolean>(false);
+  const [isInPiP, setIsInPiP] = useState<boolean>(false);
   const [showControls, setShowControls] = useState<boolean>(true);
+  const lastVideoTapRef = useRef<{ time: number; side: 'left' | 'right' | 'center' }>({ time: 0, side: 'center' });
+  const singleTapTimerRef = useRef<number | null>(null);
+  const wakeLockRef = useRef<any>(null);
   const [isBuffering, setIsBuffering] = useState<boolean>(false);
   const [bufferedProgress, setBufferedProgress] = useState<number>(0);
 
@@ -102,6 +109,14 @@ export const CustomPlayer: React.FC<CustomPlayerProps> = ({
       document.exitFullscreen?.().catch(() => {});
       setIsFullscreen(false);
     }
+    try {
+      (screen.orientation as any)?.unlock?.();
+    } catch {}
+    try {
+      if (document.pictureInPictureElement) {
+        document.exitPictureInPicture?.().catch(() => {});
+      }
+    } catch {}
     try {
       if (videoRef.current && !videoRef.current.paused) {
         videoRef.current.pause();
@@ -397,6 +412,7 @@ export const CustomPlayer: React.FC<CustomPlayerProps> = ({
     const target = Math.max(0, Math.min(duration, videoRef.current.currentTime + seconds));
     videoRef.current.currentTime = target;
     setCurrentTime(target);
+    triggerHaptic(10);
     if (seconds < 0) {
       showCenterIcon('rewind');
     } else {
@@ -418,15 +434,233 @@ export const CustomPlayer: React.FC<CustomPlayerProps> = ({
     }
   }, [isMuted, volume, showCenterIcon, showTopPill]);
 
-  const toggleFullscreen = useCallback(() => {
+  const toggleFullscreen = useCallback(async () => {
     if (!containerRef.current) return;
     if (!document.fullscreenElement) {
-      containerRef.current.requestFullscreen?.().catch(() => {});
-      setIsFullscreen(true);
+      try {
+        await containerRef.current.requestFullscreen?.();
+        setIsFullscreen(true);
+        try {
+          await (screen.orientation as any)?.lock?.('landscape');
+        } catch {}
+      } catch {}
     } else {
-      document.exitFullscreen?.().catch(() => {});
+      try {
+        await document.exitFullscreen?.();
+      } catch {}
       setIsFullscreen(false);
+      try {
+        (screen.orientation as any)?.unlock?.();
+      } catch {}
     }
+  }, []);
+
+  // Sync fullscreen state & auto-landscape orientation lock/unlock when user exits fullscreen via OS gesture or ESC
+  useEffect(() => {
+    const handleFullscreenChange = () => {
+      const active = Boolean(document.fullscreenElement);
+      setIsFullscreen(active);
+      if (active) {
+        try {
+          (screen.orientation as any)?.lock?.('landscape')?.catch?.(() => {});
+        } catch {}
+      } else {
+        try {
+          (screen.orientation as any)?.unlock?.();
+        } catch {}
+      }
+    };
+
+    document.addEventListener('fullscreenchange', handleFullscreenChange);
+    return () => {
+      document.removeEventListener('fullscreenchange', handleFullscreenChange);
+      try {
+        (screen.orientation as any)?.unlock?.();
+      } catch {}
+    };
+  }, []);
+
+  // Screen Wake Lock API: keep screen awake while video is playing; release on pause/unmount; re-acquire on tab return
+  useEffect(() => {
+    const releaseWakeLock = async () => {
+      if (wakeLockRef.current) {
+        try {
+          await wakeLockRef.current.release();
+        } catch {}
+        wakeLockRef.current = null;
+      }
+    };
+
+    const requestWakeLock = async () => {
+      try {
+        if (typeof navigator !== 'undefined' && 'wakeLock' in navigator && document.visibilityState === 'visible') {
+          if (!wakeLockRef.current) {
+            wakeLockRef.current = await (navigator as any).wakeLock.request('screen');
+            wakeLockRef.current?.addEventListener?.('release', () => {
+              wakeLockRef.current = null;
+            });
+          }
+        }
+      } catch {}
+    };
+
+    if (isPlaying) {
+      requestWakeLock();
+    } else {
+      releaseWakeLock();
+    }
+
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'visible' && isPlaying) {
+        requestWakeLock();
+      } else if (document.visibilityState !== 'visible') {
+        releaseWakeLock();
+      }
+    };
+
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+    return () => {
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+      releaseWakeLock();
+    };
+  }, [isPlaying]);
+
+  // Picture-in-Picture (PiP) detection, events, and toggle
+  useEffect(() => {
+    const video = videoRef.current;
+    const supported =
+      typeof document !== 'undefined' &&
+      Boolean((document as any).pictureInPictureEnabled) &&
+      Boolean(video && typeof (video as any).requestPictureInPicture === 'function');
+    setIsPiPSupported(supported);
+
+    if (!video) return;
+    const onEnterPiP = () => setIsInPiP(true);
+    const onLeavePiP = () => setIsInPiP(false);
+    video.addEventListener('enterpictureinpicture', onEnterPiP);
+    video.addEventListener('leavepictureinpicture', onLeavePiP);
+    return () => {
+      video.removeEventListener('enterpictureinpicture', onEnterPiP);
+      video.removeEventListener('leavepictureinpicture', onLeavePiP);
+    };
+  }, [videoUrl]);
+
+  const togglePictureInPicture = useCallback(async () => {
+    const video = videoRef.current;
+    if (!video || !isPiPSupported) return;
+    triggerHaptic(10);
+    try {
+      if (document.pictureInPictureElement) {
+        await document.exitPictureInPicture();
+      } else {
+        await (video as any).requestPictureInPicture();
+      }
+    } catch {}
+  }, [isPiPSupported]);
+
+  // MediaSession API: lock-screen & notification artwork, metadata, and transport handlers
+  useEffect(() => {
+    if (typeof navigator === 'undefined' || !('mediaSession' in navigator)) return;
+    const ms = navigator.mediaSession;
+    const artworkSrc = previewThumbnailUrl || '/pwa-512x512.png';
+
+    try {
+      ms.metadata = new MediaMetadata({
+        title: title || 'Dizi Urdu',
+        artist: episodeSubtitle || subtitle || 'Dizi Urdu',
+        album: 'Dizi Urdu',
+        artwork: [
+          { src: artworkSrc, sizes: '512x512', type: 'image/png' },
+          { src: '/pwa-192x192.png', sizes: '192x192', type: 'image/png' }
+        ]
+      });
+    } catch {}
+
+    const safeAction = (action: MediaSessionAction, handler: MediaSessionActionHandler | null) => {
+      try {
+        ms.setActionHandler(action, handler);
+      } catch {}
+    };
+
+    safeAction('play', () => {
+      videoRef.current?.play().catch(() => {});
+    });
+    safeAction('pause', () => {
+      videoRef.current?.pause();
+    });
+    safeAction('seekbackward', (details) => {
+      const offset = details?.seekOffset || 10;
+      handleSkip(-offset);
+    });
+    safeAction('seekforward', (details) => {
+      const offset = details?.seekOffset || 10;
+      handleSkip(offset);
+    });
+    safeAction('seekto', (details) => {
+      if (videoRef.current && typeof details?.seekTime === 'number' && isFinite(details.seekTime)) {
+        videoRef.current.currentTime = details.seekTime;
+        setCurrentTime(details.seekTime);
+      }
+    });
+
+    return () => {
+      safeAction('play', null);
+      safeAction('pause', null);
+      safeAction('seekbackward', null);
+      safeAction('seekforward', null);
+      safeAction('seekto', null);
+    };
+  }, [title, subtitle, episodeSubtitle, previewThumbnailUrl, handleSkip]);
+
+  useEffect(() => {
+    if (typeof navigator === 'undefined' || !('mediaSession' in navigator)) return;
+    try {
+      navigator.mediaSession.playbackState = isPlaying ? 'playing' : 'paused';
+      if (typeof navigator.mediaSession.setPositionState === 'function' && duration > 0 && isFinite(duration)) {
+        navigator.mediaSession.setPositionState({
+          duration,
+          playbackRate: playbackSpeed || 1,
+          position: Math.min(duration, Math.max(0, currentTime))
+        });
+      }
+    } catch {}
+  }, [isPlaying, duration, currentTime, playbackSpeed]);
+
+  // Mobile double-tap left (-10s) / right (+10s) with 10ms haptic pulse; single tap toggles play/pause cleanly
+  const handleVideoSurfaceClick = useCallback((e: React.MouseEvent<HTMLVideoElement>) => {
+    const rect = e.currentTarget.getBoundingClientRect();
+    const relX = (e.clientX - rect.left) / (rect.width || 1);
+    const side: 'left' | 'right' | 'center' = relX < 0.34 ? 'left' : relX > 0.66 ? 'right' : 'center';
+    const now = Date.now();
+    const prev = lastVideoTapRef.current;
+
+    if (side !== 'center' && prev.side === side && now - prev.time < 300) {
+      if (singleTapTimerRef.current) {
+        window.clearTimeout(singleTapTimerRef.current);
+        singleTapTimerRef.current = null;
+      }
+      lastVideoTapRef.current = { time: 0, side: 'center' };
+      handleSkip(side === 'left' ? -10 : 10);
+      return;
+    }
+
+    lastVideoTapRef.current = { time: now, side };
+    if (singleTapTimerRef.current) window.clearTimeout(singleTapTimerRef.current);
+
+    if (side === 'center') {
+      togglePlay();
+    } else {
+      singleTapTimerRef.current = window.setTimeout(() => {
+        togglePlay();
+        singleTapTimerRef.current = null;
+      }, 240);
+    }
+  }, [handleSkip, togglePlay]);
+
+  useEffect(() => {
+    return () => {
+      if (singleTapTimerRef.current) window.clearTimeout(singleTapTimerRef.current);
+    };
   }, []);
 
   const handleSetSpeed = useCallback((speed: number) => {
@@ -681,10 +915,9 @@ export const CustomPlayer: React.FC<CustomPlayerProps> = ({
         ref={videoRef}
         className="absolute inset-0 w-full h-full object-contain bg-black"
         style={videoFilterStyle}
-        onClick={togglePlay}
+        onClick={handleVideoSurfaceClick}
         playsInline
         controlsList="nodownload nofullscreen noremoteplayback"
-        disablePictureInPicture
         onContextMenu={(e) => e.preventDefault()}
       />
 
@@ -1136,6 +1369,21 @@ export const CustomPlayer: React.FC<CustomPlayerProps> = ({
                 </div>
               )}
             </div>
+
+            {/* Picture-in-Picture Toggle (only on supported browsers) */}
+            {isPiPSupported && (
+              <button
+                type="button"
+                onClick={togglePictureInPicture}
+                data-no-tooltip="true"
+                className={`transition-transform hover:scale-110 cursor-pointer p-1 ${
+                  isInPiP ? 'text-[#e50914]' : 'text-white hover:text-zinc-200'
+                }`}
+                aria-label={isInPiP ? 'Exit Picture-in-Picture' : 'Picture-in-Picture'}
+              >
+                <PictureInPicture2 className="w-5 h-5 sm:w-5.5 sm:h-5.5" />
+              </button>
+            )}
 
             {/* Fullscreen Button */}
             <button

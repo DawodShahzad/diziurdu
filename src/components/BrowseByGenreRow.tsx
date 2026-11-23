@@ -108,7 +108,8 @@ export const BrowseByGenreRow: React.FC<BrowseByGenreRowProps> = ({
 }) => {
   const rowSectionRef = useRef<HTMLElement>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
-  const { isMobile } = useDeviceLayout();
+  const { isMobile, isLandscape } = useDeviceLayout();
+  const isMobileLandscapeLayout = Boolean(isMobile && isLandscape);
   const [canScrollLeft, setCanScrollLeft] = useState(false);
   const [canScrollRight, setCanScrollRight] = useState(true);
   const [navBox, setNavBox] = useState<{ top: number; height: number } | null>(null);
@@ -272,13 +273,22 @@ export const BrowseByGenreRow: React.FC<BrowseByGenreRowProps> = ({
   };
 
   return (
-    <section ref={rowSectionRef} className={`relative w-full my-2 sm:my-3 select-none group/row ${className}`}>
+    <section
+      ref={rowSectionRef}
+      className={`relative w-full ${isMobileLandscapeLayout ? 'my-1' : 'my-2 sm:my-3'} select-none group/row ${className}`}
+    >
       {/* Section Title matching feed header spacing */}
       <div className="px-4 md:px-8 xl:px-12 mb-1 sm:mb-1.5">
         {!isRowInView ? (
           <div className="w-40 h-5 sm:h-6 rounded skeleton-wave" />
         ) : (
-          <h2 className="text-white/95 font-semibold text-[15px] sm:text-base md:text-[17px] tracking-tight">
+          <h2
+            className={`text-white/95 tracking-tight ${
+              isMobileLandscapeLayout
+                ? 'font-normal text-[13.5px]'
+                : 'font-semibold text-[15px] sm:text-base md:text-[17px]'
+            }`}
+          >
             Browse by Genre
           </h2>
         )}

@@ -1,0 +1,6 @@
+{
+  "summary":  "Implementation plan for creating a pre-edit restore point and upgrading Dizi Urdu into a native-feeling Progressive Web App (PWA) with vite-plugin-pwa, static app icons and splash screen, per-page Admin status bar controls, custom install popout + settings install option, home screen shortcuts, enhanced video player hardware APIs (auto-landscape, Wake Lock, MediaSession, PiP), native share, haptics, offline caching, and mobile safe-area polish.",
+  "updatedAt":  "2026-11-23T18:10:17.840749496Z",
+  "requestFeedback":  true,
+  "userFacing":  true
+}

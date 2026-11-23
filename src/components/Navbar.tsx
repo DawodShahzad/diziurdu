@@ -59,6 +59,11 @@ interface NavbarProps {
   onOpenCreateAccount?: () => void;
   onShareBack?: () => void;
   hideNavbarOnFullSizeMoreInfo?: boolean;
+  mobileTransparentBlurNavbar?: boolean;
+  showMobileNotifications?: boolean;
+  onOpenMobileNotifications?: () => void;
+  onOpenTop10?: (mode?: 'series' | 'movies') => void;
+  isTop10Page?: boolean;
 }
 
 export const Navbar: React.FC<NavbarProps> = ({
@@ -97,7 +102,12 @@ export const Navbar: React.FC<NavbarProps> = ({
   shows = [],
   onOpenCreateAccount,
   onShareBack,
-  hideNavbarOnFullSizeMoreInfo = false
+  hideNavbarOnFullSizeMoreInfo = false,
+  mobileTransparentBlurNavbar = false,
+  showMobileNotifications = true,
+  onOpenMobileNotifications,
+  onOpenTop10,
+  isTop10Page = false
 }) => {
   type ActiveMenu = 'none' | 'search' | 'notifications' | 'profile' | 'more';
   const [activeMenu, setActiveMenu] = useState<ActiveMenu>('none');
@@ -108,7 +118,10 @@ export const Navbar: React.FC<NavbarProps> = ({
   const floatingSearchDraftRef = useRef<string>(searchQuery || '');
   const searchQueryRef = useRef<string>(searchQuery || '');
   const [isScrolled, setIsScrolled] = useState<boolean>(false);
-  const { isMobile: isMobileDevice, width: windowWidth } = useDeviceLayout();
+  const { isMobile: isMobileDevice, isLandscape, width: windowWidth } = useDeviceLayout();
+  const [mobileLandscapeNavHidden, setMobileLandscapeNavHidden] = useState<boolean>(false);
+  const landscapeUpScrollAccumRef = useRef<number>(0);
+  const landscapeLastYRef = useRef<number>(0);
   const floatingBarRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -123,7 +136,7 @@ export const Navbar: React.FC<NavbarProps> = ({
     searchQueryRef.current = searchQuery || '';
   }, [searchQuery]);
 
-  // Standard page tabs (Home, Series, Movies, Categories, My list)
+  // Standard page tabs (Home, Series, Movies, Categories, My list) — Top 10 is accessed via Categories > Trending or /top10
   const ALL_PAGES = [
     { id: 'all' as const, label: 'Home' },
     { id: 'series' as const, label: 'Series' },
@@ -131,6 +144,12 @@ export const Navbar: React.FC<NavbarProps> = ({
     { id: 'categories' as const, label: 'Categories' },
     { id: 'watchlist' as const, label: 'My list' },
   ];
+
+  const handleNavPageSelect = (pageId: 'all' | 'series' | 'movies' | 'categories' | 'watchlist') => {
+    onSelectCategory(pageId);
+    setActiveMenu('none');
+    setFloatingExpand('none');
+  };
 
   // Exact adaptive slot calculation:
   // 5 slots: All 5 page links fit
@@ -141,14 +160,15 @@ export const Navbar: React.FC<NavbarProps> = ({
   const navSlots = useMemo(() => {
     const isSearchOpen = activeMenu === 'search';
     if (isSearchOpen) {
-      if (windowWidth >= 1200) return 4;
-      if (windowWidth >= 1020) return 3;
-      if (windowWidth >= 860) return 2;
+      if (windowWidth >= 1220) return 5;
+      if (windowWidth >= 1060) return 4;
+      if (windowWidth >= 900) return 3;
+      if (windowWidth >= 760) return 2;
       return 1;
     }
-    if (windowWidth >= 1100) return 5;
-    if (windowWidth >= 950) return 4;
-    if (windowWidth >= 800) return 3;
+    if (windowWidth >= 1040) return 5;
+    if (windowWidth >= 900) return 4;
+    if (windowWidth >= 780) return 3;
     if (windowWidth >= 660) return 2;
     return 1;
   }, [windowWidth, activeMenu]);
@@ -269,6 +289,30 @@ export const Navbar: React.FC<NavbarProps> = ({
       setScrollY(currentY);
       // Smoothly activate solid background when scrolling beyond 20px threshold
       setIsScrolled(currentY > 20);
+
+      // Mobile landscape top navbar hide on scroll down; reveal smoothly after scrolling up ~4cm (~150px)
+      if (isMobileDevice && isLandscape) {
+        const delta = currentY - landscapeLastYRef.current;
+        landscapeLastYRef.current = currentY;
+        if (currentY <= 16) {
+          landscapeUpScrollAccumRef.current = 0;
+          setMobileLandscapeNavHidden(false);
+        } else if (delta > 2) {
+          landscapeUpScrollAccumRef.current = 0;
+          if (currentY > 24) {
+            setMobileLandscapeNavHidden(true);
+          }
+        } else if (delta < -1) {
+          landscapeUpScrollAccumRef.current += Math.abs(delta);
+          if (landscapeUpScrollAccumRef.current >= 150) {
+            setMobileLandscapeNavHidden(false);
+          }
+        }
+      } else {
+        landscapeUpScrollAccumRef.current = 0;
+        landscapeLastYRef.current = currentY;
+        setMobileLandscapeNavHidden(false);
+      }
     };
 
     // Run once on mount / mode change to capture initial scroll position
@@ -313,7 +357,7 @@ export const Navbar: React.FC<NavbarProps> = ({
       document.removeEventListener('click', handleClickOutside);
       document.removeEventListener('keydown', handleKeyDown);
     };
-  }, [activeMenu, isSharePage]);
+  }, [activeMenu, isSharePage, isMobileDevice, isLandscape]);
 
   // Sync draft search input when external searchQuery clears
   useEffect(() => {
@@ -406,13 +450,14 @@ export const Navbar: React.FC<NavbarProps> = ({
 
   const floatingPageLabel = useMemo(() => {
     if (isSharePage) return null;
+    if (isTop10Page) return 'Top 10';
     if (searchQuery.trim()) return 'Search';
     if (activeFilter === 'series') return 'Series';
     if (activeFilter === 'movies') return 'Movies';
     if (activeFilter === 'categories') return 'Categories';
     if (activeFilter === 'watchlist') return 'My List';
     return null;
-  }, [isSharePage, searchQuery, activeFilter]);
+  }, [isSharePage, isTop10Page, searchQuery, activeFilter]);
 
   const commitFloatingSearch = (term: string) => {
     const clean = term.trim();
@@ -430,11 +475,17 @@ export const Navbar: React.FC<NavbarProps> = ({
   return (
     <header
       style={{
-        top: isOffline && !isMobileDevice ? '52px' : '0px'
+        top: isOffline && !isMobileDevice ? '52px' : '0px',
+        transform:
+          isMobileDevice && isLandscape && mobileLandscapeNavHidden
+            ? 'translate3d(0, -100%, 0)'
+            : 'translate3d(0, 0, 0)'
       }}
       className={`${
         isMinimalScrollableShareHeader ? 'absolute' : 'fixed'
-      } left-0 right-0 z-50 border-none select-none transition-[top] duration-200`}
+      } ${
+        isMobileDevice && isLandscape ? 'left-14' : 'left-0'
+      } right-0 z-50 border-none select-none transition-[top,transform] duration-300 ease-out`}
     >
       {/* Background for Desktop & Mobile: hidden on floating_glass desktop, hidden when Full Size More Info navbar is turned off */}
       {!isMinimalScrollableShareHeader &&
@@ -442,20 +493,36 @@ export const Navbar: React.FC<NavbarProps> = ({
         ((isMobileDevice && !hideMobileLogoBar) ||
           (!isMobileDevice && desktopNavbarStyle !== 'floating_glass')) && (
         <div className="absolute inset-0 pointer-events-none -z-10 overflow-hidden">
-          {/* Subtle resting top gradient (omitted at scroll 0 on share page) */}
-          <div
-            style={{
-              opacity: isSharePage ? 0 : Math.max(0, 1 - scrollY / 50)
-            }}
-            className="absolute inset-0 bg-gradient-to-b from-black/15 via-transparent to-transparent pointer-events-none transition-opacity duration-300"
-          />
-          {/* Smooth ramp to black background on scroll */}
-          <div
-            style={{
-              opacity: Math.min(1, Math.max(0, scrollY / 90))
-            }}
-            className="absolute inset-0 bg-black pointer-events-none transition-opacity duration-200"
-          />
+          {isMobileDevice && mobileTransparentBlurNavbar ? (
+            <div
+              style={{
+                backgroundColor: scrollY > 8 ? 'rgba(20, 20, 24, 0.56)' : 'transparent',
+                backdropFilter: scrollY > 8 ? 'blur(22px) saturate(165%)' : 'none',
+                WebkitBackdropFilter: scrollY > 8 ? 'blur(22px) saturate(165%)' : 'none',
+                borderBottom: 'none'
+              }}
+              className="absolute inset-0 pointer-events-none transition-all duration-200 border-0"
+            />
+          ) : (
+            <>
+              {/* Subtle resting top gradient on desktop only (mobile top navbar is fully transparent on top) */}
+              {!isMobileDevice && (
+                <div
+                  style={{
+                    opacity: isSharePage ? 0 : Math.max(0, 1 - scrollY / 50)
+                  }}
+                  className="absolute inset-0 bg-gradient-to-b from-black/15 via-transparent to-transparent pointer-events-none transition-opacity duration-300"
+                />
+              )}
+              {/* Smooth ramp to black background on scroll */}
+              <div
+                style={{
+                  opacity: Math.min(1, Math.max(0, scrollY / 90))
+                }}
+                className="absolute inset-0 bg-black pointer-events-none transition-opacity duration-200"
+              />
+            </>
+          )}
         </div>
       )}
 
@@ -465,7 +532,7 @@ export const Navbar: React.FC<NavbarProps> = ({
       {isMobileDevice && !hideMobileLogoBar && (
         <div
           data-mobile-top-navbar="true"
-          className="relative w-full px-4 h-12 flex items-center justify-between"
+          className="relative w-full px-4 pt-[env(safe-area-inset-top)] min-h-[calc(48px+env(safe-area-inset-top))] flex items-center justify-between"
         >
           {/* Top Bar: Brand Logo on left with NO shadow beneath */}
           <button
@@ -489,6 +556,21 @@ export const Navbar: React.FC<NavbarProps> = ({
               <DiziLogo variant="red" size="md" className="max-w-[110px] h-7" />
             )}
           </button>
+
+          {/* Right: Notification Button in Portrait Orientation (toggleable from Admin Panel) */}
+          {!isLandscape && showMobileNotifications && (
+            <button
+              type="button"
+              onClick={() => onOpenMobileNotifications?.()}
+              className="relative p-1.5 text-white hover:text-white/80 active:scale-90 transition-transform cursor-pointer"
+              aria-label="Notifications"
+            >
+              <Bell className="w-5.5 h-5.5 text-white stroke-[2]" />
+              {notificationList.some((n) => n.unread) && (
+                <span className="absolute top-1.5 right-1.5 w-2 h-2 rounded-full bg-red-600" />
+              )}
+            </button>
+          )}
         </div>
       )}
 
@@ -656,7 +738,8 @@ export const Navbar: React.FC<NavbarProps> = ({
                         { id: 'watchlist' as const, label: 'My List' }
                       ]
                     ).map((item) => {
-                      const isActive = !searchQuery.trim() && activeFilter === item.id;
+                      const isActive =
+                        !isTop10Page && !searchQuery.trim() && activeFilter === item.id;
                       return (
                         <button
                           key={item.id}
@@ -665,8 +748,7 @@ export const Navbar: React.FC<NavbarProps> = ({
                             setFloatingExpand('none');
                             setFloatingSearchDraft('');
                             onSearchChange('');
-                            onSelectCategory(item.id);
-                            setActiveMenu('none');
+                            handleNavPageSelect(item.id);
                           }}
                           className={`px-3.5 py-1.5 rounded-full transition-colors cursor-pointer font-medium shrink-0 ${
                             isActive
@@ -908,7 +990,7 @@ export const Navbar: React.FC<NavbarProps> = ({
                           }}
                           className="px-4 py-2 text-white hover:bg-white/10 cursor-pointer font-semibold transition-colors"
                         >
-                          Create Account
+                          Sign Up
                         </div>
                       )}
 
@@ -920,7 +1002,7 @@ export const Navbar: React.FC<NavbarProps> = ({
                         }}
                         className="px-4 py-2 text-zinc-200 hover:text-white hover:bg-white/5 cursor-pointer font-medium transition-colors"
                       >
-                        {isLoggedIn ? 'Sign out of Dizi' : 'Sign in to Dizi'}
+                        {isLoggedIn ? 'Sign out of Dizi' : 'Login'}
                       </div>
                     </div>
                   )}
@@ -939,7 +1021,8 @@ export const Navbar: React.FC<NavbarProps> = ({
                     { id: 'watchlist' as const, label: 'My List' }
                   ]
                 ).map((item) => {
-                  const isActive = !searchQuery.trim() && !isSharePage && activeFilter === item.id;
+                  const isActive =
+                    !isTop10Page && !searchQuery.trim() && !isSharePage && activeFilter === item.id;
                   return (
                     <button
                       key={item.id}
@@ -948,8 +1031,7 @@ export const Navbar: React.FC<NavbarProps> = ({
                         setFloatingExpand('none');
                         setFloatingSearchDraft('');
                         onSearchChange('');
-                        onSelectCategory(item.id);
-                        setActiveMenu('none');
+                        handleNavPageSelect(item.id);
                       }}
                       className={`px-4 py-1.5 rounded-full text-sm font-semibold transition-colors cursor-pointer ${
                         isActive
@@ -1105,7 +1187,7 @@ export const Navbar: React.FC<NavbarProps> = ({
                     className="flex items-center gap-2 px-3.5 py-2 rounded-full text-[14px] lg:text-[15px] font-semibold text-white bg-white/10 hover:bg-white/20 transition-colors cursor-pointer shrink-0"
                   >
                     <User className="w-[17px] h-[17px] shrink-0" />
-                    <span>Create Account</span>
+                    <span>Sign Up</span>
                   </button>
                 )}
                 <button
@@ -1118,7 +1200,7 @@ export const Navbar: React.FC<NavbarProps> = ({
                   className="flex items-center gap-2 px-3.5 py-2 rounded-full text-[14px] lg:text-[15px] font-semibold text-zinc-200 hover:text-white hover:bg-white/15 transition-colors cursor-pointer shrink-0"
                 >
                   {isLoggedIn ? <LogOut className="w-[17px] h-[17px] shrink-0" /> : <LogIn className="w-[17px] h-[17px] shrink-0" />}
-                  <span>{isLoggedIn ? 'Sign Out' : 'Sign In'}</span>
+                  <span>{isLoggedIn ? 'Sign Out' : 'Login'}</span>
                 </button>
               </div>
             )}
@@ -1191,7 +1273,8 @@ export const Navbar: React.FC<NavbarProps> = ({
               /* When only space for 1 link: show ONLY a text + dropdown button showing the CURRENT page name, with current page badge */
               <div ref={moreContainerRef} className="relative">
                 {(() => {
-                  const currentPageObj = ALL_PAGES.find((p) => p.id === activeFilter) || ALL_PAGES[0];
+                  const currentPageObj =
+                    ALL_PAGES.find((p) => p.id === activeFilter) || ALL_PAGES[0];
                   const otherPages = ALL_PAGES.filter((p) => p.id !== currentPageObj.id);
 
                   return (
@@ -1204,7 +1287,7 @@ export const Navbar: React.FC<NavbarProps> = ({
                         className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-full text-[14.5px] sm:text-[15px] font-semibold transition-all cursor-pointer shrink-0 bg-white/20 text-white shadow-sm"
                         aria-label="Page navigation"
                       >
-                        <span>{currentPageObj.label}</span>
+                        <span>{isTop10Page ? 'Trending' : currentPageObj.label}</span>
                         <svg
                           viewBox="0 0 10 6"
                           className={`w-2.5 h-1.5 transition-transform duration-200 fill-current ${
@@ -1220,10 +1303,7 @@ export const Navbar: React.FC<NavbarProps> = ({
                           {otherPages.map((page) => (
                             <button
                               key={page.id}
-                              onClick={() => {
-                                onSelectCategory(page.id);
-                                setActiveMenu('none');
-                              }}
+                              onClick={() => handleNavPageSelect(page.id)}
                               className="w-full text-left px-4 py-2.5 text-sm transition-colors flex items-center justify-between font-medium text-zinc-300 hover:bg-white/10 hover:text-white cursor-pointer"
                             >
                               <span>{page.label}</span>
@@ -1235,18 +1315,15 @@ export const Navbar: React.FC<NavbarProps> = ({
                   );
                 })()}
               </div>
-            ) : navSlots < 5 ? (
-              /* When space for 4, 3, or 2 links: show first (navSlots-1) links as they are, and remaining in "More ▾" dropdown */
+            ) : navSlots < ALL_PAGES.length ? (
+              /* When space for fewer links: show first (navSlots-1) links as they are, and remaining in "More ▾" dropdown */
               <>
                 {ALL_PAGES.slice(0, navSlots - 1).map((page) => {
-                  const isActive = !searchQuery.trim() && activeFilter === page.id;
+                  const isActive = !isTop10Page && !searchQuery.trim() && activeFilter === page.id;
                   return (
                     <button
                       key={page.id}
-                      onClick={() => {
-                        onSelectCategory(page.id);
-                        setActiveMenu('none');
-                      }}
+                      onClick={() => handleNavPageSelect(page.id)}
                       className={`px-3.5 py-1.5 rounded-full transition-colors cursor-pointer font-medium shrink-0 ${
                         isActive
                           ? 'bg-white/20 text-white font-semibold shadow-sm'
@@ -1262,7 +1339,7 @@ export const Navbar: React.FC<NavbarProps> = ({
                 <div ref={moreContainerRef} className="relative">
                   {(() => {
                     const dropdownPages = ALL_PAGES.slice(navSlots - 1);
-                    const isCurrentInMore = dropdownPages.some((p) => p.id === activeFilter) && !searchQuery.trim();
+                    const isCurrentInMore = !isTop10Page && dropdownPages.some((p) => p.id === activeFilter) && !searchQuery.trim();
 
                     return (
                       <>
@@ -1294,14 +1371,11 @@ export const Navbar: React.FC<NavbarProps> = ({
                         {activeMenu === 'more' && (
                           <div className="absolute left-0 top-full mt-2 w-48 bg-[#141414]/98 backdrop-blur-xl border border-[#333333] rounded-xl shadow-2xl py-1.5 z-50 overflow-hidden animate-in fade-in zoom-in-95 duration-150">
                             {dropdownPages.map((page) => {
-                              const isActive = activeFilter === page.id;
+                              const isActive = !isTop10Page && activeFilter === page.id;
                               return (
                                 <button
                                   key={page.id}
-                                  onClick={() => {
-                                    onSelectCategory(page.id);
-                                    setActiveMenu('none');
-                                  }}
+                                  onClick={() => handleNavPageSelect(page.id)}
                                   className={`w-full text-left px-4 py-2.5 text-sm transition-colors flex items-center justify-between cursor-pointer ${
                                     isActive
                                       ? 'font-bold text-white bg-white/10'
@@ -1321,16 +1395,13 @@ export const Navbar: React.FC<NavbarProps> = ({
                 </div>
               </>
             ) : (
-              /* When space for all 5 links: show all 5 links directly */
+              /* When space for all links: show all links directly */
               ALL_PAGES.map((page) => {
-                const isActive = !searchQuery.trim() && activeFilter === page.id;
+                const isActive = !isTop10Page && !searchQuery.trim() && activeFilter === page.id;
                 return (
                   <button
                     key={page.id}
-                    onClick={() => {
-                      onSelectCategory(page.id);
-                      setActiveMenu('none');
-                    }}
+                    onClick={() => handleNavPageSelect(page.id)}
                     className={`px-3.5 sm:px-4 py-1.5 rounded-full transition-colors cursor-pointer font-medium shrink-0 ${
                       isActive
                         ? 'bg-white/20 text-white font-semibold shadow-sm'
@@ -1608,7 +1679,7 @@ export const Navbar: React.FC<NavbarProps> = ({
                 {/* Divider Line */}
                 <div className="border-t border-zinc-800 my-1.5" />
 
-                {/* Create Account when guest */}
+                {/* Sign Up when guest */}
                 {!isLoggedIn && (
                   <div
                     onClick={() => {
@@ -1622,11 +1693,11 @@ export const Navbar: React.FC<NavbarProps> = ({
                     }}
                     className="px-4 py-2 text-white hover:bg-white/10 cursor-pointer font-semibold transition-colors"
                   >
-                    Create Account
+                    Sign Up
                   </div>
                 )}
 
-                {/* Sign out / Sign in */}
+                {/* Sign out / Login */}
                 <div
                   onClick={() => {
                     onProfileMenuAction?.();
@@ -1635,7 +1706,7 @@ export const Navbar: React.FC<NavbarProps> = ({
                   }}
                   className="px-4 py-2 text-zinc-200 hover:text-white hover:bg-white/5 cursor-pointer font-medium transition-colors"
                 >
-                  {isLoggedIn ? 'Sign out of Dizi' : 'Sign in to Dizi'}
+                  {isLoggedIn ? 'Sign out of Dizi' : 'Login'}
                 </div>
               </div>
             )}

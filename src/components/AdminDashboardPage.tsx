@@ -5458,14 +5458,14 @@ export const AdminDashboardPage: React.FC<AdminDashboardPageProps> = ({
                       </div>
                     </div>
 
-                    {/* Option 1b: Mobile Navbar Theme (Solid vs Glass UI) */}
+                    {/* Option 1b: Transparent Blur Top & Bottom Navbar */}
                     <div className="p-4 rounded-xl bg-zinc-900/90 border border-zinc-800 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
                       <div>
                         <h4 className="text-sm font-bold text-white">
-                          Mobile Navbar Theme (Solid vs Glass UI)
+                          Transparent Blur Top &amp; Bottom Navbar
                         </h4>
                         <p className="text-xs text-zinc-400">
-                          Switch between classic solid dark pill or translucent frosted Apple Liquid Glass look with active pill lens highlights.
+                          When turned on, both the mobile top navbar and bottom navbar use the translucent dark frosted blur glass design.
                         </p>
                       </div>
 
@@ -5475,6 +5475,7 @@ export const AdminDashboardPage: React.FC<AdminDashboardPageProps> = ({
                           onClick={() => {
                             const updated = {
                               ...adminSettings,
+                              mobileTransparentBlurNavbar: false,
                               mobileNavbarTheme: 'solid' as const
                             };
                             onUpdateSettings(updated);
@@ -5483,12 +5484,13 @@ export const AdminDashboardPage: React.FC<AdminDashboardPageProps> = ({
                             } catch {}
                           }}
                           className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+                            !adminSettings.mobileTransparentBlurNavbar &&
                             (adminSettings.mobileNavbarTheme || 'solid') === 'solid'
                               ? 'bg-red-600 text-white shadow'
                               : 'text-zinc-400 hover:text-white'
                           }`}
                         >
-                          Solid Dark
+                          Off (Solid)
                         </button>
 
                         <button
@@ -5496,6 +5498,7 @@ export const AdminDashboardPage: React.FC<AdminDashboardPageProps> = ({
                           onClick={() => {
                             const updated = {
                               ...adminSettings,
+                              mobileTransparentBlurNavbar: true,
                               mobileNavbarTheme: 'glass' as const
                             };
                             onUpdateSettings(updated);
@@ -5504,12 +5507,13 @@ export const AdminDashboardPage: React.FC<AdminDashboardPageProps> = ({
                             } catch {}
                           }}
                           className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+                            adminSettings.mobileTransparentBlurNavbar ||
                             adminSettings.mobileNavbarTheme === 'glass'
                               ? 'bg-red-600 text-white shadow'
                               : 'text-zinc-400 hover:text-white'
                           }`}
                         >
-                          Glass UI
+                          On (Transparent Blur)
                         </button>
                       </div>
                     </div>
@@ -5567,6 +5571,130 @@ export const AdminDashboardPage: React.FC<AdminDashboardPageProps> = ({
                         >
                           Hide Text (Icons Only)
                         </button>
+                      </div>
+                    </div>
+
+                    {/* Option 2b: Mobile Notification Button Visibility */}
+                    <div className="p-4 rounded-xl bg-zinc-900/90 border border-zinc-800 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                      <div>
+                        <h4 className="text-sm font-bold text-white">
+                          Notification Button (Top Navbar &amp; Landscape Sidebar)
+                        </h4>
+                        <p className="text-xs text-zinc-400">
+                          Turn the notification bell button on or off in the mobile portrait top navbar and landscape left sidebar.
+                        </p>
+                      </div>
+
+                      <div className="flex items-center gap-1.5 bg-zinc-800/90 p-1 rounded-xl border border-zinc-700 shrink-0">
+                        <button
+                          type="button"
+                          onClick={() => {
+                            const updated = {
+                              ...adminSettings,
+                              showMobileNotifications: true
+                            };
+                            onUpdateSettings(updated);
+                            try {
+                              localStorage.setItem('cineflix_settings', JSON.stringify(updated));
+                            } catch {}
+                          }}
+                          className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+                            adminSettings.showMobileNotifications !== false
+                              ? 'bg-red-600 text-white shadow'
+                              : 'text-zinc-400 hover:text-white'
+                          }`}
+                        >
+                          On
+                        </button>
+
+                        <button
+                          type="button"
+                          onClick={() => {
+                            const updated = {
+                              ...adminSettings,
+                              showMobileNotifications: false
+                            };
+                            onUpdateSettings(updated);
+                            try {
+                              localStorage.setItem('cineflix_settings', JSON.stringify(updated));
+                            } catch {}
+                          }}
+                          className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+                            adminSettings.showMobileNotifications === false
+                              ? 'bg-red-600 text-white shadow'
+                              : 'text-zinc-400 hover:text-white'
+                          }`}
+                        >
+                          Off
+                        </button>
+                      </div>
+                    </div>
+
+                    {/* Option 2c: PWA Status Bar Appearance Per Page (Transparent / Black / Hidden) */}
+                    <div className="p-4 rounded-xl bg-zinc-900/90 border border-zinc-800 space-y-3.5">
+                      <div>
+                        <h4 className="text-sm font-bold text-white">
+                          PWA Status Bar Appearance (Per Page)
+                        </h4>
+                        <p className="text-xs text-zinc-400 mt-0.5">
+                          Control the mobile status bar and theme-color independently for each screen when launched as an installed app.
+                        </p>
+                      </div>
+
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-2.5">
+                        {(
+                          [
+                            { key: 'home', label: 'Home & Browse', defaultMode: 'transparent' },
+                            { key: 'detail', label: 'Show Detail / More Info', defaultMode: 'black' },
+                            { key: 'player', label: 'Video Player', defaultMode: 'black' },
+                            { key: 'categories', label: 'Categories', defaultMode: 'transparent' },
+                            { key: 'top10', label: 'Top 10 Page', defaultMode: 'transparent' },
+                            { key: 'search', label: 'Search', defaultMode: 'black' },
+                            { key: 'profile', label: 'Profile & Account', defaultMode: 'black' },
+                            { key: 'login', label: 'Login & Sign Up', defaultMode: 'transparent' }
+                          ] as const
+                        ).map((page) => {
+                          const activeMode =
+                            adminSettings.pwaStatusBarConfig?.[page.key] || page.defaultMode;
+                          return (
+                            <div
+                              key={page.key}
+                              className="p-2.5 rounded-xl bg-zinc-950/80 border border-zinc-800/90 flex items-center justify-between gap-2"
+                            >
+                              <span className="text-xs font-semibold text-zinc-200 truncate">
+                                {page.label}
+                              </span>
+                              <div className="flex items-center gap-1 bg-zinc-900 p-0.5 rounded-lg border border-zinc-800 shrink-0">
+                                {(['transparent', 'black', 'hidden'] as const).map((mode) => (
+                                  <button
+                                    key={mode}
+                                    type="button"
+                                    onClick={() => {
+                                      const updated = {
+                                        ...adminSettings,
+                                        pwaStatusBarConfig: {
+                                          ...(adminSettings.pwaStatusBarConfig || {}),
+                                          [page.key]: mode
+                                        }
+                                      };
+                                      onUpdateSettings(updated);
+                                      try {
+                                        localStorage.setItem('cineflix_settings', JSON.stringify(updated));
+                                      } catch {}
+                                    }}
+                                    className={`px-2 py-1 rounded-md text-[11px] font-bold capitalize transition-all cursor-pointer ${
+                                      activeMode === mode
+                                        ? 'bg-red-600 text-white shadow'
+                                        : 'text-zinc-400 hover:text-white'
+                                    }`}
+                                  >
+                                    {mode}
+                                  </button>
+                                ))}
+                              </div>
+                            </div>
+                          );
+                        })}
                       </div>
                     </div>
 

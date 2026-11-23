@@ -31,6 +31,7 @@ import { ProfileLockScreen } from './ProfileLockScreen';
 import { EmptyListCard } from './EmptyListCard';
 import { isFingerprintUnlockEnabled, registerNativeFingerprint, setFingerprintUnlockEnabled } from '../utils/biometricUnlock';
 import { formatProgressTime } from '../utils/watchProgress';
+import { useDeviceLayout } from '../utils/deviceLayout';
 import fullBackupData from '../full_backup.json';
 
 interface MobileProfileModalProps {
@@ -98,6 +99,8 @@ export const MobileProfileModal: React.FC<MobileProfileModalProps> = ({
   onUpdateUserHandle,
   onProfileEditOpenChange
 }) => {
+  const { isMobile, isLandscape } = useDeviceLayout();
+  const isMobileLandscape = isMobile && isLandscape;
   const [isNotificationsViewOpen, setIsNotificationsViewOpen] = useState<boolean>(false);
   const [isAboutViewOpen, setIsAboutViewOpen] = useState<boolean>(false);
   const [seeAllView, setSeeAllView] = useState<'none' | 'continue-watching' | 'my-list'>('none');
@@ -389,7 +392,7 @@ export const MobileProfileModal: React.FC<MobileProfileModalProps> = ({
             : 'translate3d(100%, 0, 0)',
         transition: isDragging ? 'none' : 'transform 260ms cubic-bezier(0.22, 1, 0.36, 1)'
       }}
-      className="fixed inset-0 z-50 bg-black flex flex-col justify-start overflow-hidden will-change-transform"
+      className={`fixed top-0 right-0 bottom-0 ${isMobileLandscape ? 'left-14' : 'left-0'} z-50 bg-black flex flex-col justify-start overflow-hidden will-change-transform`}
     >
       {/* Floating PIN Toast */}
       {pinToast && (
